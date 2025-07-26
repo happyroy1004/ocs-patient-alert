@@ -1,10 +1,11 @@
 import streamlit as st
 import pandas as pd
+import msoffcrypto
+import io
 import firebase_admin
 from firebase_admin import credentials, db
-import io
 
-# -------------------- Firebase 초기화 --------------------
+# 🔐 Firebase 인증 및 초기화
 if not firebase_admin._apps:
     cred = credentials.Certificate({
         "type": st.secrets["firebase"]["type"],
@@ -16,69 +17,69 @@ if not firebase_admin._apps:
         "auth_uri": st.secrets["firebase"]["auth_uri"],
         "token_uri": st.secrets["firebase"]["token_uri"],
         "auth_provider_x509_cert_url": st.secrets["firebase"]["auth_provider_x509_cert_url"],
-        "client_x509_cert_url": st.secrets["firebase"]["client_x509_cert_url"],
-        "universe_domain": st.secrets["firebase"]["universe_domain"]
+        "client_x509_cert_url": st.secrets["firebase"]["client_x509_cert_url"]
     })
     firebase_admin.initialize_app(cred, {
-        "databaseURL": st.secrets["database_url"]
+        'databaseURL': st.secrets["database_url"]
     })
 
-# -------------------- 앱 UI --------------------
-st.title("📋 OCS 환자 등록 & 조회")
+st.title("📁 환자 등록 및 조회 시스템")
 
-uploaded_file = st.file_uploader("🗂 OCS 엑셀 파일을 업로드하세요", type=["xls", "xlsx"])
-if uploaded_file:
-    try:
-        df = pd.read_excel(uploaded_file, sheet_name=None)  # 모든 시트 불러오기
-        all_data = []
+# 1️⃣ Google ID 입력
+google_id = st.text_input("🔑 Google ID를 입력하세요")
 
-        for sheet_name, sheet_df in df.items():
-            if "환자명" in sheet_df.columns and "진료번호" in sheet_df.columns:
-                # 빈 행 제거
-                clean_df = sheet_df.dropna(subset=["환자명", "진료번호"])
-                for _, row in clean_df.iterrows():
-                    all_data.append({
-                        "이름": str(row["환자명"]).strip(),
-                        "번호": str(row["진료번호"]).strip(),
-                        "진료과": str(row.get("진료과", "")).strip()
-                    })
-        extracted_df = pd.DataFrame(all_data)
-        st.success(f"✅ {len(extracted_df)}명의 환자 정보를 불러왔습니다.")
-        st.dataframe(extracted_df)
+if google_id:
+    # 2️⃣ 파일 업로드 및 복호화
+    uploaded_file = st.file_uploader("암호화된 Excel 파일을 업로드하세요", type=["xls", "xlsx"])
 
-        # Firebase에 이미 등록된 환자 불러오기
-        ref = db.reference("patients")
-        existing_patients = ref.get() or {}
-        existing_keys = {f"{v['이름']}_{v['번호']}" for v in existing_patients.values()}
+    if uploaded_file:
+        password = st.text_input("🔐 파일 암호를 입력하세요", type="password")
+        if password:
+            try:
+                decrypted = io.BytesIO()
+                office_file = msoffcrypto.OfficeFile(uploaded_file)
+                office_file.load_key(password=password)
+                office_file.decrypt(decrypted)
 
-        # 새로 등록할 환자만 필터링
-        new_patients = extracted_df[
-            ~extracted_df.apply(lambda x: f"{x['이름']}_{x['번호']}", axis=1).isin(existing_keys)
-        ]
+                df = pd.read_excel(decrypted, sheet_name=None)  # 모든 시트 불러오기
+                st.success("✅ 파일 복호화 및 로딩 완료")
 
-        st.write("🆕 새로 등록할 환자:")
-        st.dataframe(new_patients)
+                for sheet_name, sheet_df in df.items():
+                    st.subheader(f"📋 시트: {sheet_name}")
+                    sheet_df = sheet_df.dropna(how="all")  # 전체 빈 행 제거
+                    if sheet_df.empty:
+                        st.info("⚠️ 데이터가 없습니다.")
+                        continue
 
-        if st.button("📤 Firebase에 환자 등록"):
-            for _, row in new_patients.iterrows():
-                key = f"{row['이름']}_{row['번호']}"
-                ref.push({
-                    "이름": row["이름"],
-                    "번호": row["번호"],
-                    "진료과": row["진료과"]
-                })
-            st.success("✅ 새 환자 등록 완료!")
+                    # '환자명' 또는 '이름', '진료번호' 또는 '번호' 열 자동 감지
+                    name_col = next((col for col in sheet_df.columns if '환자명' in col or '이름' in col), None)
+                    number_col = next((col for col in sheet_df.columns if '진료번호' in col or '번호' in col), None)
 
-    except Exception as e:
-        st.error(f"❌ 처리 중 오류 발생: {e}")
+                    if not name_col or not number_col:
+                        st.warning("❌ '환자명' 또는 '진료번호' 열을 찾을 수 없습니다.")
+                        continue
 
-# -------------------- 환자 목록 조회 --------------------
-st.header("📖 등록된 환자 목록")
-ref = db.reference("patients")
-all_patients = ref.get() or {}
+                    sheet_df = sheet_df[[name_col, number_col]].dropna()
 
-if all_patients:
-    df_registered = pd.DataFrame(all_patients.values())
-    st.dataframe(df_registered)
+                    ref = db.reference(f"patients/{google_id}")
+                    existing_data = ref.get() or {}
+
+                    new_entries = []
+                    for _, row in sheet_df.iterrows():
+                        name = str(row[name_col]).strip()
+                        number = str(row[number_col]).strip()
+                        key = f"{name}_{number}"
+
+                        if key not in existing_data:
+                            new_entries.append({"name": name, "number": number})
+                            ref.child(key).set({"name": name, "number": number})
+
+                    st.success(f"✅ 새로운 환자 {len(new_entries)}명 등록 완료")
+                    st.dataframe(pd.DataFrame(new_entries) if new_entries else pd.DataFrame(existing_data.values()))
+
+            except Exception as e:
+                st.error(f"❌ 오류 발생: {e}")
+        else:
+            st.info("🔑 파일 암호를 입력해주세요.")
 else:
-    st.info("현재 등록된 환자가 없습니다.")
+    st.warning("👤 먼저 Google ID를 입력해주세요.")
