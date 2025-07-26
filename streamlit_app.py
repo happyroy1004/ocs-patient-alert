@@ -59,8 +59,8 @@ if user_id == "admin":
                 send_email = st.radio("📧 사용자에게 환자 내원 이메일을 보내시겠습니까?", ["예", "아니오"])
 
                 if send_email == "예":
-                    sender_email = st.text_input("관리자 Gmail 주소", placeholder="your_email@gmail.com")
-                    sender_pw = st.text_input("Gmail 앱 비밀번호", type="password")
+                   sender_email = st.secrets["gmail"]["sender"]
+                   sender_pw = st.secrets["gmail"]["app_password"]
 
                     if sender_email and sender_pw:
                         users_ref = db.collection("users")
