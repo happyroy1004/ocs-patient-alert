@@ -4,7 +4,6 @@ import firebase_admin
 from firebase_admin import credentials, db
 import io
 import msoffcrypto
-import re
 
 # 🔐 Firebase 초기화
 if not firebase_admin._apps:
@@ -15,6 +14,7 @@ if not firebase_admin._apps:
 
 # 📌 Firebase-safe 경로로 변환
 def sanitize_path(s):
+    import re
     return re.sub(r'[.$#[\]/]', '_', s)
 
 # 🧾 엑셀 파일 복호화
@@ -26,7 +26,7 @@ def decrypt_excel(file, password):
     decrypted.seek(0)
     return decrypted
 
-# 📁 Streamlit 앱 시작
+# 📁 Streamlit 앱
 st.title("🔒 암호화된 OCS 환자 파일 분석기")
 
 # 1️⃣ 구글 아이디 입력
@@ -39,20 +39,6 @@ firebase_key = sanitize_path(google_id)
 ref = db.reference(f"patients/{firebase_key}")
 existing_data = ref.get()
 
-if existing_data:
-    st.subheader("📄 기존 등록된 환자 목록")
-    existing_df = pd.DataFrame(existing_data).T
-    existing_df = existing_df[["name", "number"]]
-    st.dataframe(existing_df)
-else:
-    existing_df = pd.DataFrame(columns=["name", "number"])
-    st.info("아직 등록된 환자가 없습니다.")
-
-# 등록된 환자 목록을 set으로 저장
-registered_set = set()
-for _, row in existing_df.iterrows():
-    registered_set.add((str(row["name"]).strip(), str(row["number"]).strip()))
-
 # 3️⃣ 신규 환자 등록
 with st.form("register_patient"):
     st.subheader("➕ 신규 환자 등록")
@@ -63,15 +49,16 @@ with st.form("register_patient"):
     if submitted:
         if not new_name or not new_number:
             st.warning("환자명과 진료번호를 모두 입력해주세요.")
-        elif (new_name.strip(), new_number.strip()) in registered_set:
-            st.error("이미 등록된 환자입니다.")
         else:
-            new_ref = ref.push()
-            new_ref.set({"name": new_name.strip(), "number": new_number.strip()})
-            st.success(f"환자 {new_name} ({new_number})가 등록되었습니다.")
-            st.rerun()
+            if existing_data and any(v.get("name") == new_name and v.get("number") == new_number for v in existing_data.values()):
+                st.error("이미 등록된 환자입니다.")
+            else:
+                new_ref = ref.push()
+                new_ref.set({"name": new_name, "number": new_number})
+                st.success(f"환자 {new_name} ({new_number})가 등록되었습니다.")
+                st.rerun()
 
-# 4️⃣ 엑셀 파일 업로드 및 분석
+# 4️⃣ 엑셀 업로드 및 분석
 st.subheader("🔐 OCS 엑셀 업로드 및 분석")
 uploaded_file = st.file_uploader("암호화된 Excel(.xlsx/.xlsm) 파일 업로드", type=["xlsx", "xlsm"])
 password = st.text_input("Excel 파일 암호 입력", type="password")
@@ -80,30 +67,35 @@ if uploaded_file and password:
     try:
         decrypted = decrypt_excel(uploaded_file, password)
         xl = pd.ExcelFile(decrypted)
+
+        # 🔍 기존 등록된 환자 목록 준비 (name, number 기준)
+        registered_set = set()
+        if existing_data:
+            registered_set = {(v.get("name"), v.get("number")) for v in existing_data.values()}
+
         for sheet_name in xl.sheet_names:
             try:
                 df = xl.parse(sheet_name, header=1)
-
                 if "환자명" not in df.columns or "진료번호" not in df.columns:
                     st.warning(f"❌ 시트 '{sheet_name}'에서 '환자명' 또는 '진료번호' 열을 찾을 수 없습니다.")
                     continue
 
-                # 열 이름 통일
                 df = df.rename(columns={"환자명": "name", "진료번호": "number"})
                 df = df[["name", "number"]].dropna()
 
-                # 등록 여부 판단
-                registered_set = set()
-                if existing_data:
-                    registered_set = {(v["이름"], v["번호"]) for v in existing_data.values()}
-
-                df["등록여부"] = df.apply(
-                    lambda row: "✅ 등록됨" if (row["name"], row["number"]) in registered_set else "❌ 미등록",
-                    axis=1
-                )
-
                 st.markdown(f"### 📋 시트: {sheet_name}")
+                st.write("📄 전체 환자 목록")
                 st.dataframe(df)
+
+                if registered_set:
+                    matched_df = df[df.apply(lambda row: (row["name"], str(row["number"])) in registered_set, axis=1)]
+                    if not matched_df.empty:
+                        st.success("✅ 등록된 환자만 필터링")
+                        st.dataframe(matched_df)
+                    else:
+                        st.info("⚠️ 등록된 환자가 이 시트에는 없습니다.")
+                else:
+                    st.info("⚠️ 아직 등록된 환자가 없습니다.")
 
             except Exception as e:
                 st.error(f"❌ 시트 '{sheet_name}' 처리 중 오류 발생: {e}")
