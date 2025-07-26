@@ -2,17 +2,17 @@ import streamlit as st
 import firebase_admin
 from firebase_admin import credentials, firestore
 
-# 🔐 Firebase 서비스 계정 키 불러오기 (secrets.toml에서)
-firebase_config = st.secrets["firebase"]
+# 🔑 Streamlit secrets에서 firebase config 가져오기
+firebase_config = dict(st.secrets["firebase"])  # 🔁 dict로 변환
 
-
-# 🔐 Firebase Admin SDK 초기화
+# 🔐 Firebase 초기화
 if not firebase_admin._apps:
     cred = credentials.Certificate(firebase_config)
     firebase_admin.initialize_app(cred)
 
-# 🧠 Firestore DB 연결
+# ✅ Firestore 접근 예시
 db = firestore.client()
+
 
 # 🔧 테스트용 UI
 st.title("🩺 OCS 환자 알림 시스템")
