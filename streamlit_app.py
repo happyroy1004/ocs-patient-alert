@@ -49,7 +49,7 @@ def load_excel(file, password=None):
 st.title("📁 토탈환자 내원확인")
 
 # 1️⃣ 구글 아이디 입력
-google_id = st.text_input("Google ID를 입력하세요 (예: your_email@gmail.com)")
+google_id = st.text_input("아이디를 입력하세요")
 if not google_id:
     st.stop()
 firebase_key = sanitize_path(google_id)
