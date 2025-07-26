@@ -27,7 +27,7 @@ def decrypt_excel(file, password):
     return decrypted
 
 # 📁 Streamlit 앱
-st.title("🔒 암호화된 OCS 환자 파일 분석기")
+st.title("🔒 토탈환자 내원확인")
 
 # 1️⃣ 구글 아이디 입력
 google_id = st.text_input("Google ID를 입력하세요 (예: your_email@gmail.com)")
@@ -94,7 +94,7 @@ if uploaded_file and password:
 
                 if not matched_df.empty:
                     st.markdown(f"### 📋 시트: {sheet_name}")
-                    st.success("✅ 등록된 환자 정보가 있는 행만 표시합니다.")
+                    st.success("✅ 토탈환자 내원")
                     st.dataframe(matched_df.reset_index(drop=True))
 
             except Exception as e:
