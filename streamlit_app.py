@@ -6,12 +6,12 @@ from firebase_admin import credentials, db
 import msoffcrypto
 import io
 
-# 🔑 Firebase 초기화
+
 if not firebase_admin._apps:
-cred = credentials.Certificate(st.secrets["firebase"])
-firebase_admin.initialize_app(cred, {
-    'databaseURL': st.secrets["firebase"]["database_url"]
-})
+    cred = credentials.Certificate(st.secrets["firebase"])
+    firebase_admin.initialize_app(cred, {
+        'databaseURL': st.secrets["firebase"]["database_url"]
+    })
 
 # 🔒 사용자 Google ID 입력
 st.title("🔐 환자 등록 & 엑셀 중복 검사 시스템")
