@@ -1,9 +1,14 @@
+# streamlit_app.py
 import streamlit as st
 import pandas as pd
 import firebase_admin
 from firebase_admin import credentials, db
 import io
 import msoffcrypto
+import smtplib
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
+from openpyxl import Workbook
 
 # 🔐 Firebase 초기화
 if not firebase_admin._apps:
@@ -12,12 +17,12 @@ if not firebase_admin._apps:
         'databaseURL': st.secrets["database_url"]
     })
 
-# 📌 Firebase-safe 경로 변환
+# 📌 Firebase-safe 경로로 변환
 def sanitize_path(s):
     import re
     return re.sub(r'[.$#[\]/]', '_', s)
 
-# 🔒 암호화 여부 확인
+# 🧾 암호화 여부 확인
 def is_encrypted_excel(file):
     try:
         file.seek(0)
@@ -26,7 +31,7 @@ def is_encrypted_excel(file):
     except Exception:
         return False
 
-# 📂 엑셀 로드 함수
+# 🧾 엑셀 파일 로드 함수
 def load_excel(file, password=None):
     try:
         file.seek(0)
@@ -45,99 +50,124 @@ def load_excel(file, password=None):
     except Exception as e:
         raise ValueError(f"엑셀 처리 실패: {e}")
 
-# 📁 Streamlit 시작
-st.title("📁 토탈환자 내원확인")
+# 📤 Gmail 발송 함수
+def send_email(to_email, subject, body):
+    gmail_user = st.secrets["email"]["gmail_user"]
+    gmail_pass = st.secrets["email"]["gmail_pass"]
 
-# 1️⃣ 사용자 ID
-google_id = st.text_input("아이디를 입력하세요")
+    msg = MIMEMultipart()
+    msg['From'] = gmail_user
+    msg['To'] = to_email
+    msg['Subject'] = subject
+    msg.attach(MIMEText(body, 'plain'))
+
+    with smtplib.SMTP_SSL('smtp.gmail.com', 465) as server:
+        server.login(gmail_user, gmail_pass)
+        server.send_message(msg)
+
+# 엑셀을 바이너리로 변환
+def convert_df_to_excel_bytes(df):
+    output = io.BytesIO()
+    wb = Workbook()
+    ws = wb.active
+    for r_idx, row in enumerate(df.values.tolist(), start=2):
+        for c_idx, val in enumerate(row, start=1):
+            ws.cell(row=r_idx, column=c_idx, value=val)
+    for c_idx, col in enumerate(df.columns, start=1):
+        ws.cell(row=1, column=c_idx, value=col)
+    wb.save(output)
+    return output.getvalue()
+
+# 등록 환자 전체 매칭 및 사용자별 메일 발송
+def match_and_email_to_users(sheet_dict):
+    root_ref = db.reference("patients")
+    all_users = root_ref.get()
+    count = 0
+    for user_id, patients in all_users.items():
+        target_set = set((p['환자명'], p['진료번호']) for p in patients.values())
+        matched_rows = []
+        for sheet_name, df in sheet_dict.items():
+            temp_df = df.astype(str)
+            matched = temp_df[temp_df.apply(lambda row: (row.get("환자명"), row.get("진료번호")) in target_set, axis=1)]
+            if not matched.empty:
+                matched_rows.append(matched)
+        if matched_rows:
+            final_df = pd.concat(matched_rows)
+            # Firebase에서 ID = 이메일로 가정
+            send_email(user_id, "[내원 안내] 등록된 환자가 발견되었습니다.", final_df.to_string(index=False))
+            count += 1
+    return count
+
+# 🔓 앱 실행 시작
+st.title("🔐 토탈환자 내원 확인 시스템")
+
+# 로그인 ID 입력
+google_id = st.text_input("로그인 ID를 입력하세요")
 if not google_id:
     st.stop()
-firebase_key = sanitize_path(google_id)
 
-# 2️⃣ Firebase 환자 목록
+is_admin = google_id.strip().lower() == "admin"
+firebase_key = sanitize_path(google_id)
 ref = db.reference(f"patients/{firebase_key}")
 existing_data = ref.get()
 
-st.subheader("📄 등록된 토탈환자 목록")
-if existing_data:
-    for key, val in existing_data.items():
-        patient_name = val.get("환자명", "없음")
-        patient_id = val.get("진료번호", "없음")
-        delete_key = f"delete_{key}"
+# 일반 사용자 인터페이스
+if not is_admin:
+    st.subheader("📄 등록된 환자 목록")
+    if existing_data:
+        for key, val in existing_data.items():
+            name = val.get("환자명", "없음")
+            number = val.get("진료번호", "없음")
+            col1, col2 = st.columns([0.85, 0.15])
+            with col1:
+                st.markdown(f"**👤 {name} | 🆔 {number}**")
+            with col2:
+                if st.button("삭제", key=f"del_{key}"):
+                    db.reference(f"patients/{firebase_key}/{key}").delete()
+                    st.success("삭제 완료")
+                    st.rerun()
+    else:
+        st.info("등록된 환자가 없습니다.")
 
-        col1, col2 = st.columns([0.85, 0.15])
-        with col1:
-            st.markdown(f"""
-            <div style="padding: 8px 12px; background-color: #f9f9f9;
-                        border-radius: 8px; border: 1px solid #eee;">
-                <b>👤 이름:</b> {patient_name} &nbsp;&nbsp;&nbsp;
-                <b>🆔 번호:</b> {patient_id}
-            </div>
-            """, unsafe_allow_html=True)
-        with col2:
-            if st.button("❌ 삭제", key=delete_key):
-                db.reference(f"patients/{firebase_key}/{key}").delete()
-                st.success("삭제되었습니다.")
+    with st.form("register_form"):
+        st.subheader("➕ 환자 등록")
+        name = st.text_input("환자명")
+        number = st.text_input("진료번호")
+        submitted = st.form_submit_button("등록")
+        if submitted:
+            if not name or not number:
+                st.warning("모든 항목을 입력해주세요.")
+            elif existing_data and any(v['환자명'] == name and v['진료번호'] == number for v in existing_data.values()):
+                st.error("이미 등록된 환자입니다.")
+            else:
+                ref.push().set({"환자명": name, "진료번호": number})
+                st.success("등록 완료")
                 st.rerun()
+
+# 관리자 전용 인터페이스
 else:
-    st.info("아직 등록된 환자가 없습니다.")
+    st.subheader("📂 엑셀 업로드 및 분석")
+    uploaded_file = st.file_uploader("엑셀 파일(.xlsx/.xlsm)", type=["xlsx", "xlsm"])
+    if uploaded_file:
+        password = None
+        if is_encrypted_excel(uploaded_file):
+            password = st.text_input("🔑 암호 입력", type="password")
+        try:
+            xl = load_excel(uploaded_file, password)
+            processed = {}
+            for sheet in xl.sheet_names:
+                df = xl.parse(sheet, header=1)
+                if "환자명" in df.columns and "진료번호" in df.columns:
+                    processed[sheet] = df
+            st.success("엑셀 처리 완료")
 
-# 3️⃣ 신규 환자 등록
-with st.form("register_patient"):
-    st.subheader("➕ 신규 토탈환자 등록")
-    new_name = st.text_input("환자명")
-    new_number = st.text_input("진료번호")
-    submitted = st.form_submit_button("등록")
+            with st.expander("⬇️ 처리된 엑셀 다운로드"):
+                for sheet, df in processed.items():
+                    st.download_button(f"{sheet}.xlsx", convert_df_to_excel_bytes(df), f"{sheet}_processed.xlsx")
 
-    if submitted:
-        if not new_name or not new_number:
-            st.warning("환자명과 진료번호를 모두 입력해주세요.")
-        elif existing_data and any(
-            v.get("환자명") == new_name and v.get("진료번호") == new_number 
-            for v in existing_data.values()):
-            st.error("이미 등록된 환자입니다.")
-        else:
-            new_ref = ref.push()
-            new_ref.set({"환자명": new_name, "진료번호": new_number})
-            st.success(f"환자 {new_name} ({new_number})가 등록되었습니다.")
-            st.rerun()
+            if st.button("📧 등록 사용자에게 내원 안내 메일 발송"):
+                total = match_and_email_to_users(processed)
+                st.success(f"총 {total}명의 사용자에게 메일 발송 완료")
 
-# 4️⃣ 엑셀 분석
-st.subheader("📂 OCS 엑셀 업로드")
-uploaded_file = st.file_uploader("Excel(.xlsx/.xlsm) 파일 업로드", type=["xlsx", "xlsm"])
-
-password = None
-if uploaded_file:
-    encrypted = is_encrypted_excel(uploaded_file)
-    if encrypted:
-        password = st.text_input("🔑 암호화된 파일입니다. 암호를 입력하세요", type="password")
-        if not password:
-            st.stop()
-
-    try:
-        xl = load_excel(uploaded_file, password=password if encrypted else None)
-        registered_set = set((v["환자명"], v["진료번호"]) for v in existing_data.values()) if existing_data else set()
-        total_matched = []
-
-        for sheet_name in xl.sheet_names:
-            try:
-                df = xl.parse(sheet_name, header=1)
-                if "환자명" not in df.columns or "진료번호" not in df.columns:
-                    continue
-                df = df.astype(str)
-                matched_rows = df[df.apply(lambda row: (row["환자명"].strip(), row["진료번호"].strip()) in registered_set, axis=1)]
-                
-                if not matched_rows.empty:
-                    total_matched.append((sheet_name, matched_rows))
-            except Exception as e:
-                st.error(f"❌ 시트 '{sheet_name}' 처리 오류: {e}")
-
-        if total_matched:
-            for sheet_name, matched_df in total_matched:
-                st.markdown(f"### 📋 시트: {sheet_name}")
-                st.dataframe(matched_df)
-        else:
-            st.warning("🔎 등록된 토탈 환자 중 내원 기록이 없습니다.")
-
-    except Exception as e:
-        st.error(f"❌ 파일 처리 실패: {e}")
+        except Exception as e:
+            st.error(f"❌ 오류: {e}")
