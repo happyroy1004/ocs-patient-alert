@@ -13,14 +13,18 @@ import re
 if not firebase_admin._apps:
     cred = credentials.Certificate(st.secrets["firebase_credentials"])
     firebase_admin.initialize_app(cred, {
-        'databaseURL': st.secrets["database_url"]
+        'databaseURL': st.secrets["firebase"]["database_url"]
     })
 
 # 📌 Firebase-safe 경로 변환
-def sanitize_path(s):
-    return re.sub(r'[.$#[\]/]', '_', s)
+def sanitize_path(email):
+    return email.replace("@", "_at_")
 
-# 🔒 암호화 확인
+# 📩 이메일 주소 복구
+def recover_email(safe_id):
+    return safe_id.replace("_at_", "@")
+
+# 🔒 암호화된 엑셀 여부 확인
 def is_encrypted_excel(file):
     try:
         file.seek(0)
@@ -35,7 +39,7 @@ def load_excel(file, password=None):
         office_file = msoffcrypto.OfficeFile(file)
         if office_file.is_encrypted():
             if not password:
-                raise ValueError("암호화된 파일입니다. 암호를 입력해주세요.")
+                raise ValueError("암호화된 파일입니다.")
             decrypted = io.BytesIO()
             office_file.load_key(password=password)
             office_file.decrypt(decrypted)
@@ -45,7 +49,7 @@ def load_excel(file, password=None):
     except Exception as e:
         raise ValueError(f"엑셀 처리 실패: {e}")
 
-# 📧 이메일 전송
+# 📧 이메일 전송 함수
 def send_email(receiver, rows, sender, password):
     try:
         msg = MIMEMultipart()
@@ -66,7 +70,7 @@ def send_email(receiver, rows, sender, password):
     except Exception as e:
         return str(e)
 
-# ✅ Streamlit 시작
+# 🌐 Streamlit 시작
 st.title("🩺 환자 내원 확인 시스템")
 user_id = st.text_input("아이디를 입력하세요")
 if not user_id:
@@ -91,16 +95,14 @@ if user_id == "admin":
             sender = st.secrets["gmail"]["sender"]
             sender_pw = st.secrets["gmail"]["app_password"]
 
-            matched_users = []
-
             users_ref = db.reference("patients")
             all_users = users_ref.get()
-
             if not all_users:
-                st.warning("❗ Firebase에 등록된 사용자가 없습니다.")
+                st.warning("❗ 등록된 사용자가 없습니다.")
                 st.stop()
 
-            # 엑셀 파싱 + 사용자별 비교
+            matched_users = []
+
             for uid, plist in all_users.items():
                 registered_set = set((v["환자명"], v["진료번호"]) for v in plist.values())
                 matched_rows = []
@@ -114,36 +116,36 @@ if user_id == "admin":
                         df["진료번호"] = df["진료번호"].str.strip()
                         matched = df[df.apply(lambda row: (row["환자명"], row["진료번호"]) in registered_set, axis=1)]
                         if not matched.empty:
-                            matched["시트명"] = sheet_name
+                            matched["시트"] = sheet_name
                             matched_rows.append(matched)
                     except Exception:
                         continue
 
                 if matched_rows:
-                    result_df = pd.concat(matched_rows, ignore_index=True)
-                    matched_users.append((uid, result_df))
+                    combined = pd.concat(matched_rows, ignore_index=True)
+                    matched_users.append((uid, combined))
 
             if matched_users:
                 send = st.radio("✉️ 이메일을 전송하시겠습니까?", ["예", "아니오"])
                 if send == "예":
                     for uid, df_matched in matched_users:
-                        recipient_email = uid
-                        result = send_email(recipient_email, df_matched, sender, sender_pw)
+                        real_email = recover_email(uid)
+                        result = send_email(real_email, df_matched, sender, sender_pw)
                         if result == True:
-                            st.success(f"✅ {recipient_email} 전송 완료")
+                            st.success(f"✅ {real_email} 전송 완료")
                         else:
-                            st.error(f"❌ {recipient_email} 전송 실패: {result}")
+                            st.error(f"❌ {real_email} 전송 실패: {result}")
                 else:
                     for uid, df in matched_users:
-                        st.markdown(f"### 📧 {uid}")
+                        st.markdown(f"### 📧 {recover_email(uid)}")
                         st.dataframe(df)
             else:
                 st.info("📭 매칭된 사용자 없음")
 
         except Exception as e:
-            st.error(f"❌ 파일 처리 실패: {e}")
+            st.error(f"❌ 처리 실패: {e}")
 
-# 👥 일반 사용자
+# 👥 일반 사용자 모드
 else:
     st.subheader("📝 내 환자 등록")
     ref = db.reference(f"patients/{firebase_key}")
