@@ -35,13 +35,19 @@ if not google_id:
     st.stop()
 firebase_key = sanitize_path(google_id)
 
-# 2️⃣ 기존 환자 목록 표시
+# 기존 환자 목록 표시
 ref = db.reference(f"patients/{firebase_key}")
 existing_data = ref.get()
 if existing_data:
     st.subheader("📄 기존 등록된 환자 목록")
     existing_df = pd.DataFrame(existing_data).T
-    st.dataframe(existing_df[["이름", "번호"]])
+
+    # '이름'과 '번호' 컬럼이 있는지 확인
+    if "이름" in existing_df.columns and "번호" in existing_df.columns:
+        st.dataframe(existing_df[["이름", "번호"]])
+    else:
+        st.dataframe(existing_df)  # 전체 컬럼 보여주기
+        st.warning("❗ '이름' 또는 '번호' 컬럼이 없어 전체 데이터를 출력했습니다.")
 else:
     st.info("아직 등록된 환자가 없습니다.")
 
