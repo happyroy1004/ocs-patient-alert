@@ -41,7 +41,7 @@ existing_data = ref.get()
 
 if existing_data:
     st.subheader("📄 등록된 환자 목록")
-     existing_df = pd.DataFrame(existing_data.values())  # ← 🔄 키 없이 값만 가져옴
+    existing_df = pd.DataFrame(existing_data.values())  # ← 🔄 키 없이 값만 가져옴
     st.dataframe(existing_df[["name", "number"]])
 else:
     st.info("아직 등록된 환자가 없습니다.")
