@@ -42,14 +42,15 @@ if existing_data:
     st.subheader("📄 기존 등록된 환자 목록")
     existing_df = pd.DataFrame(existing_data).T
 
-    # '이름'과 '번호' 컬럼이 있는지 확인
-    if "이름" in existing_df.columns and "번호" in existing_df.columns:
-        st.dataframe(existing_df[["이름", "번호"]])
+    # name과 number 컬럼이 존재하면 출력
+    if "name" in existing_df.columns and "number" in existing_df.columns:
+        st.dataframe(existing_df[["name", "number"]])
     else:
-        st.dataframe(existing_df)  # 전체 컬럼 보여주기
-        st.warning("❗ '이름' 또는 '번호' 컬럼이 없어 전체 데이터를 출력했습니다.")
+        st.dataframe(existing_df)
+        st.warning("❗ 환자명 또는 진료번호 컬럼이 없어 전체 데이터를 출력했습니다.")
 else:
     st.info("아직 등록된 환자가 없습니다.")
+
 
 # 3️⃣ 새로운 환자 등록
 with st.form("register_patient"):
