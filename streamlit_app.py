@@ -17,16 +17,31 @@ def sanitize_path(s):
     import re
     return re.sub(r'[.$#[\]/]', '_', s)
 
-# 🧾 엑셀 파일 복호화 or 일반 처리
-def load_excel(file):
+# 🧾 엑셀 파일 암호화 여부 확인
+def is_encrypted_excel(file):
+    try:
+        file.seek(0)
+        office_file = msoffcrypto.OfficeFile(file)
+        return office_file.is_encrypted()
+    except Exception:
+        return False
+
+# 🧾 엑셀 파일 로드
+def load_excel(file, password=None):
     try:
         file.seek(0)
         office_file = msoffcrypto.OfficeFile(file)
         if office_file.is_encrypted():
-            return True, office_file
+            if not password:
+                raise ValueError("암호화된 파일입니다. 암호를 입력해주세요.")
+            decrypted = io.BytesIO()
+            office_file.load_key(password=password)
+            office_file.decrypt(decrypted)
+            decrypted.seek(0)
+            return pd.ExcelFile(decrypted)
         else:
             file.seek(0)
-            return False, pd.ExcelFile(file)
+            return pd.ExcelFile(file)
     except Exception as e:
         raise ValueError(f"엑셀 처리 실패: {e}")
 
@@ -56,8 +71,6 @@ if existing_data:
                 db.reference(f"patients/{firebase_key}/{key}").delete()
                 st.success("삭제되었습니다.")
                 st.rerun()
-
-
 else:
     st.info("아직 등록된 환자가 없습니다.")
 
@@ -85,10 +98,8 @@ uploaded_file = st.file_uploader("Excel(.xlsx/.xlsm) 파일 업로드", type=["x
 
 password = None
 if uploaded_file:
-    # 파일 암호화 여부 확인
     encrypted = is_encrypted_excel(uploaded_file)
 
-    # 암호화된 경우 암호 입력창 표시
     if encrypted:
         password = st.text_input("🔑 암호화된 파일입니다. 암호를 입력하세요", type="password")
         if not password:
@@ -96,7 +107,6 @@ if uploaded_file:
 
     try:
         xl = load_excel(uploaded_file, password=password if encrypted else None)
-
         registered_set = set((d["환자명"], d["진료번호"]) for d in existing_data.values()) if existing_data else set()
         found_any = False
 
