@@ -35,9 +35,16 @@ if not google_id:
     st.stop()
 firebase_key = sanitize_path(google_id)
 
-# 2️⃣ 기존 환자 목록 조회
+# 2️⃣ 기존 등록된 환자 목록 표시
 ref = db.reference(f"patients/{firebase_key}")
 existing_data = ref.get()
+
+if existing_data:
+    st.subheader("📄 등록된 환자 목록")
+    existing_df = pd.DataFrame(existing_data).T
+    st.dataframe(existing_df[["name", "number"]])
+else:
+    st.info("아직 등록된 환자가 없습니다.")
 
 # 3️⃣ 신규 환자 등록
 with st.form("register_patient"):
