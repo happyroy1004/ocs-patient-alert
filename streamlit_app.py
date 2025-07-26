@@ -68,34 +68,27 @@ if uploaded_file and password:
         decrypted = decrypt_excel(uploaded_file, password)
         xl = pd.ExcelFile(decrypted)
 
-        # 🔍 기존 등록된 환자 목록 준비 (name, number 기준)
+        # 🔍 등록 환자 목록 준비
         registered_set = set()
         if existing_data:
-            registered_set = {(v.get("name"), v.get("number")) for v in existing_data.values()}
+            registered_set = {(v.get("name"), str(v.get("number"))) for v in existing_data.values()}
 
         for sheet_name in xl.sheet_names:
             try:
                 df = xl.parse(sheet_name, header=1)
                 if "환자명" not in df.columns or "진료번호" not in df.columns:
-                    st.warning(f"❌ 시트 '{sheet_name}'에서 '환자명' 또는 '진료번호' 열을 찾을 수 없습니다.")
-                    continue
+                    continue  # name, number 없는 시트는 건너뜀
 
                 df = df.rename(columns={"환자명": "name", "진료번호": "number"})
-                df = df[["name", "number"]].dropna()
+                df["number"] = df["number"].astype(str)
+                df["name"] = df["name"].astype(str)
 
-                st.markdown(f"### 📋 시트: {sheet_name}")
-                st.write("📄 전체 환자 목록")
-                st.dataframe(df)
+                matched_df = df[df.apply(lambda row: (row["name"], row["number"]) in registered_set, axis=1)]
 
-                if registered_set:
-                    matched_df = df[df.apply(lambda row: (row["name"], str(row["number"])) in registered_set, axis=1)]
-                    if not matched_df.empty:
-                        st.success("✅ 등록된 환자만 필터링")
-                        st.dataframe(matched_df)
-                    else:
-                        st.info("⚠️ 등록된 환자가 이 시트에는 없습니다.")
-                else:
-                    st.info("⚠️ 아직 등록된 환자가 없습니다.")
+                if not matched_df.empty:
+                    st.markdown(f"### 📋 시트: {sheet_name}")
+                    st.success("✅ 등록된 환자 정보가 있는 행만 표시합니다.")
+                    st.dataframe(matched_df.reset_index(drop=True))
 
             except Exception as e:
                 st.error(f"❌ 시트 '{sheet_name}' 처리 중 오류 발생: {e}")
