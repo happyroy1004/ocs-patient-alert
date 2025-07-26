@@ -9,11 +9,13 @@ import firebase_admin
 from firebase_admin import credentials, firestore
 
 # st.secrets["FIREBASE_KEY"]는 SectionProxy이므로 dict로 변환
-firebase_config = dict(st.secrets["FIREBASE_KEY"])
+firebase_config = {k: v for k, v in st.secrets["FIREBASE_KEY"].items()}
 
-# credentials.Certificate()에 dict 그대로 전달
-cred = credentials.Certificate(firebase_config)
-firebase_admin.initialize_app(cred)
+# Firebase Admin SDK 초기화
+if not firebase_admin._apps:
+    cred = credentials.Certificate(firebase_config)
+    firebase_admin.initialize_app(cred)
+
 db = firestore.client()
 
 st.title("🔒 OCS 환자 알림 시스템")
