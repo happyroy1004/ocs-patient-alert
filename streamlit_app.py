@@ -46,12 +46,18 @@ existing_data = ref.get()
 st.subheader("📄 등록된 토탈환자 목록")
 if existing_data:
     for key, val in existing_data.items():
-        st.write(f"👤 이름: {val.get('환자명', '없음')}  ")
-        st.write(f"🆔 번호: {val.get('진료번호', '없음')}")
-        if st.button("❌ 삭제", key=key):
-            ref.child(key).delete()
-            st.success("삭제되었습니다.")
-            st.rerun()
+        col1, col2, col3 = st.columns([4, 4, 2])
+        with col1:
+            st.write(f"👤 이름: {val.get('환자명', '없음')}")
+        with col2:
+            st.write(f"🆔 번호: {val.get('진료번호', '없음')}")
+        with col3:
+            if st.button("❌ 삭제", key=f"delete_{key}"):
+                db.reference(f"patients/{firebase_key}/{key}").delete()
+                st.success("삭제되었습니다.")
+                st.rerun()
+
+
 else:
     st.info("아직 등록된 환자가 없습니다.")
 
