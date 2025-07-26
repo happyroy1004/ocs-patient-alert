@@ -61,16 +61,25 @@ existing_data = ref.get()
 st.subheader("📄 등록된 토탈환자 목록")
 if existing_data:
     for key, val in existing_data.items():
-        col1, col2, col3 = st.columns([4, 4, 2])
-        with col1:
-            st.write(f"👤 이름: {val.get('환자명', '없음')}")
-        with col2:
-            st.write(f"🆔 번호: {val.get('진료번호', '없음')}")
-        with col3:
-            if st.button("❌ 삭제", key=f"delete_{key}"):
-                db.reference(f"patients/{firebase_key}/{key}").delete()
-                st.success("삭제되었습니다.")
-                st.rerun()
+        patient_name = val.get("환자명", "없음")
+        patient_id = val.get("진료번호", "없음")
+
+        st.markdown(f"""
+        <div style="display: flex; align-items: center; justify-content: space-between; padding: 10px 15px; margin-bottom: 10px; border: 1px solid #eee; border-radius: 8px; background-color: #f9f9f9;">
+            <div>
+                <div style="font-size: 16px;"><b>👤 이름:</b> {patient_name}</div>
+                <div style="font-size: 14px; color: #555;"><b>🆔 번호:</b> {patient_id}</div>
+            </div>
+            <form action="" method="post">
+                <button name="delete_{key}" type="submit" style="background-color: #ffcccc; color: #900; border: none; border-radius: 6px; padding: 6px 12px; font-weight: bold; cursor: pointer;">❌ 삭제</button>
+            </form>
+        </div>
+        """, unsafe_allow_html=True)
+
+        if st.session_state.get(f"delete_{key}"):
+            db.reference(f"patients/{firebase_key}/{key}").delete()
+            st.success("삭제되었습니다.")
+            st.rerun()
 else:
     st.info("아직 등록된 환자가 없습니다.")
 
