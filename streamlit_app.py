@@ -76,29 +76,33 @@ if uploaded_file and password:
         xl = pd.ExcelFile(decrypted)
 
         # 🔍 등록 환자 목록 준비
-        registered_set = set()
-        if existing_data:
-            registered_set = {(v.get("name"), str(v.get("number"))) for v in existing_data.values()}
+        # 누적 등록된 환자 명단
+registered_set = set((d["name"], d["number"]) for d in existing_data.values()) if existing_data else set()
 
-        for sheet_name in xl.sheet_names:
-            try:
-                df = xl.parse(sheet_name, header=1)
-                if "환자명" not in df.columns or "진료번호" not in df.columns:
-                    continue  # name, number 없는 시트는 건너뜀
+found_any = False  # ✅ 등록된 환자가 적어도 한 명이라도 발견되었는지 추적
 
-                df = df.rename(columns={"환자명": "name", "진료번호": "number"})
-                df["number"] = df["number"].astype(str)
-                df["name"] = df["name"].astype(str)
+for sheet_name in xl.sheet_names:
+    df = xl.parse(sheet_name, header=1)
 
-                matched_df = df[df.apply(lambda row: (row["name"], row["number"]) in registered_set, axis=1)]
+    if "name" not in df.columns or "number" not in df.columns:
+        continue
 
-                if not matched_df.empty:
-                    st.markdown(f"### 📋 시트: {sheet_name}")
-                    st.success("✅ 토탈환자 내원")
-                    st.dataframe(matched_df.reset_index(drop=True))
+    all_patients = df[["name", "number"]].dropna()
+    all_patients = all_patients.astype(str)
 
-            except Exception as e:
-                st.error(f"❌ 시트 '{sheet_name}' 처리 중 오류 발생: {e}")
+    matched = all_patients[all_patients.apply(lambda row: (row["name"], row["number"]) in registered_set, axis=1)]
+
+    if not matched.empty:
+        found_any = True
+        st.markdown(f"### 📋 시트: {sheet_name}")
+        st.markdown("🗂️ 전체 환자 목록")
+        st.dataframe(all_patients)
+        st.checkbox("✅ 등록된 환자만 필터링", value=True, key=f"filter_{sheet_name}")
+        st.dataframe(matched)
+
+# ✅ 아무 시트에도 등록된 환자가 없으면 안내 메시지 출력
+if not found_any:
+    st.warning("🔎 토탈 환자 내원 예정 없습니다.")
 
     except Exception as e:
         st.error(f"❌ 복호화 실패: {e}")
