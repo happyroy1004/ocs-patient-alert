@@ -9,13 +9,10 @@ import firebase_admin
 from firebase_admin import credentials, firestore
 
 # 🔐 firebase_key.json 을 Secrets에서 로드
-firebase_key = json.loads(st.secrets["FIREBASE_KEY"])
-cred = credentials.Certificate(firebase_key)
-
-if not firebase_admin._apps:
-    firebase_admin.initialize_app(cred)
-
+cred = credentials.Certificate(st.secrets["FIREBASE_KEY"])
+firebase_app = firebase_admin.initialize_app(cred)
 db = firestore.client()
+
 st.title("🔒 OCS 환자 알림 시스템")
 
 # 사용자 이메일
