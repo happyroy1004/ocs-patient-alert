@@ -2,6 +2,13 @@ import streamlit as st
 import firebase_admin
 from firebase_admin import credentials, db
 
+# ⚠️ 이미 초기화된 경우 중복 방지
+if not firebase_admin._apps:
+    cred = credentials.Certificate(firebase_config)
+    firebase_admin.initialize_app(cred, {
+        "databaseURL": st.secrets["firebase"]["database_url"]
+    })
+
 # 🔐 Firebase credential 구성 (from [firebase] block)
 firebase_config = {
     "type": st.secrets["firebase"]["type"],
