@@ -1,173 +1,120 @@
-# streamlit_app.py
 import streamlit as st
 import pandas as pd
-import firebase_admin
-from firebase_admin import credentials, db
 import io
+import base64
 import msoffcrypto
 import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
-from openpyxl import Workbook
+import firebase_admin
+from firebase_admin import credentials, firestore
 
-# 🔐 Firebase 초기화
-if not firebase_admin._apps:
-    cred = credentials.Certificate(st.secrets["firebase_credentials"])
-    firebase_admin.initialize_app(cred, {
-        'databaseURL': st.secrets["database_url"]
-    })
+# Firebase 인증
+cred = credentials.Certificate(st.secrets["firebase_credentials"])
+firebase_admin.initialize_app(cred)
+db = firestore.client()
 
-# 📌 Firebase-safe 경로로 변환
-def sanitize_path(s):
-    import re
-    return re.sub(r'[.$#[\]/]', '_', s)
+# Gmail 정보
+EMAIL_ADDRESS = st.secrets["gmail"]["address"]
+EMAIL_PASSWORD = st.secrets["gmail"]["password"]
 
-# 🧾 암호화 여부 확인
-def is_encrypted_excel(file):
-    try:
-        file.seek(0)
-        office_file = msoffcrypto.OfficeFile(file)
-        return office_file.is_encrypted()
-    except Exception:
-        return False
+# 로그인
+st.title("OCS Patient Alert System")
+login_type = st.selectbox("로그인 유형을 선택하세요", ["사용자", "관리자"])
+user_id = st.text_input("아이디를 입력하세요")
 
-# 🧾 엑셀 파일 로드 함수
-def load_excel(file, password=None):
-    try:
-        file.seek(0)
-        office_file = msoffcrypto.OfficeFile(file)
-        if office_file.is_encrypted():
-            if not password:
-                raise ValueError("암호화된 파일입니다. 암호를 입력해주세요.")
-            decrypted = io.BytesIO()
-            office_file.load_key(password=password)
-            office_file.decrypt(decrypted)
-            decrypted.seek(0)
-            return pd.ExcelFile(decrypted)
-        else:
-            file.seek(0)
-            return pd.ExcelFile(file)
-    except Exception as e:
-        raise ValueError(f"엑셀 처리 실패: {e}")
+if user_id:
+    user_ref = db.collection("users").document(user_id)
 
-# 📤 Gmail 발송 함수
-def send_email(to_email, subject, body):
-    gmail_user = st.secrets["email"]["gmail_user"]
-    gmail_pass = st.secrets["email"]["gmail_pass"]
+    # 1) 일반 사용자 로그인
+    if login_type == "사용자":
+        st.subheader(f"👩‍⚕️ {user_id}님 환자 목록")
+        doc = user_ref.get()
+        patient_list = doc.to_dict().get("patients", []) if doc.exists else []
 
-    msg = MIMEMultipart()
-    msg['From'] = gmail_user
-    msg['To'] = to_email
-    msg['Subject'] = subject
-    msg.attach(MIMEText(body, 'plain'))
-
-    with smtplib.SMTP_SSL('smtp.gmail.com', 465) as server:
-        server.login(gmail_user, gmail_pass)
-        server.send_message(msg)
-
-# 엑셀을 바이너리로 변환
-def convert_df_to_excel_bytes(df):
-    output = io.BytesIO()
-    wb = Workbook()
-    ws = wb.active
-    for r_idx, row in enumerate(df.values.tolist(), start=2):
-        for c_idx, val in enumerate(row, start=1):
-            ws.cell(row=r_idx, column=c_idx, value=val)
-    for c_idx, col in enumerate(df.columns, start=1):
-        ws.cell(row=1, column=c_idx, value=col)
-    wb.save(output)
-    return output.getvalue()
-
-# 등록 환자 전체 매칭 및 사용자별 메일 발송
-def match_and_email_to_users(sheet_dict):
-    root_ref = db.reference("patients")
-    all_users = root_ref.get()
-    count = 0
-    for user_id, patients in all_users.items():
-        target_set = set((p['환자명'], p['진료번호']) for p in patients.values())
-        matched_rows = []
-        for sheet_name, df in sheet_dict.items():
-            temp_df = df.astype(str)
-            matched = temp_df[temp_df.apply(lambda row: (row.get("환자명"), row.get("진료번호")) in target_set, axis=1)]
-            if not matched.empty:
-                matched_rows.append(matched)
-        if matched_rows:
-            final_df = pd.concat(matched_rows)
-            # Firebase에서 ID = 이메일로 가정
-            send_email(user_id, "[내원 안내] 등록된 환자가 발견되었습니다.", final_df.to_string(index=False))
-            count += 1
-    return count
-
-# 🔓 앱 실행 시작
-st.title("🔐 토탈환자 내원 확인 시스템")
-
-# 로그인 ID 입력
-google_id = st.text_input("로그인 ID를 입력하세요")
-if not google_id:
-    st.stop()
-
-is_admin = google_id.strip().lower() == "admin"
-firebase_key = sanitize_path(google_id)
-ref = db.reference(f"patients/{firebase_key}")
-existing_data = ref.get()
-
-# 일반 사용자 인터페이스
-if not is_admin:
-    st.subheader("📄 등록된 환자 목록")
-    if existing_data:
-        for key, val in existing_data.items():
-            name = val.get("환자명", "없음")
-            number = val.get("진료번호", "없음")
-            col1, col2 = st.columns([0.85, 0.15])
-            with col1:
-                st.markdown(f"**👤 {name} | 🆔 {number}**")
-            with col2:
-                if st.button("삭제", key=f"del_{key}"):
-                    db.reference(f"patients/{firebase_key}/{key}").delete()
-                    st.success("삭제 완료")
-                    st.rerun()
-    else:
-        st.info("등록된 환자가 없습니다.")
-
-    with st.form("register_form"):
-        st.subheader("➕ 환자 등록")
-        name = st.text_input("환자명")
-        number = st.text_input("진료번호")
-        submitted = st.form_submit_button("등록")
-        if submitted:
-            if not name or not number:
-                st.warning("모든 항목을 입력해주세요.")
-            elif existing_data and any(v['환자명'] == name and v['진료번호'] == number for v in existing_data.values()):
-                st.error("이미 등록된 환자입니다.")
+        # 등록
+        name = st.text_input("환자 이름")
+        number = st.text_input("환자 진료번호")
+        if st.button("등록"):
+            new_patient = {"name": name, "number": number}
+            if new_patient not in patient_list:
+                patient_list.append(new_patient)
+                user_ref.set({"patients": patient_list}, merge=True)
+                st.success("✅ 환자 등록 완료")
             else:
-                ref.push().set({"환자명": name, "진료번호": number})
-                st.success("등록 완료")
-                st.rerun()
+                st.warning("⚠️ 이미 등록된 환자입니다.")
 
-# 관리자 전용 인터페이스
-else:
-    st.subheader("📂 엑셀 업로드 및 분석")
-    uploaded_file = st.file_uploader("엑셀 파일(.xlsx/.xlsm)", type=["xlsx", "xlsm"])
-    if uploaded_file:
-        password = None
-        if is_encrypted_excel(uploaded_file):
-            password = st.text_input("🔑 암호 입력", type="password")
-        try:
-            xl = load_excel(uploaded_file, password)
-            processed = {}
-            for sheet in xl.sheet_names:
-                df = xl.parse(sheet, header=1)
-                if "환자명" in df.columns and "진료번호" in df.columns:
-                    processed[sheet] = df
-            st.success("엑셀 처리 완료")
+        # 삭제
+        if patient_list:
+            delete_index = st.selectbox("삭제할 환자 선택", range(len(patient_list)), format_func=lambda i: f"{patient_list[i]['name']} / {patient_list[i]['number']}")
+            if st.button("삭제"):
+                del patient_list[delete_index]
+                user_ref.set({"patients": patient_list}, merge=True)
+                st.success("🗑️ 삭제 완료")
 
-            with st.expander("⬇️ 처리된 엑셀 다운로드"):
-                for sheet, df in processed.items():
-                    st.download_button(f"{sheet}.xlsx", convert_df_to_excel_bytes(df), f"{sheet}_processed.xlsx")
+        # 목록 표시
+        st.write(pd.DataFrame(patient_list))
 
-            if st.button("📧 등록 사용자에게 내원 안내 메일 발송"):
-                total = match_and_email_to_users(processed)
-                st.success(f"총 {total}명의 사용자에게 메일 발송 완료")
+    # 2) 관리자 기능
+    elif login_type == "관리자":
+        st.subheader("📁 엑셀 업로드 및 복호화")
+        uploaded_file = st.file_uploader("🔐 암호화된 엑셀 파일 업로드", type=["xls", "xlsx"])
+        password = st.text_input("엑셀 암호 입력", type="password")
 
-        except Exception as e:
-            st.error(f"❌ 오류: {e}")
+        if uploaded_file and password:
+            decrypted = io.BytesIO()
+            office_file = msoffcrypto.OfficeFile(uploaded_file)
+            try:
+                office_file.load_key(password=password)
+                office_file.decrypt(decrypted)
+                df = pd.read_excel(decrypted)
+
+                st.success("🔓 복호화 성공!")
+                st.dataframe(df)
+
+                # 다운로드 버튼
+                towrite = io.BytesIO()
+                df.to_excel(towrite, index=False, engine='openpyxl')
+                towrite.seek(0)
+                b64 = base64.b64encode(towrite.read()).decode()
+                href = f'<a href="data:application/octet-stream;base64,{b64}" download="처리된_엑셀.xlsx">📥 처리된 파일 다운로드</a>'
+                st.markdown(href, unsafe_allow_html=True)
+
+                # 사용자들에게 이메일 전송
+                if st.button("📧 등록된 사용자에게 내원 환자 이메일 알림 보내기"):
+                    users = db.collection("users").stream()
+                    for user_doc in users:
+                        uid = user_doc.id
+                        user_data = user_doc.to_dict()
+                        email = user_data.get("email")  # 필요시 DB에 미리 등록되어 있어야 함
+                        patients = user_data.get("patients", [])
+                        matches = []
+                        for patient in patients:
+                            name, number = patient["name"], str(patient["number"])
+                            match_rows = df[(df["환자명"] == name) & (df["환자번호"].astype(str) == number)]
+                            if not match_rows.empty:
+                                matches.append(match_rows)
+
+                        if matches and email:
+                            combined = pd.concat(matches)
+                            send_email(uid, email, combined)
+
+                    st.success("📤 이메일 전송 완료!")
+
+            except Exception as e:
+                st.error(f"❌ 복호화 실패: {str(e)}")
+
+
+# 이메일 발송 함수
+def send_email(user_id, to_email, matched_df):
+    msg = MIMEMultipart()
+    msg['Subject'] = f"[환자 내원 알림] {user_id}님 등록 환자 내원"
+    msg['From'] = EMAIL_ADDRESS
+    msg['To'] = to_email
+
+    body = f"{user_id}님,\n아래는 내원한 환자 정보입니다:\n\n{matched_df.to_string(index=False)}"
+    msg.attach(MIMEText(body, "plain"))
+
+    with smtplib.SMTP_SSL("smtp.gmail.com", 465) as smtp:
+        smtp.login(EMAIL_ADDRESS, EMAIL_PASSWORD)
+        smtp.send_message(msg)
