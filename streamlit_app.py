@@ -83,25 +83,30 @@ if uploaded_file and password:
         for sheet_name in xl.sheet_names:
             try:
                 df = xl.parse(sheet_name, header=1)
+
                 if "환자명" not in df.columns or "진료번호" not in df.columns:
                     st.warning(f"❌ 시트 '{sheet_name}'에서 '환자명' 또는 '진료번호' 열을 찾을 수 없습니다.")
                     continue
 
-                sheet_df = df[["환자명", "진료번호"]].dropna()
-                sheet_df.columns = ["name", "number"]
-                sheet_df["name"] = sheet_df["name"].astype(str).str.strip()
-                sheet_df["number"] = sheet_df["number"].astype(str).str.strip()
+                # 열 이름 통일
+                df = df.rename(columns={"환자명": "name", "진료번호": "number"})
+                df = df[["name", "number"]].dropna()
 
-                # 등록된 환자만 필터링
-                matched_df = sheet_df[sheet_df.apply(lambda x: (x["name"], x["number"]) in registered_set, axis=1)]
+                # 등록 여부 판단
+                registered_set = set()
+                if existing_data:
+                    registered_set = {(v["이름"], v["번호"]) for v in existing_data.values()}
 
-                st.markdown(f"### 📋 시트: {sheet_name} (등록된 환자만)")
-                if not matched_df.empty:
-                    st.dataframe(matched_df)
-                else:
-                    st.info("등록된 환자가 없습니다.")
+                df["등록여부"] = df.apply(
+                    lambda row: "✅ 등록됨" if (row["name"], row["number"]) in registered_set else "❌ 미등록",
+                    axis=1
+                )
+
+                st.markdown(f"### 📋 시트: {sheet_name}")
+                st.dataframe(df)
 
             except Exception as e:
                 st.error(f"❌ 시트 '{sheet_name}' 처리 중 오류 발생: {e}")
+
     except Exception as e:
         st.error(f"❌ 복호화 실패: {e}")
