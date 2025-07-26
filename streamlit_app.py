@@ -1,83 +1,89 @@
 import streamlit as st
-import pandas as pd
 import firebase_admin
-from firebase_admin import credentials, firestore
+from firebase_admin import credentials, db
+import pandas as pd
+import json
+import io
 
-# ✅ Firebase 초기화
+# Firebase 초기화 (중복 방지)
 if not firebase_admin._apps:
-    firebase_config = st.secrets["firebase"]
-    cred = credentials.Certificate(dict(firebase_config))
-    firebase_admin.initialize_app(cred)
+    cred = credentials.Certificate(json.loads(st.secrets["firebase_admin_json"]))
+    firebase_admin.initialize_app(cred, {
+        'databaseURL': st.secrets["firebase_database_url"]
+    })
 
-db = firestore.client()
+st.set_page_config(page_title="OCS 환자 알림 시스템", page_icon="🩺")
 
-st.title("📋 환자 등록 및 파일 업로드")
+st.title("🩺 OCS 환자 알림 시스템")
 
-# ✅ 사용자 ID 입력
-google_id = st.text_input("당신의 Google ID를 입력하세요 (예: user@gmail.com)")
+# 사용자 식별용 구글 ID 입력
+google_id = st.text_input("🧑 ID", key="google_id")
+if not google_id:
+    st.warning("ID를 입력해주세요.")
+    st.stop()
 
-if google_id:
-    # Firestore에서 사용자 문서 참조
-    user_ref = db.collection("users").document(google_id)
-    user_doc = user_ref.get()
+# 환자 등록
+st.subheader("👤 환자 등록")
 
-    if not user_doc.exists:
-        user_ref.set({"patients": []})  # 초기화
+with st.form("patient_form"):
+    patient_name = st.text_input("환자 이름")
+    patient_number = st.text_input("환자 번호")
+    submitted = st.form_submit_button("등록")
 
-    # ✅ 환자 등록
-    with st.form("register_patient"):
-        st.subheader("👤 새 환자 등록")
-        patient_name = st.text_input("환자 이름")
-        patient_number = st.text_input("환자 번호")
-        submitted = st.form_submit_button("등록")
+    if submitted:
+        if patient_name and patient_number:
+            user_ref = db.reference(f"patients/{google_id}")
+            existing = user_ref.get() or {}
 
-        if submitted and patient_name and patient_number:
-            existing_patients = user_ref.get().to_dict().get("patients", [])
+            # 중복 검사
             duplicate = any(
-                p["name"] == patient_name and p["number"] == patient_number for p in existing_patients
+                p.get("name") == patient_name and p.get("number") == patient_number
+                for p in existing.values()
             )
             if duplicate:
-                st.warning("이미 등록된 환자입니다.")
+                st.error(f"⚠️ 이미 등록된 환자입니다: {patient_name} ({patient_number})")
             else:
-                new_entry = {"name": patient_name, "number": patient_number}
-                user_ref.update({"patients": firestore.ArrayUnion([new_entry])})
-                st.success("✅ 환자가 등록되었습니다!")
+                new_id = user_ref.push().key
+                user_ref.child(new_id).set({
+                    "name": patient_name,
+                    "number": patient_number
+                })
+                st.success(f"✅ '{patient_name}' 등록 완료!")
+        else:
+            st.error("모든 정보를 입력해주세요.")
 
-    # ✅ 현재 등록된 환자 목록
-    st.subheader("📑 내 등록 환자 목록")
-    user_data = user_ref.get().to_dict()
-    for p in user_data.get("patients", []):
-        st.markdown(f"- {p['name']} ({p['number']})")
-
-    # ✅ 엑셀 업로드 및 중복 확인
-    st.subheader("📁 Excel 파일 업로드 (환자번호/이름 중복 검사)")
-    uploaded_file = st.file_uploader("Excel 파일 업로드", type=["xlsx"])
-
-    if uploaded_file:
-        try:
-            df = pd.read_excel(uploaded_file, dtype=str)
-            st.write("📄 업로드된 데이터 미리보기:")
-            st.dataframe(df)
-
-            # '이름', '환자번호' 열 존재 여부 확인
-            if not all(col in df.columns for col in ["이름", "환자번호"]):
-                st.error("❌ Excel 파일에 '이름'과 '환자번호' 열이 있어야 합니다.")
-            else:
-                registered = user_ref.get().to_dict().get("patients", [])
-                duplicates = []
-
-                for _, row in df.iterrows():
-                    for p in registered:
-                        if row["이름"] == p["name"] and row["환자번호"] == p["number"]:
-                            duplicates.append(p)
-
-                if duplicates:
-                    st.warning("토탈 환자가 내원합니다:")
-                    for d in duplicates:
-                        st.markdown(f"- {d['name']} ({d['number']})")
-                else:
-                    st.success("토탈 환자가 아무도 내원하지 않습니다!")
-        except Exception as e:
-            st.error(f"❌ 오류 발생: {e}")
+# 환자 목록 표시
+st.subheader("📋 등록된 토탈 환자 목록")
+patients = db.reference(f"patients/{google_id}").get()
+if patients:
+    for pid, patient in patients.items():
+        st.markdown(f"- {patient['name']} ({patient['number']})")
 else:
-    st.info("👤 먼저 Google ID를 입력하세요.")
+    st.info("아직 등록된 환자가 없습니다.")
+
+# Excel 업로드
+st.subheader("📂 Excel 파일 업로드 (환자번호/이름 중복 검사)")
+uploaded_file = st.file_uploader("Excel 파일 업로드", type=["xlsx"])
+
+if uploaded_file:
+    try:
+        df = pd.read_excel(uploaded_file, engine="openpyxl", dtype=str)
+
+        if not {"환자이름", "환자번호"}.issubset(df.columns):
+            st.error("❌ '환자이름' 및 '환자번호' 열이 필요합니다.")
+        else:
+            duplicates = []
+            registered = db.reference(f"patients/{google_id}").get() or {}
+
+            for _, row in df.iterrows():
+                name, number = row["환자이름"], row["환자번호"]
+                if any(p["name"] == name and p["number"] == number for p in registered.values()):
+                    duplicates.append(f"{name} ({number})")
+
+            if duplicates:
+                st.error("토탈 환자 내원 :\n" + "\n".join(duplicates))
+            else:
+                st.success("토탈 환자가 내원하지 않습니다")
+
+    except Exception as e:
+        st.error(f"❌ 오류 발생: {str(e)}")
