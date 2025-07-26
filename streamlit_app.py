@@ -65,28 +65,25 @@ if existing_data:
         patient_id = val.get("진료번호", "없음")
         delete_key = f"delete_{key}"
 
-        # 한 줄 카드 스타일
-        st.markdown(f"""
-        <div style="display: flex; justify-content: space-between; align-items: center;
-                    padding: 10px 15px; margin-bottom: 8px; border: 1px solid #eee;
-                    border-radius: 8px; background-color: #f9f9f9; font-size: 15px;">
-            <div>
+        col1, col2 = st.columns([0.85, 0.15])  # 왼쪽은 정보, 오른쪽은 삭제버튼
+
+        with col1:
+            st.markdown(f"""
+            <div style="padding: 8px 12px; background-color: #f9f9f9;
+                        border-radius: 8px; border: 1px solid #eee;">
                 <b>👤 이름:</b> {patient_name} &nbsp;&nbsp;&nbsp;
                 <b>🆔 번호:</b> {patient_id}
             </div>
-            <div id="{delete_key}"></div>
-        </div>
-        """, unsafe_allow_html=True)
+            """, unsafe_allow_html=True)
 
-        # 삭제 버튼 위치 고정
-        delete_col = st.columns([0.8, 0.2])[1]
-        with delete_col:
+        with col2:
             if st.button("❌ 삭제", key=delete_key):
                 db.reference(f"patients/{firebase_key}/{key}").delete()
                 st.success("삭제되었습니다.")
                 st.rerun()
 else:
     st.info("아직 등록된 환자가 없습니다.")
+
 
 
 # 3️⃣ 신규 환자 등록
