@@ -59,44 +59,43 @@ if user_id == "admin":
                 send_email = st.radio("📧 사용자에게 환자 내원 이메일을 보내시겠습니까?", ["예", "아니오"])
 
                 if send_email == "예":
-                   sender_email = st.secrets["gmail"]["sender"]
-                   sender_pw = st.secrets["gmail"]["app_password"]
+                    sender_email = st.secrets["gmail"]["sender"]
+                    sender_pw = st.secrets["gmail"]["app_password"]
 
-                    if sender_email and sender_pw:
-                        users_ref = db.collection("users")
-                        docs = users_ref.stream()
+                    users_ref = db.collection("users")
+                    docs = users_ref.stream()
 
-                        for doc in docs:
-                            user_email = doc.id
-                            patient_list = doc.to_dict().get("patients", [])
-                            matched = []
+                    for doc in docs:
+                        user_email = doc.id
+                        patient_list = doc.to_dict().get("patients", [])
+                        matched = []
 
-                            for entry in patient_list:
-                                name = entry.get("name")
-                                number = str(entry.get("number"))
-                                if ((df['이름'] == name) & (df['환자번호'].astype(str) == number)).any():
-                                    matched.append(f"{name} ({number})")
+                        for entry in patient_list:
+                            name = entry.get("name")
+                            number = str(entry.get("number"))
+                            if ((df['이름'] == name) & (df['환자번호'].astype(str) == number)).any():
+                                matched.append(f"{name} ({number})")
 
-                            if matched:
-                                try:
-                                    msg = MIMEMultipart()
-                                    msg['From'] = sender_email
-                                    msg['To'] = user_email
-                                    msg['Subject'] = "📌 등록 환자 내원 알림"
-                                    body = "다음 환자가 방문했습니다:\n" + "\n".join(matched)
-                                    msg.attach(MIMEText(body, 'plain'))
+                        if matched:
+                            try:
+                                msg = MIMEMultipart()
+                                msg['From'] = sender_email
+                                msg['To'] = user_email
+                                msg['Subject'] = "📌 등록 환자 내원 알림"
+                                body = "다음 환자가 방문했습니다:\n" + "\n".join(matched)
+                                msg.attach(MIMEText(body, 'plain'))
 
-                                    server = smtplib.SMTP('smtp.gmail.com', 587)
-                                    server.starttls()
-                                    server.login(sender_email, sender_pw)
-                                    server.send_message(msg)
-                                    server.quit()
+                                server = smtplib.SMTP('smtp.gmail.com', 587)
+                                server.starttls()
+                                server.login(sender_email, sender_pw)
+                                server.send_message(msg)
+                                server.quit()
 
-                                    st.success(f"✅ {user_email}에게 메일 전송 완료")
-                                except Exception as e:
-                                    st.error(f"❌ {user_email} 전송 실패: {e}")
-                            else:
-                                st.info(f"ℹ️ {user_email}: 등록 환자 중 내원자 없음")
+                                st.success(f"✅ {user_email}에게 메일 전송 완료")
+                            except Exception as e:
+                                st.error(f"❌ {user_email} 전송 실패: {e}")
+                        else:
+                            st.info(f"ℹ️ {user_email}: 등록 환자 중 내원자 없음")
 
             except Exception as e:
                 st.error(f"❌ 복호화 또는 처리 실패: {e}")
