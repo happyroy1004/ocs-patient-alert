@@ -1,79 +1,103 @@
 import streamlit as st
-import pandas as pd
-import json
 import firebase_admin
 from firebase_admin import credentials, db
-import msoffcrypto
+import pandas as pd
 import io
+from google.oauth2 import id_token
+from google.auth.transport import requests
+from streamlit.runtime.scriptrunner import get_script_run_ctx
+import json
 
-
+# ------------------------------
+# 1. Firebase 초기화
+# ------------------------------
 if not firebase_admin._apps:
     cred = credentials.Certificate(st.secrets["firebase"])
     firebase_admin.initialize_app(cred, {
-        'databaseURL': st.secrets["firebase"]["database_url"]
+        "databaseURL": st.secrets["firebase"]["database_url"]
     })
 
-# 🔒 사용자 Google ID 입력
-st.title("🔐 환자 등록 & 엑셀 중복 검사 시스템")
-google_id = st.text_input("구글 ID를 입력하세요", key="google_id")
+# ------------------------------
+# 2. 사용자 인증
+# ------------------------------
+def get_google_user_id():
+    ctx = get_script_run_ctx()
+    if ctx is None or ctx.session_id is None:
+        return None
 
-# ✅ 사용자 환자 등록
-st.header("1️⃣ 환자 정보 등록")
-with st.form("register_patient_form"):
-    name = st.text_input("환자 이름")
-    patient_number = st.text_input("환자 번호")
-    submitted = st.form_submit_button("등록하기")
-    if submitted and google_id and name and patient_number:
-        ref = db.reference(f"patients/{google_id}")
-        ref.push({"name": name, "number": patient_number})
-        st.success("✅ 환자 정보가 성공적으로 등록되었습니다.")
-    elif submitted:
-        st.error("⚠️ 모든 필드를 입력해주세요.")
+    if "user_email" not in st.session_state:
+        st.warning("⚠️ 인증된 사용자가 아닙니다.")
+        return None
 
-# 📄 업로드된 암호화된 엑셀 파일 처리
-st.header("2️⃣ 엑셀 파일 업로드 및 중복 검사")
-uploaded_file = st.file_uploader("비밀번호로 보호된 .xlsx 파일 업로드", type=["xlsx"])
-excel_password = st.text_input("엑셀 파일 비밀번호", type="password")
+    return st.session_state.user_email.replace(".", "_")  # Firebase 키용
 
-if uploaded_file and excel_password:
-    try:
-        # 🔓 암호화된 파일 복호화
-        decrypted = io.BytesIO()
-        file = msoffcrypto.OfficeFile(uploaded_file)
-        file.load_key(password=excel_password)
-        file.decrypt(decrypted)
+# ------------------------------
+# 3. Firebase에 등록된 환자 목록 불러오기
+# ------------------------------
+def get_registered_patients(user_id):
+    ref = db.reference(f"patients/{user_id}")
+    data = ref.get()
+    if data:
+        return pd.DataFrame(data.values())
+    return pd.DataFrame(columns=["환자명", "환자번호"])
 
-        # 📖 엑셀 내용 읽기
-        decrypted.seek(0)
-        df = pd.read_excel(decrypted, engine="openpyxl")
+# ------------------------------
+# 4. 중복 검사
+# ------------------------------
+def is_duplicate(patient_df, name, number):
+    return not patient_df[(patient_df["환자명"] == name) & (patient_df["환자번호"] == number)].empty
 
-        if not {'이름', '번호'}.issubset(df.columns):
-            st.error("❌ '이름'과 '번호' 열이 포함된 엑셀 파일을 업로드해주세요.")
+# ------------------------------
+# 5. Streamlit UI
+# ------------------------------
+st.title("📋 환자 등록 및 중복 검사")
+
+user_id = get_google_user_id()
+if user_id is None:
+    st.stop()
+
+st.markdown(f"**현재 사용자:** `{user_id.replace('_', '.')}`")
+
+# Firebase에서 기존 환자 불러오기
+existing_df = get_registered_patients(user_id)
+
+uploaded_file = st.file_uploader("Excel 파일 업로드", type=["xlsx"])
+
+if uploaded_file:
+    df = pd.read_excel(uploaded_file)
+
+    # 최소한의 컬럼 확인
+    if not all(col in df.columns for col in ["환자명", "환자번호"]):
+        st.error("❌ '환자명'과 '환자번호' 열이 필요합니다.")
+        st.stop()
+
+    new_patients = []
+    duplicate_patients = []
+
+    for _, row in df.iterrows():
+        name = str(row["환자명"]).strip()
+        number = str(row["환자번호"]).strip()
+
+        if is_duplicate(existing_df, name, number):
+            duplicate_patients.append({"환자명": name, "환자번호": number})
         else:
-            # 🔍 Firebase에서 현재 사용자 환자 목록 가져오기
-            ref = db.reference(f"patients/{google_id}")
-            existing_patients = ref.get() or {}
+            new_patients.append({"환자명": name, "환자번호": number})
 
-            duplicates = []
-            for _, row in df.iterrows():
-                for patient in existing_patients.values():
-                    if row['이름'] == patient['name'] and str(row['번호']) == str(patient['number']):
-                        duplicates.append(f"{row['이름']} ({row['번호']})")
-                        break
+    # 결과 표시
+    st.success(f"✅ 신규 등록 환자 수: {len(new_patients)}")
+    st.warning(f"⚠️ 중복 환자 수: {len(duplicate_patients)}")
 
-            if duplicates:
-                st.error(f"❗ 중복 환자 발견:\n" + "\n".join(duplicates))
-            else:
-                st.success("✅ 중복된 환자 정보가 없습니다.")
-    except Exception as e:
-        st.error(f"❌ 오류 발생: {str(e)}")
+    if new_patients:
+        with st.expander("📥 신규 환자 등록"):
+            for p in new_patients:
+                st.write(f"- {p['환자명']} / {p['환자번호']}")
+            if st.button("📌 Firebase에 신규 환자 저장"):
+                ref = db.reference(f"patients/{user_id}")
+                for p in new_patients:
+                    ref.push(p)
+                st.success("🎉 저장 완료! 새로고침 해보세요.")
 
-# 👀 사용자 등록 환자 리스트 출력
-st.header("📋 내 등록 환자 목록")
-ref = db.reference(f"patients/{google_id}")
-patient_data = ref.get()
-if patient_data:
-    for patient in patient_data.values():
-        st.markdown(f"- {patient['name']} ({patient['number']})")
-else:
-    st.write("등록된 환자가 없습니다.")
+    if duplicate_patients:
+        with st.expander("❗ 중복 환자 목록"):
+            for p in duplicate_patients:
+                st.write(f"- {p['환자명']} / {p['환자번호']}")
