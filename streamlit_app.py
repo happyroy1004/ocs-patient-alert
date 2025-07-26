@@ -38,7 +38,7 @@ def load_excel(file, password=None):
         return pd.ExcelFile(file)
 
 # 📁 Streamlit 앱 시작
-st.title("🔒 토탈환자 내원확인")
+st.title("📁 토탈환자 내원확인")
 
 # 1️⃣ 구글 아이디 입력
 google_id = st.text_input("Google ID를 입력하세요 (예: your_email@gmail.com)")
