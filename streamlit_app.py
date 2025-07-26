@@ -69,7 +69,7 @@ with st.form("register_patient"):
             new_ref = ref.push()
             new_ref.set({"name": new_name.strip(), "number": new_number.strip()})
             st.success(f"환자 {new_name} ({new_number})가 등록되었습니다.")
-            st.experimental_rerun()
+            st.rerun()
 
 # 4️⃣ 엑셀 파일 업로드 및 분석
 st.subheader("🔐 OCS 엑셀 업로드 및 분석")
