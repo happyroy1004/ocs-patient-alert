@@ -84,5 +84,7 @@ if uploaded_file and password:
                     st.info("아직 등록된 환자가 없습니다.")
             except Exception as e:
                 st.error(f"❌ 시트 '{sheet_name}' 처리 중 오류 발생: {e}")
+    except Exception as e:
+        st.error(f"❌ 파일 복호화 실패: {e}")
 else:
     st.info("파일과 암호를 모두 입력해야 환자 데이터를 불러올 수 있습니다.")
