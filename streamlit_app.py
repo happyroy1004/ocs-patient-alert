@@ -120,8 +120,6 @@ if uploaded_file:
             if not matched.empty:
                 found_any = True
                 st.markdown(f"### 📋 시트: {sheet_name}")
-                st.markdown("🗂️ 전체 환자 목록")
-                st.dataframe(all_patients)
 
                 if st.checkbox("✅ 등록된 환자만 필터링", value=True, key=f"filter_{sheet_name}"):
                     st.dataframe(matched)
