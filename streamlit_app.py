@@ -19,22 +19,19 @@ def sanitize_path(s):
 
 # 🧾 엑셀 파일 복호화 or 일반 처리
 def load_excel(file, password=None):
-    try:
+    file.seek(0)
+    office_file = msoffcrypto.OfficeFile(file)
+    if office_file.is_encrypted():
+        if not password:
+            raise ValueError("암호화된 파일입니다. 암호를 입력해주세요.")
+        decrypted = io.BytesIO()
+        office_file.load_key(password=password)
+        office_file.decrypt(decrypted)
+        decrypted.seek(0)
+        return pd.ExcelFile(decrypted)
+    else:
         file.seek(0)
-        office_file = msoffcrypto.OfficeFile(file)
-        if office_file.is_encrypted():
-            if not password:
-                raise ValueError("암호화된 파일입니다. 암호를 입력해주세요.")
-            decrypted = io.BytesIO()
-            office_file.load_key(password=password)
-            office_file.decrypt(decrypted)
-            decrypted.seek(0)
-            return pd.ExcelFile(decrypted)
-        else:
-            file.seek(0)
-            return pd.ExcelFile(file)
-    except Exception as e:
-        raise ValueError(f"엑셀 처리 실패: {e}")
+        return pd.ExcelFile(file)
 
 # 📁 Streamlit 앱 시작
 st.title("🔒 토탈환자 내원확인")
@@ -76,49 +73,50 @@ with st.form("register_patient"):
 
 # 4️⃣ 엑셀 업로드 및 분석
 st.subheader("🔐 OCS 엑셀 업로드 및 분석")
-uploaded_file = st.file_uploader("암호화된 또는 일반 Excel(.xlsx/.xlsm) 파일 업로드", type=["xlsx", "xlsm"])
+uploaded_file = st.file_uploader("Excel(.xlsx/.xlsm) 파일을 업로드하세요", type=["xlsx", "xlsm"])
 
+# 📌 조건부 암호 입력창
+password = None
 if uploaded_file:
-    # 파일이 업로드되었을 때만 비밀번호 입력란 보여주기
     try:
         uploaded_file.seek(0)
-        test_file = msoffcrypto.OfficeFile(uploaded_file)
-        if test_file.is_encrypted():
-            password = st.text_input("🔑 암호화된 Excel 파일입니다. 암호를 입력하세요", type="password")
-        else:
-            password = None
+        office_file = msoffcrypto.OfficeFile(uploaded_file)
+        if office_file.is_encrypted():
+            password = st.text_input("📌 암호화된 파일입니다. 비밀번호를 입력해주세요.", type="password")
+    except Exception as e:
+        st.error(f"❌ 암호화 여부 확인 실패: {e}")
+        st.stop()
 
-        if not test_file.is_encrypted() or (test_file.is_encrypted() and password):
-            # 복호화 또는 일반 로딩 진행
-            xl = load_excel(uploaded_file, password)
+if uploaded_file:
+    try:
+        xl = load_excel(uploaded_file, password)
 
-            # 🔍 등록 환자 목록 준비
-            registered_set = set((d["name"], d["number"]) for d in existing_data.values()) if existing_data else set()
-            found_any = False
+        registered_set = set((d["name"], d["number"]) for d in existing_data.values()) if existing_data else set()
+        found_any = False
 
-            for sheet_name in xl.sheet_names:
-                try:
-                    df = xl.parse(sheet_name, header=1)
-                    if "name" not in df.columns or "number" not in df.columns:
-                        continue
+        for sheet_name in xl.sheet_names:
+            try:
+                df = xl.parse(sheet_name, header=1)
+                if "name" not in df.columns or "number" not in df.columns:
+                    continue
 
-                    all_patients = df[["name", "number"]].dropna().astype(str)
-                    matched = all_patients[all_patients.apply(lambda row: (row["name"], row["number"]) in registered_set, axis=1)]
+                all_patients = df[["name", "number"]].dropna().astype(str)
+                matched = all_patients[all_patients.apply(lambda row: (row["name"], row["number"]) in registered_set, axis=1)]
 
-                    if not matched.empty:
-                        found_any = True
-                        st.markdown(f"### 📋 시트: {sheet_name}")
-                        st.markdown("🗂️ 전체 환자 목록")
-                        st.dataframe(all_patients)
+                if not matched.empty:
+                    found_any = True
+                    st.markdown(f"### 📋 시트: {sheet_name}")
+                    st.markdown("🗂️ 전체 환자 목록")
+                    st.dataframe(all_patients)
 
-                        if st.checkbox("✅ 등록된 환자만 필터링", value=True, key=f"filter_{sheet_name}"):
-                            st.dataframe(matched)
+                    if st.checkbox("✅ 등록된 환자만 필터링", value=True, key=f"filter_{sheet_name}"):
+                        st.dataframe(matched)
 
-                except Exception as e:
-                    st.error(f"❌ 시트 '{sheet_name}' 처리 중 오류 발생: {e}")
+            except Exception as e:
+                st.error(f"❌ 시트 '{sheet_name}' 처리 중 오류 발생: {e}")
 
-            if not found_any:
-                st.warning("🔎 토탈 환자 내원 예정 없습니다.")
+        if not found_any:
+            st.warning("🔎 토탈 환자 내원 예정 없습니다.")
 
     except Exception as e:
-        st.error(f"❌ 파일 검사 중 오류 발생: {e}")
+        st.error(f"❌ 파일 처리 실패: {e}")
