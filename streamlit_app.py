@@ -1,39 +1,53 @@
 import streamlit as st
 import firebase_admin
 from firebase_admin import credentials, firestore
+import pandas as pd
+import io
 
-st.set_page_config(page_title="OCS 환자 알림 시스템", page_icon="🩺")
-
-st.title("🩺 OCS 환자 알림 시스템")
-st.write("환자 이름을 입력하세요")
-
-# ✅ Firebase secrets에서 인증 정보 불러오기
+# Firebase secrets 불러오기
 firebase_config = dict(st.secrets["firebase"])
 
-# ✅ Firebase Admin SDK 초기화
+# Firebase 초기화
 if not firebase_admin._apps:
     cred = credentials.Certificate(firebase_config)
     firebase_admin.initialize_app(cred)
 
-# ✅ Firestore 클라이언트 생성
 db = firestore.client()
-patients_ref = db.collection("patients")
 
-# ✅ 환자 입력 필드
-patient_name = st.text_input("환자 이름")
+# 앱 제목
+st.title("🩺 OCS 환자 알림 시스템")
 
-# ✅ 등록 버튼 클릭 시 Firestore에 저장
-if st.button("환자 등록"):
-    if patient_name.strip():
-        patients_ref.add({"name": patient_name})
-        st.success(f"'{patient_name}' 등록 완료!")
-    else:
-        st.warning("환자 이름을 입력하세요.")
+# Google ID 입력
+google_id = st.text_input("📧 담당자의 Google 이메일을 입력하세요", key="google_id")
 
-# ✅ 등록된 환자 목록 보여주기
-st.markdown("## 📋 등록된 환자 목록")
+# 엑셀 파일 업로드
+uploaded_file = st.file_uploader("📂 환자 명단이 담긴 Excel 파일을 업로드하세요", type=["xlsx", "xls"])
 
-docs = patients_ref.stream()
-for doc in docs:
-    data = doc.to_dict()
-    st.write(f"- {data.get('name', '(이름 없음)')}")
+if uploaded_file and google_id:
+    try:
+        df = pd.read_excel(uploaded_file, dtype=str)
+        st.success("✅ 엑셀 파일 업로드 완료")
+
+        # DataFrame 미리보기
+        st.subheader("📋 업로드된 데이터 미리보기")
+        st.dataframe(df)
+
+        # '환자 이름'이라는 컬럼이 있다면 Firestore에 저장
+        if '환자 이름' in df.columns:
+            for name in df['환자 이름'].dropna():
+                doc_ref = db.collection("patients").document(name)
+                doc_ref.set({"name": name, "google_id": google_id})
+            st.success("🎉 모든 환자 정보를 Firebase에 저장했습니다.")
+        else:
+            st.warning("❗ '환자 이름'이라는 컬럼이 Excel에 포함되어 있어야 합니다.")
+
+    except Exception as e:
+        st.error(f"❌ 오류 발생: {e}")
+
+# Firestore에서 전체 목록 출력
+st.subheader("📜 등록된 환자 목록")
+
+patients_ref = db.collection("patients").stream()
+for doc in patients_ref:
+    patient = doc.to_dict()
+    st.markdown(f"- {patient['name']} ({patient['google_id']})")
