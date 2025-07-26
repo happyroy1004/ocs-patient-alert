@@ -3,7 +3,8 @@ import firebase_admin
 from firebase_admin import credentials, firestore
 
 # 🔐 Firebase 서비스 계정 키 불러오기 (secrets.toml에서)
-firebase_config = st.secrets["FIREBASE_KEY"]
+firebase_config = st.secrets["firebase"]
+
 
 # 🔐 Firebase Admin SDK 초기화
 if not firebase_admin._apps:
