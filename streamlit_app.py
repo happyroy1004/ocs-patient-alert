@@ -8,9 +8,12 @@ from openpyxl.styles import Font
 import firebase_admin
 from firebase_admin import credentials, firestore
 
-# 🔐 firebase_key.json 을 Secrets에서 로드
-cred = credentials.Certificate(st.secrets["FIREBASE_KEY"])
-firebase_app = firebase_admin.initialize_app(cred)
+# st.secrets["FIREBASE_KEY"]는 SectionProxy이므로 dict로 변환
+firebase_config = dict(st.secrets["FIREBASE_KEY"])
+
+# credentials.Certificate()에 dict 그대로 전달
+cred = credentials.Certificate(firebase_config)
+firebase_admin.initialize_app(cred)
 db = firestore.client()
 
 st.title("🔒 OCS 환자 알림 시스템")
