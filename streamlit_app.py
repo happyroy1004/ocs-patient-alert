@@ -310,7 +310,7 @@ def process_excel_file_and_style(file_bytes_io): # password 인자 제거
     return processed_sheets_dfs, final_output_bytes
 
 # --- Streamlit 애플리케이션 시작 ---
-st.title("📁 환자 내원 확인 시스템")
+st.title("🩺 환자 내원 확인 시스템")
 
 # 사용자 아이디 입력 필드
 user_id = st.text_input("이메일 주소를 입력하세요")
