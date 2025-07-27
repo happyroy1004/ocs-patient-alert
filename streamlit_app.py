@@ -288,7 +288,7 @@ def process_excel_file_and_style(file_bytes_io): # password 인자 제거
         for row_idx, row in enumerate(ws.iter_rows(min_row=2, max_row=ws.max_row), start=2):
             # '<교수님>' 행의 모든 셀을 볼드 처리합니다.
             if row[0].value == "<교수님>":
-                for cell in row:
+                for cell in cell_row: # 'cell_row' 대신 'row' 사용
                     if cell.value:
                         cell.font = Font(bold=True)
 
@@ -360,7 +360,7 @@ if user_id != "admin":
 
 # 🔑 관리자 모드 (admin으로 로그인한 경우)
 else:
-    st.subheader("� 엑셀 업로드 및 사용자 일치 검사")
+    st.subheader("📂 엑셀 업로드 및 사용자 일치 검사")
     # 엑셀 파일 업로드 위젯
     uploaded_file = st.file_uploader("암호화된 Excel 파일을 업로드하세요", type=["xlsx", "xlsm"])
 
@@ -458,4 +458,3 @@ else:
             st.error(f"❌ 파일 처리 실패: {ve}")
         except Exception as e:
             st.error(f"❌ 예상치 못한 오류 발생: {e}")
-�
