@@ -26,7 +26,7 @@ def recover_email(safe_id: str) -> str:
     if safe_id.endswith("_com"):
         safe_id = safe_id[:-4] + ".com"
     return safe_id.replace("_at_", "@").replace("_dot_", ".")
-
+    
 # 암호화된 엑셀 여부 확인
 def is_encrypted_excel(file):
     try:
