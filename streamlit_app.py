@@ -150,11 +150,15 @@ def process_sheet_v8(df, professors_list, sheet_key):
         if sheet_key != '보철':
             if current_time != row['예약시간']:
                 if current_time is not None:
+                    # 기존 빈 행 하나에 추가로 한 행 더 삽입
+                    final_rows.append(pd.Series([" "] * len(df.columns), index=df.columns))
                     final_rows.append(pd.Series([" "] * len(df.columns), index=df.columns))
                 current_time = row['예약시간']
         else:
             if current_doctor != row['예약의사']:
                 if current_doctor is not None:
+                    # 기존 빈 행 하나에 추가로 한 행 더 삽입
+                    final_rows.append(pd.Series([" "] * len(df.columns), index=df.columns))
                     final_rows.append(pd.Series([" "] * len(df.columns), index=df.columns))
                 current_doctor = row['예약의사']
         final_rows.append(row)
@@ -352,6 +356,7 @@ else:
 
             if excel_data_dfs is None or styled_excel_bytes is None:
                 st.warning("엑셀 파일 처리 중 문제가 발생했거나 처리할 데이터가 없습니다.")
+                # 이 경우 더 이상 진행할 수 없으므로 stop()을 유지합니다.
                 st.stop()
 
             # Gmail 발신자 정보 가져오기
@@ -360,35 +365,39 @@ else:
 
             users_ref = db.reference("patients") # 모든 환자 데이터에 대한 Firebase 참조
             all_users = users_ref.get() # 모든 등록된 환자 데이터 가져오기
+
+            # 등록된 사용자가 없어도 엑셀 처리는 계속 진행되도록 st.stop() 제거
             if not all_users:
-                st.warning("❗ 등록된 사용자가 없습니다.")
-                st.stop()
+                st.warning("❗ Firebase에 등록된 사용자가 없습니다. 이메일 전송은 불가능합니다.")
+                # st.stop() 대신 경고만 표시하고 계속 진행
 
             matched_users = [] # 엑셀 데이터와 일치하는 환자를 가진 사용자 목록
 
-            # Firebase에 등록된 모든 사용자를 순회합니다.
-            for uid, plist in all_users.items():
-                # 각 사용자가 등록한 환자 정보를 (환자명, 진료번호) 튜플의 집합으로 만듭니다.
-                registered_set = set(
-                    (v["환자명"].strip(), v["진료번호"].strip().zfill(8)) for v in plist.values()
-                )
-                matched_rows_for_user = [] # 현재 사용자와 일치하는 엑셀 행 목록
+            if all_users: # 등록된 사용자가 있을 경우에만 매칭 로직 실행
+                # Firebase에 등록된 모든 사용자를 순회합니다.
+                for uid, plist in all_users.items():
+                    # 각 사용자가 등록한 환자 정보를 (환자명, 진료번호) 튜플의 집합으로 만듭니다.
+                    registered_set = set(
+                        (v["환자명"].strip(), v["진료번호"].strip().zfill(8)) for v in plist.values()
+                    )
+                    matched_rows_for_user = [] # 현재 사용자와 일치하는 엑셀 행 목록
 
-                # 처리된 엑셀 데이터의 각 시트(DataFrame)를 순회합니다.
-                for sheet_name, df_sheet in excel_data_dfs.items():
-                    # 엑셀 시트의 각 행을 순회하며 등록된 환자와 일치하는지 확인합니다.
-                    matched = df_sheet[df_sheet.apply(
-                        lambda row: (row["환자명"].strip(), row["진료번호"].strip().zfill(8)) in registered_set, axis=1
-                    )]
-                    if not matched.empty:
-                        matched["시트"] = sheet_name # 일치하는 행에 시트 이름 추가
-                        matched_rows_for_user.append(matched)
+                    # 처리된 엑셀 데이터의 각 시트(DataFrame)를 순회합니다.
+                    for sheet_name, df_sheet in excel_data_dfs.items():
+                        # 엑셀 시트의 각 행을 순회하며 등록된 환자와 일치하는지 확인합니다.
+                        matched = df_sheet[df_sheet.apply(
+                            lambda row: (row["환자명"].strip(), row["진료번호"].strip().zfill(8)) in registered_set, axis=1
+                        )]
+                        if not matched.empty:
+                            matched["시트"] = sheet_name # 일치하는 행에 시트 이름 추가
+                            matched_rows_for_user.append(matched)
 
-                if matched_rows_for_user:
-                    # 현재 사용자와 일치하는 모든 행을 하나의 DataFrame으로 결합합니다.
-                    combined_matched_df = pd.concat(matched_rows_for_user, ignore_index=True)
-                    matched_users.append((uid, combined_matched_df)) # 일치하는 사용자 목록에 추가
+                    if matched_rows_for_user:
+                        # 현재 사용자와 일치하는 모든 행을 하나의 DataFrame으로 결합합니다.
+                        combined_matched_df = pd.concat(matched_rows_for_user, ignore_index=True)
+                        matched_users.append((uid, combined_matched_df)) # 일치하는 사용자 목록에 추가
 
+            # 매칭된 사용자가 있을 경우에만 이메일 관련 UI 표시
             if matched_users:
                 st.success(f"🔍 {len(matched_users)}명의 사용자와 일치하는 환자 발견됨.")
 
@@ -398,7 +407,7 @@ else:
                     st.dataframe(df_matched)
 
                 # 메일 전송 버튼
-                if st.button("📤 메일 보내기"):
+                if st.button("📤 매일 보내기"):
                     for uid, df_matched in matched_users:
                         real_email = recover_email(uid)
                         result = send_email(real_email, df_matched, sender, sender_pw)
@@ -406,17 +415,18 @@ else:
                             st.success(f"✅ {real_email} 전송 완료")
                         else:
                             st.error(f"❌ {real_email} 전송 실패: {result}")
-
-                # 처리된 엑셀 파일 다운로드 버튼
-                output_filename = uploaded_file.name.replace(".xlsx", "_processed.xlsx").replace(".xlsm", "_processed.xlsx")
-                st.download_button(
-                    "📥 처리된 엑셀 다운로드",
-                    data=styled_excel_bytes, # 스타일링이 적용된 엑셀 파일의 BytesIO 객체 사용
-                    file_name=output_filename,
-                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-                )
             else:
-                st.info("📭 매칭된 사용자 없음")
+                # 매칭된 사용자가 없지만 엑셀 처리는 완료되었음을 알림
+                st.info("📭 엑셀 파일 처리 완료. 매칭된 환자가 없습니다.")
+
+            # 처리된 엑셀 파일 다운로드 버튼 (매칭 여부와 상관없이 항상 표시)
+            output_filename = uploaded_file.name.replace(".xlsx", "_processed.xlsx").replace(".xlsm", "_processed.xlsx")
+            st.download_button(
+                "📥 처리된 엑셀 다운로드",
+                data=styled_excel_bytes, # 스타일링이 적용된 엑셀 파일의 BytesIO 객체 사용
+                file_name=output_filename,
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            )
 
         except ValueError as ve:
             st.error(f"❌ 파일 처리 실패: {ve}")
