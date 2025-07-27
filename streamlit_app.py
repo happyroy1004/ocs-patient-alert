@@ -80,33 +80,43 @@ def send_email(receiver, rows, sender, password):
         html_table = rows.to_html(index=False, escape=False)
         
         # CSS 스타일 정의
-        # 폰트 크기, 패딩, 테두리, 배경색 등을 조정하여 가독성을 높입니다.
-        # 특히 긴 텍스트를 위한 word-wrap 속성을 추가합니다.
+        # 모바일 환경에서 가독성을 높이기 위한 반응형 스타일 추가
         style = """
         <style>
             table {
-                width: 100%;
+                width: 100%; /* 테이블 너비를 100%로 설정 */
+                max-width: 100%; /* 최대 너비도 100%로 설정하여 부모 요소를 넘지 않도록 함 */
                 border-collapse: collapse;
                 font-family: Arial, sans-serif;
                 font-size: 14px;
+                table-layout: fixed; /* 테이블 레이아웃을 고정하여 셀 너비가 예측 가능하도록 함 */
             }
             th, td {
                 border: 1px solid #dddddd;
                 text-align: left;
                 padding: 8px;
+                vertical-align: top; /* 셀 내용이 길어도 상단에 정렬 */
                 word-wrap: break-word; /* 긴 텍스트 줄바꿈 */
+                word-break: break-word; /* 긴 단어도 강제로 줄바꿈 */
             }
             th {
                 background-color: #f2f2f2;
                 font-weight: bold;
+                white-space: nowrap; /* 헤더 텍스트는 줄바꿈되지 않도록 함 */
             }
             tr:nth-child(even) {
                 background-color: #f9f9f9;
             }
+            /* 모바일에서 테이블이 화면을 넘어갈 경우 스크롤 가능하도록 */
+            .table-container {
+                overflow-x: auto;
+                -webkit-overflow-scrolling: touch; /* iOS Safari 부드러운 스크롤 */
+            }
         </style>
         """
         
-        body = f"다음 등록 환자가 내원했습니다:<br><br>{style}{html_table}"
+        # 테이블을 반응형 컨테이너로 감싸기
+        body = f"다음 등록 환자가 내원했습니다:<br><br><div class='table-container'>{style}{html_table}</div>"
         msg.attach(MIMEText(body, 'html'))
 
         # SMTP 서버를 통해 이메일 전송
@@ -313,7 +323,7 @@ def process_excel_file_and_style(file_bytes_io): # password 인자 제거
 st.title("환자 내원 확인 시스템")
 
 # 사용자 아이디 입력 필드
-user_id = st.text_input("이메일 주소를 입력하세요")
+user_id = st.text_input("아이디를 입력하세요")
 if not user_id:
     st.stop() # 아이디가 입력되지 않으면 애플리케이션 실행 중지
 
@@ -349,7 +359,7 @@ if user_id != "admin":
         pid = st.text_input("진료번호")
         
         # 과 선택 드롭다운 추가
-        departments_for_registration = ['보철', '소치', '교정', '외과', '병리', '내과']
+        departments_for_registration = ['보철', '소치', '교정', '외과', '병리']
         selected_department = st.selectbox("등록 과", departments_for_registration)
 
         submitted = st.form_submit_button("등록")
