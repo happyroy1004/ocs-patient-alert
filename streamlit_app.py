@@ -360,7 +360,7 @@ if user_id != "admin":
 
 # 🔑 관리자 모드 (admin으로 로그인한 경우)
 else:
-    st.subheader("📂 엑셀 업로드 및 사용자 일치 검사")
+    st.subheader("� 엑셀 업로드 및 사용자 일치 검사")
     # 엑셀 파일 업로드 위젯
     uploaded_file = st.file_uploader("암호화된 Excel 파일을 업로드하세요", type=["xlsx", "xlsm"])
 
@@ -443,10 +443,10 @@ else:
                             st.error(f"❌ {real_email} 전송 실패: {result}")
             else:
                 # 매칭된 사용자가 없지만 엑셀 처리는 완료되었음을 알림
-                st.info("� 엑셀 파일 처리 완료. 매칭된 환자가 없습니다.")
+                st.info("📭 엑셀 파일 처리 완료. 매칭된 환자가 없습니다.")
 
             # 처리된 엑셀 파일 다운로드 버튼 (매칭 여부와 상관없이 항상 표시)
-            output_filename = uploaded_file.name.replace(".xlsx", "_processed.xlsx").replace(".xlsm", "_processed.xlsx")
+            output_filename = uploaded_file.name.replace(".xlsx", "_processed.xlsx").replace(".xlsm", "_processed.xlsm") # .xlsm 확장자도 처리
             st.download_button(
                 "📥 처리된 엑셀 다운로드",
                 data=styled_excel_bytes, # 스타일링이 적용된 엑셀 파일의 BytesIO 객체 사용
