@@ -7,7 +7,6 @@ import msoffcrypto
 import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
-import re
 
 # 🔐 Firebase 초기화
 if not firebase_admin._apps:
@@ -18,15 +17,11 @@ if not firebase_admin._apps:
 
 # 📌 Firebase-safe 경로 변환
 def sanitize_path(email):
-    return email.replace("@", "_at_")
+    return email.replace(".", "_dot_").replace("@", "_at_")
 
-# 📩 이메일 주소 복구
-def recover_email(firebase_id: str) -> str:
-    # 가장 안전한 복원 규칙: . → . , _at_ → @ (또는 gmail_com → gmail.com)
-    email = firebase_id.replace("_dot_", ".").replace("_at_", "@")
-    if email.endswith("_com"):
-        email = email[:-4] + ".com"
-    return email
+# 📩 이메일 주소 복원
+def recover_email(safe_id):
+    return safe_id.replace("_at_", "@").replace("_dot_", ".")
 
 # 🔒 암호화된 엑셀 여부 확인
 def is_encrypted_excel(file):
@@ -53,7 +48,7 @@ def load_excel(file, password=None):
     except Exception as e:
         raise ValueError(f"엑셀 처리 실패: {e}")
 
-# 📧 이메일 전송 함수
+# 📧 이메일 전송
 def send_email(receiver, rows, sender, password):
     try:
         msg = MIMEMultipart()
@@ -82,9 +77,44 @@ if not user_id:
 
 firebase_key = sanitize_path(user_id)
 
+# 👤 일반 사용자 모드
+if user_id != "admin":
+    st.subheader("📝 내 환자 등록")
+    ref = db.reference(f"patients/{firebase_key}")
+    existing_data = ref.get()
+
+    if existing_data:
+        for key, val in existing_data.items():
+            with st.container():
+                col1, col2 = st.columns([0.85, 0.15])
+                with col1:
+                    st.markdown(f"👤 {val['환자명']} / 🆔 {val['진료번호']}")
+                with col2:
+                    if st.button("❌ 삭제", key=key):
+                        db.reference(f"patients/{firebase_key}/{key}").delete()
+                        st.success("삭제 완료")
+                        st.rerun()
+    else:
+        st.info("등록된 환자가 없습니다.")
+
+    with st.form("register_form"):
+        name = st.text_input("환자명")
+        pid = st.text_input("진료번호")
+        submitted = st.form_submit_button("등록")
+        if submitted:
+            if not name or not pid:
+                st.warning("모든 항목을 입력해주세요.")
+            elif existing_data and any(
+                v["환자명"] == name and v["진료번호"] == pid for v in existing_data.values()):
+                st.error("이미 등록된 환자입니다.")
+            else:
+                ref.push().set({"환자명": name, "진료번호": pid})
+                st.success(f"{name} ({pid}) 등록 완료")
+                st.rerun()
+
 # 🔑 관리자 모드
-if user_id == "admin":
-    st.subheader("📂 엑셀 업로드 및 전체 사용자 비교")
+else:
+    st.subheader("📂 엑셀 업로드 및 사용자 일치 검사")
 
     uploaded_file = st.file_uploader("암호화된 Excel 파일을 업로드하세요", type=["xlsx", "xlsm"])
     if uploaded_file:
@@ -130,12 +160,13 @@ if user_id == "admin":
                     matched_users.append((uid, combined))
 
             if matched_users:
-                send = st.radio("✉️ 이메일을 전송하시겠습니까?", ["예", "아니오"])
-                if send == "예":
+                st.success(f"🔍 {len(matched_users)}명의 사용자와 일치하는 환자 발견됨.")
+
+                if st.button("📤 메일 보내기"):
                     for uid, df_matched in matched_users:
                         real_email = recover_email(uid)
                         result = send_email(real_email, df_matched, sender, sender_pw)
-                        if result == True:
+                        if result is True:
                             st.success(f"✅ {real_email} 전송 완료")
                         else:
                             st.error(f"❌ {real_email} 전송 실패: {result}")
@@ -147,39 +178,4 @@ if user_id == "admin":
                 st.info("📭 매칭된 사용자 없음")
 
         except Exception as e:
-            st.error(f"❌ 처리 실패: {e}")
-
-# 👥 일반 사용자 모드
-else:
-    st.subheader("📝 내 환자 등록")
-    ref = db.reference(f"patients/{firebase_key}")
-    existing_data = ref.get()
-
-    if existing_data:
-        for key, val in existing_data.items():
-            with st.container():
-                col1, col2 = st.columns([0.85, 0.15])
-                with col1:
-                    st.markdown(f"👤 {val['환자명']} / 🆔 {val['진료번호']}")
-                with col2:
-                    if st.button("❌ 삭제", key=key):
-                        db.reference(f"patients/{firebase_key}/{key}").delete()
-                        st.success("삭제 완료")
-                        st.rerun()
-    else:
-        st.info("등록된 환자가 없습니다.")
-
-    with st.form("register_form"):
-        name = st.text_input("환자명")
-        pid = st.text_input("진료번호")
-        submitted = st.form_submit_button("등록")
-        if submitted:
-            if not name or not pid:
-                st.warning("모든 항목을 입력해주세요.")
-            elif existing_data and any(
-                v["환자명"] == name and v["진료번호"] == pid for v in existing_data.values()):
-                st.error("이미 등록된 환자입니다.")
-            else:
-                ref.push().set({"환자명": name, "진료번호": pid})
-                st.success(f"{name} ({pid}) 등록 완료")
-                st.rerun()
+            st.error(f"❌ 파일 처리 실패: {e}")
