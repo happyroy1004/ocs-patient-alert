@@ -10,7 +10,7 @@ from email.mime.multipart import MIMEMultipart
 from openpyxl import load_workbook
 from openpyxl.styles import Font
 
-# 🔐 Firebase 초기화
+# Firebase 초기화
 # Firebase 관리자 SDK를 초기화합니다.
 # `st.secrets`에서 Firebase 서비스 계정 자격 증명을 가져옵니다.
 if not firebase_admin._apps:
@@ -19,13 +19,13 @@ if not firebase_admin._apps:
         'databaseURL': st.secrets["firebase"]["database_url"]
     })
 
-# 📌 Firebase-safe 경로 변환
+# Firebase-safe 경로 변환
 # 이메일 주소를 Firebase Realtime Database 경로에 안전하게 사용할 수 있도록 변환합니다.
 # '.'는 '_dot_', '@'는 '_at_'으로 대체합니다.
 def sanitize_path(email):
     return email.replace(".", "_dot_").replace("@", "_at_")
 
-# 📩 이메일 주소 복원
+# 이메일 주소 복원
 # Firebase에 저장된 안전한 경로를 원래 이메일 주소로 복원합니다.
 def recover_email(safe_id: str) -> str:
     email = safe_id.replace("_at_", "@").replace("_dot_", ".")
@@ -34,7 +34,7 @@ def recover_email(safe_id: str) -> str:
         email = email[:-4] + ".com"
     return email
 
-# 🔒 암호화된 엑셀 여부 확인
+# 암호화된 엑셀 여부 확인
 # 업로드된 파일이 msoffcrypto 라이브러리로 암호화되었는지 확인합니다.
 def is_encrypted_excel(file):
     try:
@@ -45,7 +45,7 @@ def is_encrypted_excel(file):
         # 파일이 유효한 Office 파일이 아니거나 암호화 확인 중 오류 발생 시 False 반환
         return False
 
-# 📂 엑셀 로드
+# 엑셀 로드
 # 엑셀 파일을 로드하고, 암호화된 경우 비밀번호로 복호화합니다.
 # 복호화된 파일 또는 원본 파일을 BytesIO 객체로 반환합니다.
 def load_excel(file, password=None):
@@ -66,7 +66,7 @@ def load_excel(file, password=None):
     except Exception as e:
         raise ValueError(f"엑셀 로드 또는 복호화 실패: {e}")
 
-# 📧 이메일 전송
+# 이메일 전송
 # 지정된 수신자에게 환자 내원 알림 이메일을 전송합니다.
 # `st.secrets`에서 Gmail 발신자 정보와 앱 비밀번호를 사용합니다.
 def send_email(receiver, rows, sender, password):
@@ -74,7 +74,7 @@ def send_email(receiver, rows, sender, password):
         msg = MIMEMultipart()
         msg['From'] = sender
         msg['To'] = receiver
-        msg['Subject'] = "📌 등록 환자 내원 알림"
+        msg['Subject'] = "등록 환자 내원 알림"
         
         # HTML 테이블에 CSS 스타일 추가하여 가독성 향상
         html_table = rows.to_html(index=False, escape=False)
@@ -147,7 +147,7 @@ professors_dict = {
     '교정': [], '내과': [], '원내생': [], '원스톱': [], '임플란트': [],
 }
 
-# 📑 엑셀 시트 파싱 및 정제 (코드 2의 process_sheet_v8 함수)
+# 엑셀 시트 파싱 및 정제 (코드 2의 process_sheet_v8 함수)
 # DataFrame을 정렬하고 교수/비교수 데이터를 분리하여 특정 형식으로 재구성합니다.
 def process_sheet_v8(df, professors_list, sheet_key):
     # '예약일시' 컬럼이 있으면 삭제합니다.
@@ -209,7 +209,7 @@ def process_sheet_v8(df, professors_list, sheet_key):
     final_df = final_df[[col for col in required_cols if col in final_df.columns]]
     return final_df
 
-# 엑셀 파일 처리 및 스타일링 (코드 2의 process_excel_file을 Streamlit에 맞게 수정)
+# 엑셀 파일 처리 및 스타일링
 # 이 함수는 load_excel에서 이미 복호화되었거나 원본 상태의 BytesIO 객체를 받습니다.
 def process_excel_file_and_style(file_bytes_io): # password 인자 제거
     # file_bytes_io는 이미 load_excel 함수에서 복호화되었거나 원본 상태의 BytesIO 객체입니다.
@@ -233,7 +233,7 @@ def process_excel_file_and_style(file_bytes_io): # password 인자 제거
             values.pop(0)
         # 헤더와 최소 한 줄의 데이터가 있는지 확인합니다.
         if len(values) < 2:
-            st.warning(f"⚠ 시트 '{sheet_name}'에 유효한 데이터가 충분하지 않습니다. 건너뜁니다.")
+            st.warning(f"시트 '{sheet_name}'에 유효한 데이터가 충분하지 않습니다. 건너뜁니다.")
             continue
 
         df = pd.DataFrame(values)
@@ -250,7 +250,7 @@ def process_excel_file_and_style(file_bytes_io): # password 인자 제거
 
         sheet_key = sheet_name_mapping.get(sheet_name.strip(), None)
         if not sheet_key:
-            st.warning(f"❌ 시트 '{sheet_name}'을 인식할 수 없습니다. 건너뜁니다.")
+            st.warning(f"시트 '{sheet_name}'을 인식할 수 없습니다. 건너뜁니다.")
             continue
 
         professors_list = professors_dict.get(sheet_key, [])
@@ -266,7 +266,7 @@ def process_excel_file_and_style(file_bytes_io): # password 인자 제거
             continue
 
     if not processed_sheets_dfs:
-        st.info("❌ 처리된 시트가 없습니다.")
+        st.info("처리된 시트가 없습니다.")
         return None, None # 처리된 시트가 없으면 None 반환
 
     # 처리된 DataFrame들을 메모리 내 엑셀 파일로 작성하여 스타일링을 적용합니다.
@@ -288,7 +288,7 @@ def process_excel_file_and_style(file_bytes_io): # password 인자 제거
         for row_idx, row in enumerate(ws.iter_rows(min_row=2, max_row=ws.max_row), start=2):
             # '<교수님>' 행의 모든 셀을 볼드 처리합니다.
             if row[0].value == "<교수님>":
-                for cell in row: # 'cell_row' 대신 'row' 사용
+                for cell in row:
                     if cell.value:
                         cell.font = Font(bold=True)
 
@@ -310,7 +310,7 @@ def process_excel_file_and_style(file_bytes_io): # password 인자 제거
     return processed_sheets_dfs, final_output_bytes
 
 # --- Streamlit 애플리케이션 시작 ---
-st.title("🩺 환자 내원 확인 시스템")
+st.title("환자 내원 확인 시스템")
 
 # 사용자 아이디 입력 필드
 user_id = st.text_input("아이디를 입력하세요")
@@ -320,9 +320,9 @@ if not user_id:
 # Firebase 경로에 사용할 안전한 키 생성
 firebase_key = sanitize_path(user_id)
 
-# 👤 사용자 모드 (admin이 아닌 경우)
+# 사용자 모드 (admin이 아닌 경우)
 if user_id != "admin":
-    st.subheader("📝 내 환자 등록")
+    st.subheader("내 환자 등록")
     ref = db.reference(f"patients/{firebase_key}") # Firebase 참조 설정
     existing_data = ref.get() # Firebase에서 기존 환자 데이터 가져오기
 
@@ -334,9 +334,9 @@ if user_id != "admin":
                 with col1:
                     # 등록된 과 정보도 함께 표시
                     department_display = val.get('등록과', '미지정')
-                    st.markdown(f"👤 {val['환자명']} / � {val['진료번호']} / 🏢 {department_display}")
+                    st.markdown(f"환자명: {val['환자명']} / 진료번호: {val['진료번호']} / 등록과: {department_display}")
                 with col2:
-                    if st.button("❌ 삭제", key=key):
+                    if st.button("삭제", key=key):
                         db.reference(f"patients/{firebase_key}/{key}").delete() # Firebase에서 환자 삭제
                         st.success("삭제 완료")
                         st.rerun() # 변경 사항 반영을 위해 앱 다시 실행
@@ -367,9 +367,9 @@ if user_id != "admin":
                 st.success(f"{name} ({pid}) [{selected_department}] 등록 완료")
                 st.rerun() # 변경 사항 반영을 위해 앱 다시 실행
 
-# 🔑 관리자 모드 (admin으로 로그인한 경우)
+# 관리자 모드 (admin으로 로그인한 경우)
 else:
-    st.subheader("📂 엑셀 업로드 및 사용자 일치 검사")
+    st.subheader("엑셀 업로드 및 사용자 일치 검사")
     # 엑셀 파일 업로드 위젯
     uploaded_file = st.file_uploader("암호화된 Excel 파일을 업로드하세요", type=["xlsx", "xlsm"])
 
@@ -377,7 +377,7 @@ else:
         password = None
         # 업로드된 파일이 암호화되었는지 확인하고 비밀번호 입력 필드를 표시
         if is_encrypted_excel(uploaded_file):
-            password = st.text_input("🔑 엑셀 파일 비밀번호 입력", type="password")
+            password = st.text_input("엑셀 파일 비밀번호 입력", type="password")
             if not password:
                 st.info("암호화된 파일입니다. 비밀번호를 입력해주세요.")
                 st.stop() # 비밀번호가 입력될 때까지 실행 중지
@@ -403,7 +403,7 @@ else:
 
             # 등록된 사용자가 없어도 엑셀 처리는 계속 진행되도록 st.stop() 제거
             if not all_users:
-                st.warning("❗ Firebase에 등록된 사용자가 없습니다. 이메일 전송은 불가능합니다.")
+                st.warning("Firebase에 등록된 사용자가 없습니다. 이메일 전송은 불가능합니다.")
                 # st.stop() 대신 경고만 표시하고 계속 진행
 
             matched_users = [] # 엑셀 데이터와 일치하는 환자를 가진 사용자 목록
@@ -453,37 +453,36 @@ else:
 
             # 매칭된 사용자가 있을 경우에만 이메일 관련 UI 표시
             if matched_users:
-                st.success(f"🔍 {len(matched_users)}명의 사용자와 일치하는 환자 발견됨.")
+                st.success(f"{len(matched_users)}명의 사용자와 일치하는 환자 발견됨.")
 
                 # 일치하는 환자 데이터를 각 사용자별로 표시합니다.
                 for uid, df_matched in matched_users:
-                    st.markdown(f"### 📧 {recover_email(uid)}")
+                    st.markdown(f"이메일: {recover_email(uid)}")
                     st.dataframe(df_matched)
 
                 # 메일 전송 버튼
-                if st.button("📤 메일 보내기"):
+                if st.button("메일 보내기"):
                     for uid, df_matched in matched_users:
                         real_email = recover_email(uid)
                         result = send_email(real_email, df_matched, sender, sender_pw)
                         if result is True:
-                            st.success(f"✅ {real_email} 전송 완료")
+                            st.success(f"{real_email} 전송 완료")
                         else:
-                            st.error(f"❌ {real_email} 전송 실패: {result}")
+                            st.error(f"{real_email} 전송 실패: {result}")
             else:
                 # 매칭된 사용자가 없지만 엑셀 처리는 완료되었음을 알림
-                st.info("📭 엑셀 파일 처리 완료. 매칭된 환자가 없습니다.")
+                st.info("엑셀 파일 처리 완료. 매칭된 환자가 없습니다.")
 
             # 처리된 엑셀 파일 다운로드 버튼 (매칭 여부와 상관없이 항상 표시)
             output_filename = uploaded_file.name.replace(".xlsx", "_processed.xlsx").replace(".xlsm", "_processed.xlsm") # .xlsm 확장자도 처리
             st.download_button(
-                "📥 처리된 엑셀 다운로드",
+                "처리된 엑셀 다운로드",
                 data=styled_excel_bytes, # 스타일링이 적용된 엑셀 파일의 BytesIO 객체 사용
                 file_name=output_filename,
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
             )
 
         except ValueError as ve:
-            st.error(f"❌ 파일 처리 실패: {ve}")
+            st.error(f"파일 처리 실패: {ve}")
         except Exception as e:
-            st.error(f"❌ 예상치 못한 오류 발생: {e}")
-�
+            st.error(f"예상치 못한 오류 발생: {e}")
