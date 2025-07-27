@@ -23,9 +23,11 @@ def sanitize_path(email):
 
 # 📩 이메일 주소 복원
 def recover_email(safe_id: str) -> str:
-    if safe_id.endswith("_com"):
-        safe_id = safe_id[:-4] + ".com"
-    return safe_id.replace("_at_", "@").replace("_dot_", ".")
+    # _dot_, _at_ 변환 → 실제 이메일로
+    email = safe_id.replace("_at_", "@").replace("_dot_", ".")
+    if email.endswith("_com"):
+        email = email[:-4] + ".com"
+    return email
 
 # 🔒 암호화된 엑셀 여부 확인
 def is_encrypted_excel(file):
