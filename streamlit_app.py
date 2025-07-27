@@ -304,7 +304,7 @@ firebase_key = sanitize_path(user_id)
 
 # 👤 사용자 모드 (admin이 아닌 경우)
 if user_id != "admin":
-    st.subheader("� 내 환자 등록")
+    st.subheader("📝 내 환자 등록")
     ref = db.reference(f"patients/{firebase_key}") # Firebase 참조 설정
     existing_data = ref.get() # Firebase에서 기존 환자 데이터 가져오기
 
@@ -435,4 +435,3 @@ else:
             st.error(f"❌ 파일 처리 실패: {ve}")
         except Exception as e:
             st.error(f"❌ 예상치 못한 오류 발생: {e}")
-�
