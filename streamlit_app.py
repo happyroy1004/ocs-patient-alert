@@ -9,6 +9,7 @@ from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from openpyxl import load_workbook
 from openpyxl.styles import Font
+import re # 정규 표현식 모듈 임포트
 
 # Firebase 초기화
 # Firebase 관리자 SDK를 초기화합니다.
@@ -69,12 +70,18 @@ def load_excel(file, password=None):
 # 이메일 전송
 # 지정된 수신자에게 환자 내원 알림 이메일을 전송합니다.
 # `st.secrets`에서 Gmail 발신자 정보와 앱 비밀번호를 사용합니다.
-def send_email(receiver, rows, sender, password):
+# date_str 인자를 추가하여 메일 제목에 날짜를 포함할 수 있도록 함
+def send_email(receiver, rows, sender, password, date_str=None):
     try:
         msg = MIMEMultipart()
         msg['From'] = sender
         msg['To'] = receiver
-        msg['Subject'] = "등록 환자 내원 알림"
+        
+        # 메일 제목에 날짜 정보 포함
+        subject_prefix = ""
+        if date_str:
+            subject_prefix = f"{date_str}일에 내원하는 "
+        msg['Subject'] = f"📌 {subject_prefix}등록 환자 내원 알림"
         
         # HTML 테이블에 CSS 스타일 추가하여 가독성 향상
         html_table = rows.to_html(index=False, escape=False)
@@ -150,7 +157,6 @@ sheet_keyword_to_department_map = {
     '보존과': '보존',
     '보존': '보존',
     '소아치과': '소치',
-    '소아 치과' : '소치',
     '소치': '소치',
     '원내생진료센터': '원내생',
     '원내생': '원내생',
@@ -424,6 +430,11 @@ else:
                 st.stop() # 비밀번호가 입력될 때까지 실행 중지
 
         try:
+            # 파일명에서 날짜 추출 (예: '0728' 형식)
+            file_name = uploaded_file.name
+            date_match = re.search(r'(\d{4})', file_name) # 파일명에서 4자리 숫자 (MMDD) 추출
+            extracted_date = date_match.group(1) if date_match else None
+            
             # 엑셀 파일을 로드하고 (필요시 복호화), 원본/복호화된 파일 객체를 얻습니다.
             xl_object, raw_file_io = load_excel(uploaded_file, password)
 
@@ -513,7 +524,8 @@ else:
                 if st.button("메일 보내기"):
                     for uid, df_matched in matched_users:
                         real_email = recover_email(uid)
-                        result = send_email(real_email, df_matched, sender, sender_pw)
+                        # 추출된 날짜를 send_email 함수에 전달
+                        result = send_email(real_email, df_matched, sender, sender_pw, date_str=extracted_date)
                         if result is True:
                             st.success(f"{real_email} 전송 완료")
                         else:
