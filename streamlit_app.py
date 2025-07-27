@@ -197,7 +197,40 @@ firebase_key = sanitize_path(user_id)
 
 if user_id != "admin":
     # 일반 사용자 모드 생략 (기존과 동일)
-    pass
+    # 👤 일반 사용자 모드
+    if user_id != "admin":
+        st.subheader("📝 내 환자 등록")
+        ref = db.reference(f"patients/{firebase_key}")
+        existing_data = ref.get()
+
+    if existing_data:
+        for key, val in existing_data.items():
+            with st.container():
+                col1, col2 = st.columns([0.85, 0.15])
+                with col1:
+                    st.markdown(f"👤 {val['환자명']} / 🆔 {val['진료번호']}")
+                with col2:
+                    if st.button("❌ 삭제", key=key):
+                        db.reference(f"patients/{firebase_key}/{key}").delete()
+                        st.success("삭제 완료")
+                        st.rerun()
+    else:
+        st.info("등록된 환자가 없습니다.")
+
+    with st.form("register_form"):
+        name = st.text_input("환자명")
+        pid = st.text_input("진료번호")
+        submitted = st.form_submit_button("등록")
+        if submitted:
+            if not name or not pid:
+                st.warning("모든 항목을 입력해주세요.")
+            elif existing_data and any(
+                v["환자명"] == name and v["진료번호"] == pid for v in existing_data.values()):
+                st.error("이미 등록된 환자입니다.")
+            else:
+                ref.push().set({"환자명": name, "진료번호": pid})
+                st.success(f"{name} ({pid}) 등록 완료")
+                st.rerun()
 else:
     st.subheader("📂 엑셀 업로드 및 사용자 일치 검사")
     uploaded_file = st.file_uploader("암호화된 Excel 파일을 업로드하세요", type=["xlsx", "xlsm"])
