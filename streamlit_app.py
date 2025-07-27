@@ -10,24 +10,24 @@ from email.mime.multipart import MIMEMultipart
 from openpyxl import load_workbook
 from openpyxl.styles import Font
 
-# Firebase 초기화
+# 🔐 Firebase 초기화
 if not firebase_admin._apps:
     cred = credentials.Certificate(st.secrets["firebase_credentials"])
     firebase_admin.initialize_app(cred, {
         'databaseURL': st.secrets["firebase"]["database_url"]
     })
 
-# Firebase-safe 경로 변환
+# 📌 Firebase-safe 경로 변환
 def sanitize_path(email):
     return email.replace(".", "_dot_").replace("@", "_at_")
 
-# 이메일 주소 복원
+# 📩 이메일 주소 복원
 def recover_email(safe_id: str) -> str:
     if safe_id.endswith("_com"):
         safe_id = safe_id[:-4] + ".com"
     return safe_id.replace("_at_", "@").replace("_dot_", ".")
 
-# 암호화된 엑셀 여부 확인
+# 🔒 암호화된 엑셀 여부 확인
 def is_encrypted_excel(file):
     try:
         file.seek(0)
@@ -35,7 +35,7 @@ def is_encrypted_excel(file):
     except Exception:
         return False
 
-# 엑셀 로드
+# 📂 엑셀 로드
 def load_excel(file, password=None):
     try:
         file.seek(0)
@@ -52,7 +52,7 @@ def load_excel(file, password=None):
     except Exception as e:
         raise ValueError(f"엑셀 처리 실패: {e}")
 
-# 이메일 전송
+# 📧 이메일 전송
 def send_email(receiver, rows, sender, password):
     try:
         msg = MIMEMultipart()
@@ -62,6 +62,7 @@ def send_email(receiver, rows, sender, password):
         html_table = rows.to_html(index=False, escape=False)
         body = f"다음 등록 환자가 내원했습니다:<br><br>{html_table}"
         msg.attach(MIMEText(body, 'html'))
+
         server = smtplib.SMTP('smtp.gmail.com', 587)
         server.starttls()
         server.login(sender, password)
@@ -71,7 +72,7 @@ def send_email(receiver, rows, sender, password):
     except Exception as e:
         return str(e)
 
-# 엑셀 처리
+# 📑 엑셀 시트 파싱 및 정제
 def process_excel(filelike):
     wb = load_workbook(filelike)
     processed = {}
@@ -91,7 +92,7 @@ def process_excel(filelike):
         processed[sheet_name] = df
     return processed
 
-# Streamlit 시작
+# 🌐 Streamlit 시작
 st.title("🩺 환자 내원 확인 시스템")
 user_id = st.text_input("아이디를 입력하세요")
 if not user_id:
@@ -99,7 +100,7 @@ if not user_id:
 
 firebase_key = sanitize_path(user_id)
 
-# 사용자 모드
+# 👤 사용자 모드
 if user_id != "admin":
     st.subheader("📝 내 환자 등록")
     ref = db.reference(f"patients/{firebase_key}")
@@ -134,10 +135,9 @@ if user_id != "admin":
                 st.success(f"{name} ({pid}) 등록 완료")
                 st.rerun()
 
-# 관리자 모드
+# 🔑 관리자 모드
 else:
     st.subheader("📂 엑셀 업로드 및 사용자 일치 검사")
-
     uploaded_file = st.file_uploader("암호화된 Excel 파일을 업로드하세요", type=["xlsx", "xlsm"])
     if uploaded_file:
         password = None
@@ -179,8 +179,7 @@ else:
                 st.success(f"🔍 {len(matched_users)}명의 사용자와 일치하는 환자 발견됨.")
 
                 for uid, df in matched_users:
-                    real_email = recover_email(uid)
-                    st.markdown(f"### 📧 {real_email}") 
+                    st.markdown(f"### 📧 {recover_email(uid)}")
                     st.dataframe(df)
 
                 if st.button("📤 메일 보내기"):
@@ -192,7 +191,7 @@ else:
                         else:
                             st.error(f"❌ {real_email} 전송 실패: {result}")
 
-                # 엑셀 다운로드 버튼
+                # 📥 엑셀 다운로드 버튼
                 output_buffer = io.BytesIO()
                 with pd.ExcelWriter(output_buffer, engine='openpyxl') as writer:
                     for sheet, df in excel_data.items():
@@ -202,5 +201,6 @@ else:
                 st.download_button("📥 처리된 엑셀 다운로드", output_buffer, file_name=output_filename)
             else:
                 st.info("📭 매칭된 사용자 없음")
+
         except Exception as e:
             st.error(f"❌ 파일 처리 실패: {e}")
