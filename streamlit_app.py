@@ -21,8 +21,12 @@ def sanitize_path(email):
     return email.replace("@", "_at_")
 
 # 📩 이메일 주소 복구
-def recover_email(safe_id):
-    return safe_id.replace("_at_", "@")
+def recover_email(firebase_id: str) -> str:
+    # 가장 안전한 복원 규칙: . → . , _at_ → @ (또는 gmail_com → gmail.com)
+    email = firebase_id.replace("_dot_", ".").replace("_at_", "@")
+    if email.endswith("_com"):
+        email = email[:-4] + ".com"
+    return email
 
 # 🔒 암호화된 엑셀 여부 확인
 def is_encrypted_excel(file):
