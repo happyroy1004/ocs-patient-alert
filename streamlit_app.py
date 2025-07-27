@@ -288,7 +288,7 @@ def process_excel_file_and_style(file_bytes_io): # password 인자 제거
         for row_idx, row in enumerate(ws.iter_rows(min_row=2, max_row=ws.max_row), start=2):
             # '<교수님>' 행의 모든 셀을 볼드 처리합니다.
             if row[0].value == "<교수님>":
-                for cell in cell_row: # 'cell_row' 대신 'row' 사용
+                for cell in row: # 'cell_row' 대신 'row' 사용
                     if cell.value:
                         cell.font = Font(bold=True)
 
@@ -332,7 +332,9 @@ if user_id != "admin":
             with st.container():
                 col1, col2 = st.columns([0.85, 0.15])
                 with col1:
-                    st.markdown(f"👤 {val['환자명']} / 🆔 {val['진료번호']}")
+                    # 등록된 과 정보도 함께 표시
+                    department_display = val.get('등록과', '미지정')
+                    st.markdown(f"👤 {val['환자명']} / � {val['진료번호']} / 🏢 {department_display}")
                 with col2:
                     if st.button("❌ 삭제", key=key):
                         db.reference(f"patients/{firebase_key}/{key}").delete() # Firebase에서 환자 삭제
@@ -345,17 +347,24 @@ if user_id != "admin":
     with st.form("register_form"):
         name = st.text_input("환자명")
         pid = st.text_input("진료번호")
+        
+        # 과 선택 드롭다운 추가
+        departments_for_registration = ['보철', '소치', '교정', '외과', '병리']
+        selected_department = st.selectbox("등록 과", departments_for_registration)
+
         submitted = st.form_submit_button("등록")
         if submitted:
             if not name or not pid:
                 st.warning("모든 항목을 입력해주세요.")
-            # 이미 등록된 환자인지 확인
+            # 이미 등록된 환자인지 확인 (과 정보도 함께 확인)
             elif existing_data and any(
-                v["환자명"] == name and v["진료번호"] == pid for v in existing_data.values()):
+                v["환자명"] == name and v["진료번호"] == pid and v.get("등록과") == selected_department
+                for v in existing_data.values()):
                 st.error("이미 등록된 환자입니다.")
             else:
-                ref.push().set({"환자명": name, "진료번호": pid}) # Firebase에 새 환자 등록
-                st.success(f"{name} ({pid}) 등록 완료")
+                # Firebase에 새 환자 등록 시 과 정보도 저장
+                ref.push().set({"환자명": name, "진료번호": pid, "등록과": selected_department})
+                st.success(f"{name} ({pid}) [{selected_department}] 등록 완료")
                 st.rerun() # 변경 사항 반영을 위해 앱 다시 실행
 
 # 🔑 관리자 모드 (admin으로 로그인한 경우)
@@ -402,25 +411,44 @@ else:
             if all_users: # 등록된 사용자가 있을 경우에만 매칭 로직 실행
                 # Firebase에 등록된 모든 사용자를 순회합니다.
                 for uid, plist in all_users.items():
-                    # 각 사용자가 등록한 환자 정보를 (환자명, 진료번호) 튜플의 집합으로 만듭니다.
-                    registered_set = set(
-                        (v["환자명"].strip(), v["진료번호"].strip().zfill(8)) for v in plist.values()
-                    )
+                    # 각 사용자가 등록한 환자 정보를 (환자명, 진료번호, 등록과) 형태로 추출
+                    registered_patients_data = []
+                    if plist: # plist가 None이 아닐 경우에만 처리
+                        for key, val in plist.items():
+                            registered_patients_data.append({
+                                "환자명": val["환자명"].strip(),
+                                "진료번호": val["진료번호"].strip().zfill(8),
+                                "등록과": val.get("등록과", "") # '등록과' 필드가 없을 경우 빈 문자열로 처리
+                            })
+
                     matched_rows_for_user = [] # 현재 사용자와 일치하는 엑셀 행 목록
 
                     # 처리된 엑셀 데이터의 각 시트(DataFrame)를 순회합니다.
-                    for sheet_name, df_sheet in excel_data_dfs.items():
-                        # 엑셀 시트의 각 행을 순회하며 등록된 환자와 일치하는지 확인합니다.
-                        matched = df_sheet[df_sheet.apply(
-                            lambda row: (row["환자명"].strip(), row["진료번호"].strip().zfill(8)) in registered_set, axis=1
-                        )]
-                        if not matched.empty:
-                            matched["시트"] = sheet_name # 일치하는 행에 시트 이름 추가
-                            matched_rows_for_user.append(matched)
+                    for sheet_name_excel, df_sheet in excel_data_dfs.items():
+                        # 엑셀 시트의 과 정보 (매핑된 이름 사용)
+                        excel_sheet_department = sheet_name_mapping.get(sheet_name_excel.strip(), None)
+                        if not excel_sheet_department:
+                            continue # 인식할 수 없는 엑셀 시트 과는 건너뜁니다.
 
+                        for _, excel_row in df_sheet.iterrows():
+                            excel_patient_name = excel_row["환자명"].strip()
+                            excel_patient_pid = excel_row["진료번호"].strip().zfill(8)
+
+                            # 이 엑셀 행이 사용자가 등록한 환자 중 해당 과와 일치하는지 확인
+                            for registered_patient in registered_patients_data:
+                                if (registered_patient["환자명"] == excel_patient_name and
+                                    registered_patient["진료번호"] == excel_patient_pid and
+                                    registered_patient["등록과"] == excel_sheet_department): # 과 일치 조건 추가
+                                    
+                                    # 일치하는 경우, 해당 행을 matched_rows_for_user에 추가
+                                    matched_row_copy = excel_row.copy()
+                                    matched_row_copy["시트"] = sheet_name_excel # 원본 시트 이름 유지
+                                    matched_rows_for_user.append(matched_row_copy)
+                                    break # 이 엑셀 행은 매칭되었으므로 다음 엑셀 행으로 이동
+
+                    # 현재 사용자와 매칭된 행이 있다면, 최종 목록에 추가
                     if matched_rows_for_user:
-                        # 현재 사용자와 일치하는 모든 행을 하나의 DataFrame으로 결합합니다.
-                        combined_matched_df = pd.concat(matched_rows_for_user, ignore_index=True)
+                        combined_matched_df = pd.DataFrame(matched_rows_for_user) # 리스트의 딕셔너리를 DataFrame으로 변환
                         matched_users.append((uid, combined_matched_df)) # 일치하는 사용자 목록에 추가
 
             # 매칭된 사용자가 있을 경우에만 이메일 관련 UI 표시
@@ -458,3 +486,4 @@ else:
             st.error(f"❌ 파일 처리 실패: {ve}")
         except Exception as e:
             st.error(f"❌ 예상치 못한 오류 발생: {e}")
+�
