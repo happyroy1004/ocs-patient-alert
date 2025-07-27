@@ -75,9 +75,38 @@ def send_email(receiver, rows, sender, password):
         msg['From'] = sender
         msg['To'] = receiver
         msg['Subject'] = "📌 등록 환자 내원 알림"
-        # Pandas DataFrame을 HTML 테이블로 변환하여 이메일 본문에 포함
+        
+        # HTML 테이블에 CSS 스타일 추가하여 가독성 향상
         html_table = rows.to_html(index=False, escape=False)
-        body = f"다음 등록 환자가 내원했습니다:<br><br>{html_table}"
+        
+        # CSS 스타일 정의
+        # 폰트 크기, 패딩, 테두리, 배경색 등을 조정하여 가독성을 높입니다.
+        # 특히 긴 텍스트를 위한 word-wrap 속성을 추가합니다.
+        style = """
+        <style>
+            table {
+                width: 100%;
+                border-collapse: collapse;
+                font-family: Arial, sans-serif;
+                font-size: 14px;
+            }
+            th, td {
+                border: 1px solid #dddddd;
+                text-align: left;
+                padding: 8px;
+                word-wrap: break-word; /* 긴 텍스트 줄바꿈 */
+            }
+            th {
+                background-color: #f2f2f2;
+                font-weight: bold;
+            }
+            tr:nth-child(even) {
+                background-color: #f9f9f9;
+            }
+        </style>
+        """
+        
+        body = f"다음 등록 환자가 내원했습니다:<br><br>{style}{html_table}"
         msg.attach(MIMEText(body, 'html'))
 
         # SMTP 서버를 통해 이메일 전송
@@ -414,7 +443,7 @@ else:
                             st.error(f"❌ {real_email} 전송 실패: {result}")
             else:
                 # 매칭된 사용자가 없지만 엑셀 처리는 완료되었음을 알림
-                st.info("📭 엑셀 파일 처리 완료. 매칭된 환자가 없습니다.")
+                st.info("� 엑셀 파일 처리 완료. 매칭된 환자가 없습니다.")
 
             # 처리된 엑셀 파일 다운로드 버튼 (매칭 여부와 상관없이 항상 표시)
             output_filename = uploaded_file.name.replace(".xlsx", "_processed.xlsx").replace(".xlsm", "_processed.xlsx")
@@ -429,3 +458,4 @@ else:
             st.error(f"❌ 파일 처리 실패: {ve}")
         except Exception as e:
             st.error(f"❌ 예상치 못한 오류 발생: {e}")
+�
