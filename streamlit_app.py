@@ -180,28 +180,16 @@ def process_sheet_v8(df, professors_list, sheet_key):
     return final_df
 
 # 엑셀 파일 처리 및 스타일링 (코드 2의 process_excel_file을 Streamlit에 맞게 수정)
-# 업로드된 엑셀 파일을 복호화하고, 시트별로 데이터를 처리 및 정렬한 후,
-# 특정 조건에 따라 스타일을 적용한 새 엑셀 파일을 BytesIO 객체로 반환합니다.
-def process_excel_file_and_style(file_bytes_io, password):
-    decrypted_file_io = io.BytesIO()
-    try:
-        file_bytes_io.seek(0) # 파일 포인터를 시작으로 이동
-        office_file = msoffcrypto.OfficeFile(file_bytes_io)
-        if office_file.is_encrypted():
-            if not password:
-                raise ValueError("암호화된 파일입니다. 비밀번호를 입력해주세요.")
-            office_file.load_key(password=password)
-            office_file.decrypt(decrypted_file_io)
-        else:
-            # 암호화되지 않은 경우, 원본 파일 내용을 복사합니다.
-            decrypted_file_io.write(file_bytes_io.read())
-        decrypted_file_io.seek(0) # 복호화된 파일 포인터를 시작으로 이동
-    except Exception as e:
-        raise ValueError(f"파일 복호화 또는 로드 실패: {e}")
+# 이 함수는 load_excel에서 이미 복호화되었거나 원본 상태의 BytesIO 객체를 받습니다.
+def process_excel_file_and_style(file_bytes_io): # password 인자 제거
+    # file_bytes_io는 이미 load_excel 함수에서 복호화되었거나 원본 상태의 BytesIO 객체입니다.
+    # 따라서, 여기서는 추가적인 복호화/복사 로직이 필요 없습니다.
+    # load_workbook이 파일을 처음부터 읽을 수 있도록 파일 포인터를 시작으로 이동시킵니다.
+    file_bytes_io.seek(0)
 
     try:
         # 복호화된(또는 원본) BytesIO 객체로부터 워크북을 로드합니다.
-        wb_raw = load_workbook(filename=decrypted_file_io, data_only=True)
+        wb_raw = load_workbook(filename=file_bytes_io, data_only=True)
     except Exception as e:
         raise ValueError(f"엑셀 워크북 로드 실패: {e}")
 
@@ -359,9 +347,8 @@ else:
             # 엑셀 파일을 로드하고 (필요시 복호화), 원본/복호화된 파일 객체를 얻습니다.
             xl_object, raw_file_io = load_excel(uploaded_file, password)
 
-            # 코드 2의 로직을 사용하여 엑셀 파일을 처리하고 스타일을 적용합니다.
-            # 처리된 DataFrame 딕셔너리와 스타일링된 엑셀 파일의 BytesIO 객체를 반환받습니다.
-            excel_data_dfs, styled_excel_bytes = process_excel_file_and_style(raw_file_io, password)
+            # 수정된 process_excel_file_and_style 함수 호출 (password 인자 제거)
+            excel_data_dfs, styled_excel_bytes = process_excel_file_and_style(raw_file_io)
 
             if excel_data_dfs is None or styled_excel_bytes is None:
                 st.warning("엑셀 파일 처리 중 문제가 발생했거나 처리할 데이터가 없습니다.")
