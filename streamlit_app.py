@@ -136,7 +136,7 @@ if user_id != "admin":
 
 # 관리자 모드
 else:
-    st.subheader("📂 엑셀 업로드")
+    st.subheader("📂 엑셀 업로드 및 사용자 일치 검사")
 
     uploaded_file = st.file_uploader("암호화된 Excel 파일을 업로드하세요", type=["xlsx", "xlsm"])
     if uploaded_file:
@@ -197,4 +197,9 @@ else:
                     for sheet, df in excel_data.items():
                         df.to_excel(writer, sheet_name=sheet, index=False)
                 output_buffer.seek(0)
-                output_filename = upl_
+                output_filename = uploaded_file.name.replace(".xlsx", "_processed.xlsx").replace(".xlsm", "_processed.xlsx")
+                st.download_button("📥 처리된 엑셀 다운로드", output_buffer, file_name=output_filename)
+            else:
+                st.info("📭 매칭된 사용자 없음")
+        except Exception as e:
+            st.error(f"❌ 파일 처리 실패: {e}")
