@@ -20,7 +20,10 @@ def sanitize_path(email):
     return email.replace(".", "_dot_").replace("@", "_at_")
 
 # 📩 이메일 주소 복원
-def recover_email(safe_id):
+def recover_email(safe_id: str) -> str:
+    # 예: happyhomeisfun@gmail_com → happyhomeisfun@gmail.com
+    if safe_id.endswith("_com"):
+        safe_id = safe_id[:-4] + ".com"
     return safe_id.replace("_at_", "@").replace("_dot_", ".")
 
 # 🔒 암호화된 엑셀 여부 확인
