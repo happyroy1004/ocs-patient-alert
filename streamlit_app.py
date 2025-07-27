@@ -179,7 +179,8 @@ else:
                 st.success(f"🔍 {len(matched_users)}명의 사용자와 일치하는 환자 발견됨.")
 
                 for uid, df in matched_users:
-                    st.markdown(f"### 📧 {recover_email(uid)}")
+                    real_email = recover_email(uid)
+                    st.markdown(f"### 📧 {real_email}") 
                     st.dataframe(df)
 
                 if st.button("📤 메일 보내기"):
