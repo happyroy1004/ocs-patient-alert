@@ -359,7 +359,7 @@ def process_excel_file_and_style(file_bytes_io): # password 인자 제거
 st.title("환자 내원 확인 시스템")
 
 # 사용자 아이디 입력 필드
-user_id = st.text_input("아이디를 입력하세요")
+user_id = st.text_input("아이디를 입력하세요 (예시 : example@gmail.com)")
 if not user_id:
     st.stop() # 아이디가 입력되지 않으면 애플리케이션 실행 중지
 
