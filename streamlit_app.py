@@ -130,21 +130,41 @@ def send_email(receiver, rows, sender, password):
         # 이메일 전송 실패 시 오류 메시지 반환
         return str(e)
 
-# --- 코드 2의 엑셀 처리 관련 상수 및 함수 ---
-# 시트 이름 매핑: 엑셀 시트 이름을 표준화된 키로 매핑합니다.
-sheet_name_mapping = {
-    '교정': '교정', '교정과': '교정',
-    '구강내과': '내과', '내과': '내과',
-    '구강악안면외과': '외과', '외과': '외과',
-    '보존과': '보존', '보존': '보존',
-    '보철과': '보철', '보철': '보철',
-    '소아치과': '소치', '소치': '소치',
-    '원내생진료센터': '원내생', '원내생': '원내생',
-    '원스톱협진센터': '원스톱', '원스톱': '원스톱',
-    '임플란트진료센터': '임플란트', '임플란트': '임플란트',
-    '치주과': '치주', '치주': '치주',
-    '임플실': '임플란트',
-    '원진실': '원내생'
+# --- 엑셀 처리 관련 상수 및 함수 ---
+# 시트 이름 매핑: 이제 시트 이름에 포함될 키워드를 기준으로 표준 과 이름을 매핑합니다.
+# 더 구체적인 키워드가 먼저 오도록 순서를 정하는 것이 중요합니다.
+sheet_keyword_to_department_map = {
+    '치과보철과': '보철',
+    '보철과': '보철',
+    '보철': '보철',
+    '치과교정과' : '교정',
+    '교정과': '교정',
+    '교정': '교정',
+    '구강 악안면외과' : '외과',
+    '구강악안면외과': '외과',
+    '외과': '외과',
+    '구강 내과' : '내과',
+    '구강내과': '내과',
+    '내과': '내과',
+    '치과보존과' : '보존',
+    '보존과': '보존',
+    '보존': '보존',
+    '소아치과': '소치',
+    '소치': '소치',
+    '원내생진료센터': '원내생',
+    '원내생': '원내생',
+    '원스톱 협진센터' : '원스톱',
+    '원스톱협진센터': '원스톱',
+    '원스톱': '원스톱',
+    '임플란트 진료센터' : '임플란트',
+    '임플란트진료센터': '임플란트',
+    '임플란트': '임플란트',
+    '임플' : '임플란트',
+    '치주과': '치주',
+    '치주': '치주',
+    '임플실': '임플란트', # 임플란트진료센터에 포함될 수 있지만, 명시적으로 추가
+    '원진실': '원내생', # 원내생진료센터에 포함될 수 있지만, 명시적으로 추가
+    '병리': '병리' # 새로 추가된 '병리' 과
 }
 
 # 교수진 사전: 각 시트 키에 해당하는 교수진 목록을 정의합니다.
@@ -154,10 +174,10 @@ professors_dict = {
     '외과': ['최진영', '서병무', '명훈', '김성민', '박주영', '양훈주', '한정준', '권익재'],
     '치주': ['구영', '이용무', '설양조', '구기태', '김성태', '조영단'],
     '보철': ['곽재영', '김성균', '임영준', '김명주', '권호범', '여인성', '윤형인', '박지만', '이재현', '조준호'],
-    '교정': [], '내과': [], '원내생': [], '원스톱': [], '임플란트': [],
+    '교정': [], '내과': [], '원내생': [], '원스톱': [], '임플란트': [], '병리': [] # 병리과 교수진 추가 (필요시 채워넣기)
 }
 
-# 엑셀 시트 파싱 및 정제 (코드 2의 process_sheet_v8 함수)
+# 엑셀 시트 파싱 및 정제 (process_sheet_v8 함수)
 # DataFrame을 정렬하고 교수/비교수 데이터를 분리하여 특정 형식으로 재구성합니다.
 def process_sheet_v8(df, professors_list, sheet_key):
     # '예약일시' 컬럼이 있으면 삭제합니다.
@@ -235,15 +255,29 @@ def process_excel_file_and_style(file_bytes_io): # password 인자 제거
 
     processed_sheets_dfs = {} # 처리된 DataFrame을 저장할 딕셔너리
 
-    for sheet_name in wb_raw.sheetnames:
-        ws = wb_raw[sheet_name]
+    for sheet_name_raw in wb_raw.sheetnames:
+        # 시트 이름을 소문자로 변환하여 키워드 검색 시 대소문자 무시
+        sheet_name_lower = sheet_name_raw.strip().lower()
+        
+        sheet_key = None
+        # sheet_keyword_to_department_map의 키(더 긴 키워드부터)를 순회하며 시트 이름에 포함되는지 확인
+        for keyword, department_name in sorted(sheet_keyword_to_department_map.items(), key=lambda item: len(item[0]), reverse=True):
+            if keyword.lower() in sheet_name_lower:
+                sheet_key = department_name
+                break # 첫 번째로 일치하는 키워드를 찾으면 종료
+
+        if not sheet_key:
+            st.warning(f"시트 '{sheet_name_raw}'을(를) 인식할 수 없습니다. 건너뜁니다.")
+            continue
+
+        ws = wb_raw[sheet_name_raw]
         values = list(ws.values)
         # 시트 상단의 빈 행을 제거합니다.
         while values and (values[0] is None or all(v is None for v in values[0])):
             values.pop(0)
         # 헤더와 최소 한 줄의 데이터가 있는지 확인합니다.
         if len(values) < 2:
-            st.warning(f"시트 '{sheet_name}'에 유효한 데이터가 충분하지 않습니다. 건너뜁니다.")
+            st.warning(f"시트 '{sheet_name_raw}'에 유효한 데이터가 충분하지 않습니다. 건너뜁니다.")
             continue
 
         df = pd.DataFrame(values)
@@ -255,24 +289,19 @@ def process_excel_file_and_style(file_bytes_io): # password 인자 제거
         if '예약의사' in df.columns:
             df['예약의사'] = df['예약의사'].str.strip().str.replace(" 교수님", "", regex=False)
         else:
-            st.warning(f"시트 '{sheet_name}': '예약의사' 컬럼이 없습니다. 이 시트는 처리되지 않습니다.")
-            continue
-
-        sheet_key = sheet_name_mapping.get(sheet_name.strip(), None)
-        if not sheet_key:
-            st.warning(f"시트 '{sheet_name}'을 인식할 수 없습니다. 건너뜁니다.")
+            st.warning(f"시트 '{sheet_name_raw}': '예약의사' 컬럼이 없습니다. 이 시트는 처리되지 않습니다.")
             continue
 
         professors_list = professors_dict.get(sheet_key, [])
         try:
             # `process_sheet_v8` 함수를 사용하여 시트 데이터 처리
             processed_df = process_sheet_v8(df, professors_list, sheet_key)
-            processed_sheets_dfs[sheet_name] = processed_df
+            processed_sheets_dfs[sheet_name_raw] = processed_df # 원본 시트 이름을 키로 사용
         except KeyError as e:
-            st.error(f"시트 '{sheet_name}' 처리 중 컬럼 오류: {e}. 이 시트는 건너뜁니다.")
+            st.error(f"시트 '{sheet_name_raw}' 처리 중 컬럼 오류: {e}. 이 시트는 건너뜁니다.")
             continue
         except Exception as e:
-            st.error(f"시트 '{sheet_name}' 처리 중 알 수 없는 오류: {e}. 이 시트는 건너뜁니다.")
+            st.error(f"시트 '{sheet_name_raw}' 처리 중 알 수 없는 오류: {e}. 이 시트는 건너뜁니다.")
             continue
 
     if not processed_sheets_dfs:
@@ -282,8 +311,8 @@ def process_excel_file_and_style(file_bytes_io): # password 인자 제거
     # 처리된 DataFrame들을 메모리 내 엑셀 파일로 작성하여 스타일링을 적용합니다.
     output_buffer_for_styling = io.BytesIO()
     with pd.ExcelWriter(output_buffer_for_styling, engine='openpyxl') as writer:
-        for sheet_name, df in processed_sheets_dfs.items():
-            df.to_excel(writer, sheet_name=sheet_name, index=False)
+        for sheet_name_raw, df in processed_sheets_dfs.items(): # 원본 시트 이름을 사용
+            df.to_excel(writer, sheet_name=sheet_name_raw, index=False)
 
     output_buffer_for_styling.seek(0) # 파일 포인터를 시작으로 이동
     wb_styled = load_workbook(output_buffer_for_styling) # 스타일링을 위해 워크북 다시 로드
@@ -359,7 +388,8 @@ if user_id != "admin":
         pid = st.text_input("진료번호")
         
         # 과 선택 드롭다운 추가
-        departments_for_registration = ['보철', '소치', '교정', '외과', '병리']
+        # 등록 가능한 과 목록은 sheet_keyword_to_department_map의 값들 중 중복을 제거하고 정렬하여 사용
+        departments_for_registration = sorted(list(set(sheet_keyword_to_department_map.values())))
         selected_department = st.selectbox("등록 과", departments_for_registration)
 
         submitted = st.form_submit_button("등록")
@@ -375,7 +405,7 @@ if user_id != "admin":
                 # Firebase에 새 환자 등록 시 과 정보도 저장
                 ref.push().set({"환자명": name, "진료번호": pid, "등록과": selected_department})
                 st.success(f"{name} ({pid}) [{selected_department}] 등록 완료")
-                st.rerun() # 변경 사항 반영을 위해 앱 다시 실행
+                st.rerun() # 변경 사항을 위해 앱 다시 실행
 
 # 관리자 모드 (admin으로 로그인한 경우)
 else:
@@ -434,9 +464,17 @@ else:
                     matched_rows_for_user = [] # 현재 사용자와 일치하는 엑셀 행 목록
 
                     # 처리된 엑셀 데이터의 각 시트(DataFrame)를 순회합니다.
-                    for sheet_name_excel, df_sheet in excel_data_dfs.items():
+                    for sheet_name_excel_raw, df_sheet in excel_data_dfs.items():
                         # 엑셀 시트의 과 정보 (매핑된 이름 사용)
-                        excel_sheet_department = sheet_name_mapping.get(sheet_name_excel.strip(), None)
+                        # 시트 이름을 소문자로 변환하여 키워드 검색 시 대소문자 무시
+                        excel_sheet_name_lower = sheet_name_excel_raw.strip().lower()
+                        
+                        excel_sheet_department = None
+                        for keyword, department_name in sorted(sheet_keyword_to_department_map.items(), key=lambda item: len(item[0]), reverse=True):
+                            if keyword.lower() in excel_sheet_name_lower:
+                                excel_sheet_department = department_name
+                                break # 첫 번째로 일치하는 키워드를 찾으면 종료
+                        
                         if not excel_sheet_department:
                             continue # 인식할 수 없는 엑셀 시트 과는 건너뜁니다.
 
@@ -452,7 +490,7 @@ else:
                                     
                                     # 일치하는 경우, 해당 행을 matched_rows_for_user에 추가
                                     matched_row_copy = excel_row.copy()
-                                    matched_row_copy["시트"] = sheet_name_excel # 원본 시트 이름 유지
+                                    matched_row_copy["시트"] = sheet_name_excel_raw # 원본 시트 이름 유지
                                     matched_rows_for_user.append(matched_row_copy)
                                     break # 이 엑셀 행은 매칭되었으므로 다음 엑셀 행으로 이동
 
