@@ -150,21 +150,18 @@ def process_sheet_v8(df, professors_list, sheet_key):
         if sheet_key != '보철':
             if current_time != row['예약시간']:
                 if current_time is not None:
-                    # 기존 빈 행 하나에 추가로 한 행 더 삽입
-                    final_rows.append(pd.Series([" "] * len(df.columns), index=df.columns))
+                    # 빈 행 한 줄 삽입
                     final_rows.append(pd.Series([" "] * len(df.columns), index=df.columns))
                 current_time = row['예약시간']
         else:
             if current_doctor != row['예약의사']:
                 if current_doctor is not None:
-                    # 기존 빈 행 하나에 추가로 한 행 더 삽입
-                    final_rows.append(pd.Series([" "] * len(df.columns), index=df.columns))
+                    # 빈 행 한 줄 삽입
                     final_rows.append(pd.Series([" "] * len(df.columns), index=df.columns))
                 current_doctor = row['예약의사']
         final_rows.append(row)
 
-    # 빈 행과 '<교수님>' 헤더를 추가합니다.
-    final_rows.append(pd.Series([" "] * len(df.columns), index=df.columns))
+    # 빈 행과 '<교수님>' 헤더를 추가합니다. (여기서도 한 줄만 삽입)
     final_rows.append(pd.Series([" "] * len(df.columns), index=df.columns))
     final_rows.append(pd.Series(["<교수님>"] + [" "] * (len(df.columns) - 1), index=df.columns))
 
@@ -407,7 +404,7 @@ else:
                     st.dataframe(df_matched)
 
                 # 메일 전송 버튼
-                if st.button("📤 매일 보내기"):
+                if st.button("📤 메일 보내기"):
                     for uid, df_matched in matched_users:
                         real_email = recover_email(uid)
                         result = send_email(real_email, df_matched, sender, sender_pw)
