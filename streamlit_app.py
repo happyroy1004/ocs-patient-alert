@@ -10,24 +10,24 @@ from email.mime.multipart import MIMEMultipart
 from openpyxl import load_workbook
 from openpyxl.styles import Font
 
-# 🔐 Firebase 초기화
+# Firebase 초기화
 if not firebase_admin._apps:
     cred = credentials.Certificate(st.secrets["firebase_credentials"])
     firebase_admin.initialize_app(cred, {
         'databaseURL': st.secrets["firebase"]["database_url"]
     })
 
-# 📌 Firebase-safe 경로 변환
+# Firebase-safe 경로 변환
 def sanitize_path(email):
     return email.replace(".", "_dot_").replace("@", "_at_")
 
-# 📩 이메일 주소 복원
+# 이메일 주소 복원
 def recover_email(safe_id: str) -> str:
     if safe_id.endswith("_com"):
         safe_id = safe_id[:-4] + ".com"
     return safe_id.replace("_at_", "@").replace("_dot_", ".")
 
-# 🔒 암호화된 엑셀 여부 확인
+# 암호화된 엑셀 여부 확인
 def is_encrypted_excel(file):
     try:
         file.seek(0)
@@ -35,7 +35,24 @@ def is_encrypted_excel(file):
     except Exception:
         return False
 
-# 📧 이메일 전송
+# 엑셀 로드
+def load_excel(file, password=None):
+    try:
+        file.seek(0)
+        office_file = msoffcrypto.OfficeFile(file)
+        if office_file.is_encrypted():
+            if not password:
+                raise ValueError("암호화된 파일입니다.")
+            decrypted = io.BytesIO()
+            office_file.load_key(password=password)
+            office_file.decrypt(decrypted)
+            return pd.ExcelFile(decrypted), decrypted
+        else:
+            return pd.ExcelFile(file), file
+    except Exception as e:
+        raise ValueError(f"엑셀 처리 실패: {e}")
+
+# 이메일 전송
 def send_email(receiver, rows, sender, password):
     try:
         msg = MIMEMultipart()
@@ -45,7 +62,6 @@ def send_email(receiver, rows, sender, password):
         html_table = rows.to_html(index=False, escape=False)
         body = f"다음 등록 환자가 내원했습니다:<br><br>{html_table}"
         msg.attach(MIMEText(body, 'html'))
-
         server = smtplib.SMTP('smtp.gmail.com', 587)
         server.starttls()
         server.login(sender, password)
@@ -55,83 +71,10 @@ def send_email(receiver, rows, sender, password):
     except Exception as e:
         return str(e)
 
-# ✅ 시트 처리 (예약의사 기준)
-def process_sheet(df, professors_list, sheet_key):
-    df = df.drop(columns=['예약일시'], errors='ignore')
-    if '예약의사' not in df.columns or '예약시간' not in df.columns:
-        raise KeyError("예약의사 또는 예약시간 누락")
-    df = df.sort_values(by=['예약의사', '예약시간'])
-
-    professors = df[df['예약의사'].isin(professors_list)]
-    non_professors = df[~df['예약의사'].isin(professors_list)]
-    if sheet_key != '보철':
-        non_professors = non_professors.sort_values(by=['예약시간', '예약의사'])
-    else:
-        non_professors = non_professors.sort_values(by=['예약의사', '예약시간'])
-
-    final_rows = []
-    current_time, current_doctor = None, None
-    for _, row in non_professors.iterrows():
-        if sheet_key != '보철':
-            if current_time != row['예약시간']:
-                if current_time is not None:
-                    final_rows.append(pd.Series([" "] * len(df.columns), index=df.columns))
-                current_time = row['예약시간']
-        else:
-            if current_doctor != row['예약의사']:
-                if current_doctor is not None:
-                    final_rows.append(pd.Series([" "] * len(df.columns), index=df.columns))
-                current_doctor = row['예약의사']
-        final_rows.append(row)
-
-    final_rows += [pd.Series([" "] * len(df.columns), index=df.columns)] * 2
-    final_rows.append(pd.Series(["<교수님>"] + [" "] * (len(df.columns) - 1), index=df.columns))
-
-    current_professor = None
-    for _, row in professors.iterrows():
-        if current_professor != row['예약의사']:
-            if current_professor is not None:
-                final_rows.append(pd.Series([" "] * len(df.columns), index=df.columns))
-            current_professor = row['예약의사']
-        final_rows.append(row)
-
-    final_df = pd.DataFrame(final_rows, columns=df.columns)
-    return final_df[['진료번호', '예약시간', '환자명', '예약의사', '진료내역']]
-
-# 📂 엑셀 처리 함수
-def process_excel_file(file_bytes, password):
-    sheet_name_mapping = {
-        '교정': '교정', '교정과': '교정',
-        '구강내과': '내과', '내과': '내과',
-        '구강악안면외과': '외과', '외과': '외과',
-        '보존과': '보존', '보존': '보존',
-        '보철과': '보철', '보철': '보철',
-        '소아치과': '소치', '소치': '소치',
-        '원내생진료센터': '원내생', '원내생': '원내생',
-        '원스톱협진센터': '원스톱', '원스톱': '원스톱',
-        '임플란트진료센터': '임플란트', '임플란트': '임플란트',
-        '치주과': '치주', '치주': '치주',
-        '임플실': '임플란트',
-        '원진실': '원내생'
-    }
-    professors_dict = {
-        '소치': ['김현태', '장기택', '김정욱', '현홍근', '김영재', '신터전', '송지수'],
-        '보존': ['이인복', '금기연', '이우철', '유연지', '서덕규', '이창하', '김선영', '손원준'],
-        '외과': ['최진영', '서병무', '명훈', '김성민', '박주영', '양훈주', '한정준', '권익재'],
-        '치주': ['구영', '이용무', '설양조', '구기태', '김성태', '조영단'],
-        '보철': ['곽재영', '김성균', '임영준', '김명주', '권호범', '여인성', '윤형인', '박지만', '이재현', '조준호'],
-        '교정': [], '내과': [], '원내생': [], '원스톱': [], '임플란트': []
-    }
-
-    decrypted = io.BytesIO()
-    file = msoffcrypto.OfficeFile(file_bytes)
-    file.load_key(password=password)
-    file.decrypt(decrypted)
-    decrypted.seek(0)
-
-    wb = load_workbook(filename=decrypted, data_only=True)
-    processed_sheets = {}
-
+# 엑셀 처리
+def process_excel(filelike):
+    wb = load_workbook(filelike)
+    processed = {}
     for sheet_name in wb.sheetnames:
         ws = wb[sheet_name]
         values = list(ws.values)
@@ -143,47 +86,12 @@ def process_excel_file(file_bytes, password):
         df.columns = df.iloc[0]
         df = df.drop([0]).reset_index(drop=True)
         df = df.fillna("").astype(str)
-        df['예약의사'] = df['예약의사'].str.strip().str.replace(" 교수님", "", regex=False)
         df['환자명'] = df['환자명'].str.strip()
-        df['진료번호'] = df['진료번호'].str.strip()
+        df['진료번호'] = df['진료번호'].str.strip().str.zfill(8)
+        processed[sheet_name] = df
+    return processed
 
-        sheet_key = sheet_name_mapping.get(sheet_name.strip(), None)
-        if not sheet_key:
-            continue
-        professors_list = professors_dict.get(sheet_key, [])
-        processed_df = process_sheet(df, professors_list, sheet_key)
-        processed_sheets[sheet_name] = processed_df
-
-    if not processed_sheets:
-        return None, None
-
-    output_buffer = io.BytesIO()
-    with pd.ExcelWriter(output_buffer, engine='openpyxl') as writer:
-        for sheet_name, df in processed_sheets.items():
-            df.to_excel(writer, sheet_name=sheet_name, index=False)
-    output_buffer.seek(0)
-
-    wb2 = load_workbook(output_buffer)
-    for sheet_name in wb2.sheetnames:
-        ws = wb2[sheet_name]
-        header = {cell.value: idx + 1 for idx, cell in enumerate(ws[1])}
-        for row in ws.iter_rows(min_row=2, max_row=ws.max_row):
-            if row[0].value == "<교수님>":
-                for cell in row:
-                    if cell.value:
-                        cell.font = Font(bold=True)
-            if sheet_name.strip() == "교정" and '진료내역' in header:
-                idx = header['진료내역'] - 1
-                cell = row[idx]
-                if any(keyword in str(cell.value) for keyword in ['본딩', 'bonding']):
-                    cell.font = Font(bold=True)
-
-    final_output = io.BytesIO()
-    wb2.save(final_output)
-    final_output.seek(0)
-    return final_output, processed_sheets
-
-# 🌐 Streamlit 시작
+# Streamlit 시작
 st.title("🩺 환자 내원 확인 시스템")
 user_id = st.text_input("아이디를 입력하세요")
 if not user_id:
@@ -191,7 +99,7 @@ if not user_id:
 
 firebase_key = sanitize_path(user_id)
 
-# 👤 사용자 모드
+# 사용자 모드
 if user_id != "admin":
     st.subheader("📝 내 환자 등록")
     ref = db.reference(f"patients/{firebase_key}")
@@ -226,9 +134,10 @@ if user_id != "admin":
                 st.success(f"{name} ({pid}) 등록 완료")
                 st.rerun()
 
-# 🔑 관리자 모드
+# 관리자 모드
 else:
-    st.subheader("📂 엑셀 업로드 및 사용자 일치 검사")
+    st.subheader("📂 엑셀 업로드")
+
     uploaded_file = st.file_uploader("암호화된 Excel 파일을 업로드하세요", type=["xlsx", "xlsm"])
     if uploaded_file:
         password = None
@@ -237,14 +146,10 @@ else:
             if not password:
                 st.stop()
 
-        sender = st.secrets["gmail"]["sender"]
-        sender_pw = st.secrets["gmail"]["app_password"]
-
         try:
-            processed_file, processed_sheets = process_excel_file(uploaded_file, password)
-            if processed_file is None:
-                st.warning("⚠ 처리된 시트 없음")
-                st.stop()
+            xl, raw_file = load_excel(uploaded_file, password)
+            sender = st.secrets["gmail"]["sender"]
+            sender_pw = st.secrets["gmail"]["app_password"]
 
             users_ref = db.reference("patients")
             all_users = users_ref.get()
@@ -252,19 +157,18 @@ else:
                 st.warning("❗ 등록된 사용자가 없습니다.")
                 st.stop()
 
+            excel_data = process_excel(raw_file)
             matched_users = []
+
             for uid, plist in all_users.items():
-                registered_set = set((v["환자명"].strip(), v["진료번호"].strip()) for v in plist.values())
+                registered_set = set(
+                    (v["환자명"].strip(), v["진료번호"].strip().zfill(8)) for v in plist.values())
                 matched_rows = []
 
-                for sheet_df in processed_sheets.values():
-                    sheet_df = sheet_df.astype(str)
-                    sheet_df["환자명"] = sheet_df["환자명"].str.strip()
-                    sheet_df["진료번호"] = sheet_df["진료번호"].str.strip()
-                    matched = sheet_df[
-                        sheet_df.apply(lambda row: (row["환자명"], row["진료번호"]) in registered_set, axis=1)
-                    ]
+                for sheet, df in excel_data.items():
+                    matched = df[df.apply(lambda row: (row["환자명"], row["진료번호"]) in registered_set, axis=1)]
                     if not matched.empty:
+                        matched["시트"] = sheet
                         matched_rows.append(matched)
 
                 if matched_rows:
@@ -274,23 +178,23 @@ else:
             if matched_users:
                 st.success(f"🔍 {len(matched_users)}명의 사용자와 일치하는 환자 발견됨.")
 
+                for uid, df in matched_users:
+                    st.markdown(f"### 📧 {recover_email(uid)}")
+                    st.dataframe(df)
+
                 if st.button("📤 메일 보내기"):
-                    for uid, df_matched in matched_users:
+                    for uid, df in matched_users:
                         real_email = recover_email(uid)
-                        result = send_email(real_email, df_matched, sender, sender_pw)
+                        result = send_email(real_email, df, sender, sender_pw)
                         if result is True:
                             st.success(f"✅ {real_email} 전송 완료")
                         else:
                             st.error(f"❌ {real_email} 전송 실패: {result}")
-                else:
-                    for uid, df in matched_users:
-                        st.markdown(f"### 📧 {recover_email(uid)}")
-                        st.dataframe(df)
-            else:
-                st.info("📭 매칭된 사용자 없음")
 
-            output_name = uploaded_file.name.replace(".xlsx", "_processed.xlsx").replace(".xlsm", "_processed.xlsx")
-            st.download_button("📥 처리된 엑셀 다운로드", data=processed_file, file_name=output_name)
-
-        except Exception as e:
-            st.error(f"❌ 처리 실패: {e}")
+                # 엑셀 다운로드 버튼
+                output_buffer = io.BytesIO()
+                with pd.ExcelWriter(output_buffer, engine='openpyxl') as writer:
+                    for sheet, df in excel_data.items():
+                        df.to_excel(writer, sheet_name=sheet, index=False)
+                output_buffer.seek(0)
+                output_filename = upl_
