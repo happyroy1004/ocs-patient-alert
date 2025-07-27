@@ -349,7 +349,7 @@ if user_id != "admin":
         pid = st.text_input("진료번호")
         
         # 과 선택 드롭다운 추가
-        departments_for_registration = ['보철', '소치', '교정', '외과', '병리']
+        departments_for_registration = ['보철', '소치', '교정', '외과', '병리', '내과']
         selected_department = st.selectbox("등록 과", departments_for_registration)
 
         submitted = st.form_submit_button("등록")
