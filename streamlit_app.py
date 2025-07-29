@@ -10,15 +10,25 @@ from email.mime.multipart import MIMEMultipart
 from openpyxl import load_workbook
 from openpyxl.styles import Font
 import re # 정규 표현식 모듈 임포트
+import json # JSON 모듈 임포트 추가
 
 # Firebase 초기화
 # Firebase 관리자 SDK를 초기화합니다.
-# `st.secrets`에서 Firebase 서비스 계정 자격 증명을 가져옵니다.
+# `st.secrets`에서 Firebase 서비스 계정 자격 증명을 가져와 JSON으로 파싱합니다.
 if not firebase_admin._apps:
-    cred = credentials.Certificate(st.secrets["firebase_credentials"])
-    firebase_admin.initialize_app(cred, {
-        'databaseURL': st.secrets["firebase"]["database_url"]
-    })
+    try:
+        # secrets.toml에서 JSON 문자열을 가져와 파이썬 딕셔너리로 로드
+        firebase_credentials_json_str = st.secrets["FIREBASE_SERVICE_ACCOUNT_JSON"]
+        firebase_credentials_dict = json.loads(firebase_credentials_json_str)
+        
+        cred = credentials.Certificate(firebase_credentials_dict)
+        firebase_admin.initialize_app(cred, {
+            'databaseURL': st.secrets["firebase"]["database_url"]
+        })
+    except Exception as e:
+        st.error(f"Firebase 초기화 오류: {e}")
+        st.info("secrets.toml 파일의 Firebase 설정(FIREBASE_SERVICE_ACCOUNT_JSON)을 확인해주세요.")
+        st.stop() # Firebase 초기화 실패 시 앱 실행 중지
 
 # Firebase-safe 경로 변환
 # 이메일 주소를 Firebase Realtime Database 경로에 안전하게 사용할 수 있도록 변환합니다.
@@ -81,7 +91,7 @@ def send_email(receiver, rows, sender, password, date_str=None):
         subject_prefix = ""
         if date_str:
             subject_prefix = f"{date_str}일에 내원하는 "
-        msg['Subject'] = f"📌 {subject_prefix}등록 환자 내원 알림"
+        msg['Subject'] = f"{subject_prefix}등록 환자 내원 알림" # 이모지 제거
         
         # HTML 테이블에 CSS 스타일 추가하여 가독성 향상
         html_table = rows.to_html(index=False, escape=False)
@@ -157,7 +167,6 @@ sheet_keyword_to_department_map = {
     '보존과': '보존',
     '보존': '보존',
     '소아치과': '소치',
-    '소아 치과' : '소치',
     '소치': '소치',
     '원내생진료센터': '원내생',
     '원내생': '원내생',
@@ -360,7 +369,7 @@ def process_excel_file_and_style(file_bytes_io): # password 인자 제거
 st.title("환자 내원 확인 시스템")
 
 # 사용자 아이디 입력 필드
-user_id = st.text_input("아이디를 입력하세요 (예: example@gmail.com)")
+user_id = st.text_input("아이디를 입력하세요")
 if not user_id:
     st.stop() # 아이디가 입력되지 않으면 애플리케이션 실행 중지
 
