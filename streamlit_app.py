@@ -290,7 +290,7 @@ def process_excel_file_and_style(file_bytes_io): # password 인자 제거
         ws = wb_raw[sheet_name_raw]
         values = list(ws.values)
         # 시트 상단의 빈 행을 제거합니다.
-        while values and (values[0] is None or all(v is None for v in values[0])):
+        while values and (values[0] is None or all((v is None or str(v).strip() == "") for v in values[0])):
             values.pop(0)
         # 헤더와 최소 한 줄의 데이터가 있는지 확인합니다.
         if len(values) < 2:
