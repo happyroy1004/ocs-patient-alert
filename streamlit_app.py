@@ -293,7 +293,7 @@ def process_excel_file_and_style(file_bytes_io):
 st.title("환자 내원 확인 시스템")
 
 # 사용자 아이디 입력 필드
-user_id = st.text_input("아이디를 입력하세요 (예시:example@gmail.com 또는 admin)")
+user_id = st.text_input("아이디를 입력하세요 (예시:example@gmail.com)")
 
 # --- 이메일 유효성 검사 적용 ---
 if user_id: # user_id가 비어있지 않을 때만 검사
@@ -301,7 +301,7 @@ if user_id: # user_id가 비어있지 않을 때만 검사
         st.error("올바른 이메일 주소 형식이 아닙니다. 'user@example.com'과 같이 입력해주세요.")
         st.stop() # 올바르지 않은 형식일 경우 애플리케이션 실행 중지
 elif not user_id: # 이메일 입력이 아예 안된 경우 (첫 로드 시 등)
-    st.info("아이디(이메일 주소 또는 admin)를 입력해주세요.")
+    st.info("알림을 받을 이메일 주소를 입력해주세요.")
     st.stop()
 # ---------------------------------
 
