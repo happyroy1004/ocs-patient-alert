@@ -23,7 +23,7 @@ if not firebase_admin._apps:
     try:
         firebase_credentials_json_str = st.secrets["FIREBASE_SERVICE_ACCOUNT_JSON"]
         firebase_credentials_dict = json.loads(firebase_credentials_json_str)
-        
+
         cred = credentials.Certificate(firebase_credentials_dict)
         firebase_admin.initialize_app(cred, {
             'databaseURL': st.secrets["firebase"]["database_url"]
@@ -75,14 +75,14 @@ def send_email(receiver, rows, sender, password, date_str=None):
         msg = MIMEMultipart()
         msg['From'] = sender
         msg['To'] = receiver
-        
+
         subject_prefix = ""
         if date_str:
             subject_prefix = f"{date_str}일에 내원하는 "
         msg['Subject'] = f"{subject_prefix}등록 환자 내원 알림"
-        
+
         html_table = rows.to_html(index=False, escape=False)
-        
+
         style = """
         <style>
             table {
@@ -115,7 +115,7 @@ def send_email(receiver, rows, sender, password, date_str=None):
             }
         </style>
         """
-        
+
         body = f"다음 등록 환자가 내원했습니다:<br><br><div class='table-container'>{style}{html_table}</div>"
         msg.attach(MIMEText(body, 'html'))
 
@@ -212,7 +212,7 @@ def process_excel_file_and_style(file_bytes_io):
 
     for sheet_name_raw in wb_raw.sheetnames:
         sheet_name_lower = sheet_name_raw.strip().lower()
-        
+
         sheet_key = None
         for keyword, department_name in sorted(sheet_keyword_to_department_map.items(), key=lambda item: len(item[0]), reverse=True):
             if keyword.lower() in sheet_name_lower:
@@ -235,7 +235,7 @@ def process_excel_file_and_style(file_bytes_io):
         df.columns = df.iloc[0]
         df = df.drop([0]).reset_index(drop=True)
         df = df.fillna("").astype(str)
-        
+
         if '예약의사' in df.columns:
             df['예약의사'] = df['예약의사'].str.strip().str.replace(" 교수님", "", regex=False)
         else:
@@ -293,15 +293,15 @@ def process_excel_file_and_style(file_bytes_io):
 st.title("환자 내원 확인 시스템")
 
 # 사용자 아이디 입력 필드
-user_id = st.text_input("아이디를 입력하세요 (예시:example@gmail.com)")
+user_id = st.text_input("아이디를 입력하세요 (예시:example@gmail.com 또는 admin)")
 
 # --- 이메일 유효성 검사 적용 ---
 if user_id: # user_id가 비어있지 않을 때만 검사
-    if not is_valid_email(user_id):
+    if user_id != "admin" and not is_valid_email(user_id): # "admin"이 아닐 때만 이메일 유효성 검사
         st.error("올바른 이메일 주소 형식이 아닙니다. 'user@example.com'과 같이 입력해주세요.")
         st.stop() # 올바르지 않은 형식일 경우 애플리케이션 실행 중지
 elif not user_id: # 이메일 입력이 아예 안된 경우 (첫 로드 시 등)
-    st.info("아이디(이메일 주소)를 입력해주세요.")
+    st.info("아이디(이메일 주소 또는 admin)를 입력해주세요.")
     st.stop()
 # ---------------------------------
 
@@ -332,7 +332,7 @@ if user_id != "admin":
     with st.form("register_form"):
         name = st.text_input("환자명")
         pid = st.text_input("진료번호")
-        
+
         departments_for_registration = sorted(list(set(sheet_keyword_to_department_map.values())))
         selected_department = st.selectbox("등록 과", departments_for_registration)
 
@@ -366,7 +366,7 @@ else:
             file_name = uploaded_file.name
             date_match = re.search(r'(\d{4})', file_name)
             extracted_date = date_match.group(1) if date_match else None
-            
+
             xl_object, raw_file_io = load_excel(uploaded_file, password)
 
             excel_data_dfs, styled_excel_bytes = process_excel_file_and_style(raw_file_io)
@@ -401,13 +401,13 @@ else:
 
                     for sheet_name_excel_raw, df_sheet in excel_data_dfs.items():
                         excel_sheet_name_lower = sheet_name_excel_raw.strip().lower()
-                        
+
                         excel_sheet_department = None
                         for keyword, department_name in sorted(sheet_keyword_to_department_map.items(), key=lambda item: len(item[0]), reverse=True):
                             if keyword.lower() in excel_sheet_name_lower:
                                 excel_sheet_department = department_name
                                 break
-                        
+
                         if not excel_sheet_department:
                             continue
 
@@ -419,7 +419,7 @@ else:
                                 if (registered_patient["환자명"] == excel_patient_name and
                                     registered_patient["진료번호"] == excel_patient_pid and
                                     registered_patient["등록과"] == excel_sheet_department):
-                                    
+
                                     matched_row_copy = excel_row.copy()
                                     matched_row_copy["시트"] = sheet_name_excel_raw
                                     matched_rows_for_user.append(matched_row_copy)
