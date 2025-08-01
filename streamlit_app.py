@@ -37,12 +37,17 @@ if not firebase_admin._apps:
 def sanitize_path(email):
     return email.replace(".", "_dot_").replace("@", "_at_")
 
-# 이메일 주소 복원
+# 이메일 주소 복원 (이제 거의 사용되지 않음, 직접 email 필드를 사용하므로)
 def recover_email(safe_id: str) -> str:
+    # 이 함수는 이제 users 노드에서 직접 이메일 필드를 사용하므로,
+    # Firebase 키에서 이메일을 "복원"할 필요가 줄어들었습니다.
+    # 하지만 기존의 Firebase 키가 이메일 기반이므로 여전히 필요할 수 있습니다.
     email = safe_id.replace("_at_", "@").replace("_dot_", ".")
-    if email.endswith("_com"):
+    # _com 접미사 처리가 필요한 경우에만 추가
+    if not email.endswith(".com") and email.endswith("_com"):
         email = email[:-4] + ".com"
     return email
+
 
 # 암호화된 엑셀 여부 확인
 def is_encrypted_excel(file):
@@ -267,7 +272,7 @@ def process_excel_file_and_style(file_bytes_io):
 
     for sheet_name in wb_styled.sheetnames:
         ws = wb_styled[sheet_name]
-        header = {cell.value: idx + 1 for idx, cell, in enumerate(ws[1])}
+        header = {cell.value: idx + 1 for idx, cell in enumerate(ws[1])}
 
         for row_idx, row in enumerate(ws.iter_rows(min_row=2, max_row=ws.max_row), start=2):
             if row[0].value == "<교수님>":
@@ -296,8 +301,7 @@ st.title("환자 내원 확인 시스템")
 user_name = st.text_input("사용자 이름을 입력하세요 (예시: 홍길동)")
 user_id = st.text_input("아이디를 입력하세요 (예시: example@gmail.com)")
 
-# --- 이메일 유효성 검사 적용 ---
-# ## 변경 사항: user_name도 함께 검사 조건에 추가
+# --- 이메일/이름 유효성 검사 적용 ---
 if user_id and user_name:
     if user_id != "admin" and not is_valid_email(user_id):
         st.error("올바른 이메일 주소 형식이 아닙니다. 'user@example.com'과 같이 입력해주세요.")
@@ -309,28 +313,26 @@ elif not user_id or not user_name:
 # Firebase 경로에 사용할 안전한 키 생성
 firebase_key = sanitize_path(user_id)
 
-# ## 변경 사항: users 노드를 위한 참조 추가
-users_db_ref = db.reference("users")
-user_data_ref = users_db_ref.child(firebase_key)
+# ## 변경 사항: users 노드와 patients 노드를 위한 참조 분리
+users_ref = db.reference("users") # 사용자 이름 등 메타 정보 저장용
+patients_ref_for_user = db.reference(f"patients/{firebase_key}") # 해당 사용자의 환자 정보 저장용
 
-# ## 변경 사항: 사용자 정보 (이름, 이메일) Firebase에 저장 또는 업데이트
-# admin이 아닌 경우에만 사용자 정보 저장
+# ## 변경 사항: 사용자 정보 (이름, 이메일) Firebase users 노드에 저장 또는 업데이트
+# admin이 아닌 경우에만 사용자 정보 저장/업데이트
 if user_id != "admin":
-    current_user_data = user_data_ref.get()
-    if not current_user_data or current_user_data.get("name") != user_name or current_user_data.get("email") != user_id:
-        user_data_ref.update({"name": user_name, "email": user_id})
+    current_user_meta_data = users_ref.child(firebase_key).get()
+    if not current_user_meta_data or current_user_meta_data.get("name") != user_name or current_user_meta_data.get("email") != user_id:
+        users_ref.child(firebase_key).update({"name": user_name, "email": user_id})
         st.success(f"사용자 정보가 업데이트되었습니다: {user_name} ({user_id})")
 
 # 사용자 모드 (admin이 아닌 경우)
 if user_id != "admin":
-    st.subheader(f"{user_name}님의 등록 환자 목록") # ## 변경 사항: 사용자 이름 표시
+    st.subheader(f"{user_name}님의 등록 환자 목록") # 사용자 이름 표시
     
-    # ## 변경 사항: 환자 데이터 참조 경로 변경
-    patients_ref = user_data_ref.child("patients")
-    existing_data = patients_ref.get()
+    existing_patient_data = patients_ref_for_user.get() # 기존 환자 데이터 로드
 
-    if existing_data:
-        for key, val in existing_data.items():
+    if existing_patient_data:
+        for key, val in existing_patient_data.items():
             with st.container():
                 col1, col2 = st.columns([0.85, 0.15])
                 with col1:
@@ -338,7 +340,7 @@ if user_id != "admin":
                     st.markdown(f"환자명: {val['환자명']} / 진료번호: {val['진료번호']} / 등록과: {department_display}")
                 with col2:
                     if st.button("삭제", key=key):
-                        patients_ref.child(key).delete() # ## 변경 사항: 삭제 경로 변경
+                        patients_ref_for_user.child(key).delete() # 삭제 경로 유지
                         st.success("삭제 완료")
                         st.rerun()
     else:
@@ -355,12 +357,12 @@ if user_id != "admin":
         if submitted:
             if not name or not pid:
                 st.warning("모든 항목을 입력해주세요.")
-            elif existing_data and any(
+            elif existing_patient_data and any( # 기존 데이터에서 중복 확인
                 v["환자명"] == name and v["진료번호"] == pid and v.get("등록과") == selected_department
-                for v in existing_data.values()):
+                for v in existing_patient_data.values()):
                 st.error("이미 등록된 환자입니다.")
             else:
-                patients_ref.push().set({"환자명": name, "진료번호": pid, "등록과": selected_department}) # ## 변경 사항: 등록 경로 변경
+                patients_ref_for_user.push().set({"환자명": name, "진료번호": pid, "등록과": selected_department}) # 등록 경로 유지
                 st.success(f"{name} ({pid}) [{selected_department}] 등록 완료")
                 st.rerun()
 
@@ -390,27 +392,31 @@ else:
                 st.warning("엑셀 파일 처리 중 문제가 발생했거나 처리할 데이터가 없습니다.")
                 st.stop()
 
-            sender = st.secrets["GMAIL_SENDER"] # ## 변경 사항: secrets 키 이름 일관성 유지
-            sender_pw = st.secrets["GMAIL_APP_PASSWORD"] # ## 변경 사항: secrets 키 이름 일관성 유지
+            sender = st.secrets["GMAIL_SENDER"]
+            sender_pw = st.secrets["GMAIL_APP_PASSWORD"]
 
-            # ## 변경 사항: users 노드에서 모든 사용자 정보 가져오기
-            all_users_data = users_db_ref.get() # users_db_ref는 위에서 정의됨
+            # ## 변경 사항: 모든 사용자 메타 정보 로드
+            all_users_meta = users_ref.get() # users 노드에서 (이메일, 이름) 정보를 가져옴
 
-            if not all_users_data:
-                st.warning("Firebase에 등록된 사용자가 없습니다. 이메일 전송은 불가능합니다.")
+            # ## 변경 사항: 모든 환자 데이터 로드 (기존 patients 노드에서)
+            all_patients_data = db.reference("patients").get()
+
+            if not all_users_meta or not all_patients_data:
+                st.warning("Firebase에 등록된 사용자 또는 환자 데이터가 없습니다. 이메일 전송은 불가능합니다.")
 
             matched_users = []
 
-            if all_users_data:
-                for uid_safe, user_details in all_users_data.items():
-                    # ## 변경 사항: 사용자 이름과 이메일 추출
-                    user_email = user_details.get("email")
-                    user_display_name = user_details.get("name", user_email) # 이름이 없으면 이메일로 표시
+            if all_users_meta and all_patients_data:
+                for uid_safe, user_meta in all_users_meta.items():
+                    user_email = user_meta.get("email")
+                    user_display_name = user_meta.get("name", user_email) # 이름이 없으면 이메일로 표시
+
+                    # 해당 사용자의 환자 데이터 (기존 patients 노드에서)
+                    registered_patients_for_this_user = all_patients_data.get(uid_safe, {})
 
                     registered_patients_data = []
-                    # ## 변경 사항: 환자 데이터는 user_details['patients'] 아래에 있음
-                    if user_details.get('patients'):
-                        for key, val in user_details['patients'].items():
+                    if registered_patients_for_this_user:
+                        for key, val in registered_patients_for_this_user.items():
                             registered_patients_data.append({
                                 "환자명": val["환자명"].strip(),
                                 "진료번호": val["진료번호"].strip().zfill(8),
@@ -453,19 +459,19 @@ else:
             if matched_users:
                 st.success(f"{len(matched_users)}명의 사용자와 일치하는 환자 발견됨.")
 
-                for user_match_info in matched_users: # ## 변경 사항: 반복문 변수명 변경
-                    st.markdown(f"**수신자:** {user_match_info['name']} ({user_match_info['email']})") # ## 변경 사항: 이름과 이메일 모두 표시
+                for user_match_info in matched_users:
+                    st.markdown(f"**수신자:** {user_match_info['name']} ({user_match_info['email']})")
                     st.dataframe(user_match_info['data'])
 
                 if st.button("메일 보내기"):
-                    for user_match_info in matched_users: # ## 변경 사항: 반복문 변수명 변경
-                        real_email = user_match_info['email'] # ## 변경 사항: 저장된 이메일 사용
+                    for user_match_info in matched_users:
+                        real_email = user_match_info['email']
                         df_matched = user_match_info['data']
                         result = send_email(real_email, df_matched, sender, sender_pw, date_str=extracted_date)
                         if result is True:
-                            st.success(f"**{user_match_info['name']}** ({real_email}) 전송 완료") # ## 변경 사항: 이름과 이메일 모두 표시
+                            st.success(f"**{user_match_info['name']}** ({real_email}) 전송 완료")
                         else:
-                            st.error(f"**{user_match_info['name']}** ({real_email}) 전송 실패: {result}") # ## 변경 사항: 이름과 이메일 모두 표시
+                            st.error(f"**{user_match_info['name']}** ({real_email}) 전송 실패: {result}")
             else:
                 st.info("엑셀 파일 처리 완료. 매칭된 환자가 없습니다.")
 
