@@ -307,7 +307,7 @@ if user_id and user_name:
         st.error("올바른 이메일 주소 형식이 아닙니다. 'user@example.com'과 같이 입력해주세요.")
         st.stop()
 elif not user_id or not user_name:
-    st.info("내원 알람 노티를 받을 이메일 주소와 사용자 이름을 입력해주세요.")
+    st.info("내원 알람 노티를 받을 사용자의 이름과 이메일 주소를 입력해주세요.")
     st.stop()
 
 # Firebase 경로에 사용할 안전한 키 생성
