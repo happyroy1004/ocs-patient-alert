@@ -21,18 +21,18 @@ def is_valid_email(email):
 if not firebase_admin._apps:
     try:
         # secrets.toml 파일에서 Firebase 서비스 계정 JSON 문자열 로드
-        # [firebase] 섹션이 없으므로, 직접 루트 레벨 키를 참조합니다.
-        # 만약 secrets.toml에 [firebase] 섹션이 있다면 st.secrets["firebase"]["FIREBASE_SERVICE_ACCOUNT_JSON"] 처럼 변경해야 합니다.
-        firebase_credentials_json_str = st.secrets["FIREBASE_SERVICE_ACCOUNT_JSON"]
+        # [firebase] 섹션 아래에서 찾도록 변경
+        firebase_credentials_json_str = st.secrets["firebase"]["FIREBASE_SERVICE_ACCOUNT_JSON"]
         firebase_credentials_dict = json.loads(firebase_credentials_json_str)
 
         cred = credentials.Certificate(firebase_credentials_dict)
         firebase_admin.initialize_app(cred, {
-            'databaseURL': st.secrets["FIREBASE_DATABASE_URL"]
+            # databaseURL 키를 [firebase] 섹션 아래에서 찾도록 변경
+            'databaseURL': st.secrets["firebase"]["database_url"]
         })
     except Exception as e:
         st.error(f"Firebase 초기화 오류: {e}")
-        st.info("secrets.toml 파일의 Firebase 설정(FIREBASE_SERVICE_ACCOUNT_JSON 또는 FIREBASE_DATABASE_URL)을 확인해주세요.")
+        st.info("secrets.toml 파일의 Firebase 설정(FIREBASE_SERVICE_ACCOUNT_JSON 또는 database_url)을 [firebase] 섹션 아래에 올바르게 작성했는지 확인해주세요.")
         st.stop()
 
 # Firebase-safe 경로 변환 (이메일을 Firebase 키로 사용하기 위해)
@@ -203,7 +203,8 @@ def process_sheet_v8(df, professors_list, sheet_key):
         if current_professor != row['예약의사']:
             if current_professor is not None:
                 final_rows.append(pd.Series([" "] * len(df.columns), index=df.columns))
-            current_professor = row['예 예약의사']
+            # 이 부분이 오타였습니다! '예 예약의사' -> '예약의사'로 수정
+            current_professor = row['예약의사']
         final_rows.append(row)
 
     final_df = pd.DataFrame(final_rows, columns=df.columns)
@@ -252,6 +253,13 @@ def process_excel_file_and_style(file_bytes_io):
         df.columns = df.iloc[0] # 첫 행을 컬럼명으로
         df = df.drop([0]).reset_index(drop=True) # 첫 행 삭제 및 인덱스 재설정
         df = df.fillna("").astype(str) # NaN 값 채우고 모든 컬럼을 문자열로
+
+        # 여기서 '예 예약의사'와 같은 오타 컬럼 이름을 '예약의사'로 정규화하는 로직 추가
+        # (만약 엑셀 파일의 컬럼명이 실제로 '예 예약의사'였다면 이 로직이 필요)
+        # 현재는 '예약의사'로 정확하다면 이 부분은 필요 없을 수 있습니다.
+        # 그러나 혹시 모를 상황에 대비하여 추가해 둘 수는 있습니다.
+        # if '예 예약의사' in df.columns:
+        #     df = df.rename(columns={'예 예약의사': '예약의사'})
 
         if '예약의사' in df.columns:
             df['예약의사'] = df['예약의사'].str.strip().str.replace(" 교수님", "", regex=False)
