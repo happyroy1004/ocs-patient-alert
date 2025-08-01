@@ -191,7 +191,7 @@ def process_sheet_v8(df, professors_list, sheet_key):
             if current_doctor != row['예약의사']:
                 if current_doctor is not None:
                     final_rows.append(pd.Series([" "] * len(df.columns), index=df.columns))
-                current_doctor = row['예약의사'] # <-- 이 부분 오타 수정 완료
+                current_doctor = row['예약의사']
         final_rows.append(row)
 
     # 교수님 데이터 처리 전 구분선 및 "<교수님>" 표기
@@ -217,7 +217,9 @@ def process_excel_file_and_style(file_bytes_io):
     file_bytes_io.seek(0)
 
     try:
-        wb_raw = load_workbook(filename=file_bytes_io, data_only=True)
+        # 엑셀 복구창 방지를 위해 keep_vba=False (VBA 매크로 제거), data_only=True 유지
+        # read_only=False (기본값)로 쓰기 모드 유지
+        wb_raw = load_workbook(filename=file_bytes_io, keep_vba=False, data_only=True)
     except Exception as e:
         raise ValueError(f"엑셀 워크북 로드 실패: {e}")
 
@@ -418,6 +420,7 @@ else:
 
             # 엑셀 파일 로드 및 처리
             xl_object, raw_file_io = load_excel(uploaded_file, password)
+            # 여기 load_workbook 함수 호출 부분에서 keep_vba=False, data_only=True 옵션을 사용
             excel_data_dfs, styled_excel_bytes = process_excel_file_and_style(raw_file_io)
 
             if excel_data_dfs is None or styled_excel_bytes is None:
@@ -425,8 +428,8 @@ else:
                 st.stop()
 
             # 이메일 전송을 위한 발신자 정보 (secrets.toml에서 로드)
-            sender = st.secrets["gmail"]["sender"] # <-- 여기 변경
-            sender_pw = st.secrets["gmail"]["app_password"] # <-- 여기 변경
+            sender = st.secrets["gmail"]["sender"]
+            sender_pw = st.secrets["gmail"]["app_password"]
 
             # Firebase에서 모든 사용자 메타 정보 및 모든 환자 데이터 로드
             all_users_meta = users_ref.get()
