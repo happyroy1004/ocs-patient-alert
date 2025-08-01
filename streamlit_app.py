@@ -527,7 +527,3 @@ else:
         except Exception as e:
             st.error(f"예상치 못한 오류 발생: {e}")
 
----
-# --- 푸터 ---
-st.markdown("---")
-st.markdown("제작자 : 황성연")
