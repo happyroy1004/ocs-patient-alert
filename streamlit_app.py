@@ -181,24 +181,24 @@ def process_sheet_v8(df, professors_list, sheet_key):
     empty_row_series = pd.Series([pd.NA] * len(df.columns), index=df.columns)
     # 첫 번째 컬럼에만 빈 문자열을 넣어 엑셀에서 빈 셀로 인식되도록 함
     if not empty_row_series.empty:
-        empty_row_series.iloc[0] = "" # 빈 셀 삽입 시 NA 대신 빈 문자열로 초기화
+        empty_row_series.iloc[0] = ""
 
     # 교수님 아닌 데이터 처리 (빈 줄 삽입 로직)
     for _, row in non_professors.iterrows():
         if sheet_key != '보철':
             if current_time != row['예약시간']:
                 if current_time is not None:
-                    final_rows.append(empty_row_series.copy()) # 수정된 empty_row_series 사용
+                    final_rows.append(empty_row_series.copy())
                 current_time = row['예약시간']
         else:
             if current_doctor != row['예약의사']:
                 if current_doctor is not None:
-                    final_rows.append(empty_row_series.copy()) # 수정된 empty_row_series 사용
+                    final_rows.append(empty_row_series.copy())
                 current_doctor = row['예약의사']
         final_rows.append(row)
 
     # 교수님 데이터 처리 전 구분선 및 "<교수님>" 표기
-    final_rows.append(empty_row_series.copy()) # 수정된 empty_row_series 사용
+    final_rows.append(empty_row_series.copy())
     # '<교수님>'이 들어갈 줄 생성
     professor_header_row = empty_row_series.copy()
     if not professor_header_row.empty:
@@ -209,7 +209,7 @@ def process_sheet_v8(df, professors_list, sheet_key):
     for _, row in professors.iterrows():
         if current_professor != row['예약의사']:
             if current_professor is not None:
-                final_rows.append(empty_row_series.copy()) # 수정된 empty_row_series 사용
+                final_rows.append(empty_row_series.copy())
             current_professor = row['예약의사']
         final_rows.append(row)
 
@@ -254,20 +254,23 @@ def process_excel_file_and_style(file_bytes_io):
             st.warning(f"시트 '{sheet_name_raw}'에 유효한 데이터가 충분하지 않습니다. 건너킵니다.")
             continue
 
-        # 컬럼명 추출 및 정리 (가장 중요한 변경 부분)
-        # 첫 번째 행의 값들을 안전하게 문자열로 변환하고 공백 제거
+        # --- 이 부분이 NAType 오류를 방지하기 위한 핵심 수정 ---
+        # 컬럼명 추출 및 정리: 첫 번째 행의 값들을 안전하게 문자열로 변환하고 공백 제거
+        # None이나 NaT를 빈 문자열로 처리하여 .strip() 오류 방지
         columns = [str(col).strip() if col is not None and not pd.isna(col) else "" for col in values[0]]
 
         # DataFrame 생성 시, 첫 행은 컬럼으로, 나머지 행은 데이터로 사용
+        # 이 시점에서 values[1:]에도 None이나 NaT가 있을 수 있으므로 fillna("") 후에 astype(str) 적용
         df = pd.DataFrame(values[1:], columns=columns)
         
-        # '예약일시' 컬럼이 존재할 경우 삭제 (이미 process_sheet_v8에 있지만 여기서 한 번 더 확인)
+        # '예약일시' 컬럼이 존재할 경우 삭제
         df = df.drop(columns=['예약일시'], errors='ignore')
         
-        # 모든 컬럼을 문자열로 변환하고 NaN은 빈 문자열로 채우기
+        # 모든 컬럼을 문자열로 변환하고 NaN은 빈 문자열로 채우기 (데이터프레임 생성 직후에 다시 적용)
         df = df.fillna("").astype(str)
 
         # 엑셀 수식 오류 방지: '='로 시작하는 모든 셀 내용 앞에 '를 추가
+        # 특히 텍스트 데이터가 있는 컬럼에 적용
         for col in df.columns:
             if df[col].dtype == 'object': # object는 문자열을 포함하는 dtype
                 df[col] = df[col].apply(lambda x: "'" + x if isinstance(x, str) and x.startswith('=') else x)
@@ -283,10 +286,10 @@ def process_excel_file_and_style(file_bytes_io):
             processed_df = process_sheet_v8(df, professors_list, sheet_key)
             processed_sheets_dfs[sheet_name_raw] = processed_df
         except KeyError as e:
-            st.error(f"시트 '{sheet_name_raw}' 처리 중 컬럼 오류: {e}. '예약의사', '예약시간' 등의 컬럼명을 확인해주세요. 이 시트는 건너킵니다.")
+            st.error(f"시트 '{sheet_name_raw}' 처리 중 컬럼 오류: {e}. '예약의사', '예약시간' 등의 컬럼명을 확인해주세요. 이 시트는 건너깁니다.")
             continue
         except Exception as e:
-            st.error(f"시트 '{sheet_name_raw}' 처리 중 알 수 없는 오류: {e}. 이 시트는 건너킵니다.")
+            st.error(f"시트 '{sheet_name_raw}' 처리 중 알 수 없는 오류: {e}. 이 시트는 건너깁니다.")
             continue
 
     if not processed_sheets_dfs:
@@ -303,7 +306,6 @@ def process_excel_file_and_style(file_bytes_io):
 
     for sheet_name in wb_styled.sheetnames:
         ws = wb_styled[sheet_name]
-        # 헤더가 있는 경우에만 처리 (빈 시트나 문제 있는 시트 방지)
         if ws.max_row > 1:
             header = {cell.value: idx + 1 for idx, cell in enumerate(ws[1])}
 
@@ -314,8 +316,7 @@ def process_excel_file_and_style(file_bytes_io):
                             cell.font = Font(bold=True)
 
                 if sheet_name.strip() == "교정" and '진료내역' in header:
-                    # 오타 수정: '진료내-역' -> '진료내역'
-                    idx = header['진료내역'] - 1
+                    idx = header['진료내역'] - 1 
                     if len(row) > idx:
                         cell = row[idx]
                         text = str(cell.value)
