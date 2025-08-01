@@ -15,14 +15,11 @@ import json
 # --- 이메일 유효성 검사 함수 ---
 def is_valid_email(email):
     email_regex = r"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$"
-    return re.match(email_regex) is not None
+    return re.match(email_regex, email) is not None
 
 # Firebase 초기화
 if not firebase_admin._apps:
     try:
-        # secrets.toml 파일에서 Firebase 서비스 계정 JSON 문자열 로드
-        # [firebase] 섹션이 없으므로, 직접 루트 레벨 키를 참조합니다.
-        # 만약 secrets.toml에 [firebase] 섹션이 있다면 st.secrets["firebase"]["FIREBASE_SERVICE_ACCOUNT_JSON"] 처럼 변경해야 합니다.
         firebase_credentials_json_str = st.secrets["FIREBASE_SERVICE_ACCOUNT_JSON"]
         firebase_credentials_dict = json.loads(firebase_credentials_json_str)
 
@@ -180,29 +177,40 @@ def process_sheet_v8(df, professors_list, sheet_key):
     current_time = None
     current_doctor = None
 
+    # 빈 줄을 삽입할 때 사용될 빈 Series 생성 (컬럼 개수 맞춤)
+    # 기존 df의 컬럼 리스트를 활용하여 빈 시리즈 생성 (값은 NaN)
+    empty_row_series = pd.Series([pd.NA] * len(df.columns), index=df.columns)
+    # 첫 번째 컬럼에만 빈 문자열을 넣어 엑셀에서 빈 셀로 인식되도록 함
+    if not empty_row_series.empty:
+        empty_row_series.iloc[0] = ""
+
     # 교수님 아닌 데이터 처리 (빈 줄 삽입 로직)
     for _, row in non_professors.iterrows():
         if sheet_key != '보철':
             if current_time != row['예약시간']:
                 if current_time is not None:
-                    final_rows.append(pd.Series([" "] * len(df.columns), index=df.columns))
+                    final_rows.append(empty_row_series.copy()) # 수정된 빈 줄 삽입
                 current_time = row['예약시간']
         else:
             if current_doctor != row['예약의사']:
                 if current_doctor is not None:
-                    final_rows.append(pd.Series([" "] * len(df.columns), index=df.columns))
-                current_doctor = row['예약의사'] # <-- 이 부분 오타 수정 완료
+                    final_rows.append(empty_row_series.copy()) # 수정된 빈 줄 삽입
+                current_doctor = row['예약의사']
         final_rows.append(row)
 
     # 교수님 데이터 처리 전 구분선 및 "<교수님>" 표기
-    final_rows.append(pd.Series([" "] * len(df.columns), index=df.columns))
-    final_rows.append(pd.Series(["<교수님>"] + [" "] * (len(df.columns) - 1), index=df.columns))
+    final_rows.append(empty_row_series.copy()) # 수정된 빈 줄 삽입
+    # '<교수님>'이 들어갈 줄 생성
+    professor_header_row = empty_row_series.copy()
+    if not professor_header_row.empty:
+        professor_header_row.iloc[0] = "<교수님>"
+    final_rows.append(professor_header_row)
 
     current_professor = None
     for _, row in professors.iterrows():
         if current_professor != row['예약의사']:
             if current_professor is not None:
-                final_rows.append(pd.Series([" "] * len(df.columns), index=df.columns))
+                final_rows.append(empty_row_series.copy()) # 수정된 빈 줄 삽입
             current_professor = row['예약의사']
         final_rows.append(row)
 
@@ -247,7 +255,8 @@ def process_excel_file_and_style(file_bytes_io):
             continue
 
         df = pd.DataFrame(values)
-        df.columns = df.iloc[0] # 첫 행을 컬럼명으로
+        # 컬럼명에 불필요한 공백 제거
+        df.columns = [str(col).strip() for col in df.iloc[0]] # 첫 행을 컬럼명으로
         df = df.drop([0]).reset_index(drop=True) # 첫 행 삭제 및 인덱스 재설정
         df = df.fillna("").astype(str) # NaN 값 채우고 모든 컬럼을 문자열로
 
@@ -309,9 +318,8 @@ def process_excel_file_and_style(file_bytes_io):
     return processed_sheets_dfs, final_output_bytes
 
 # --- Streamlit 애플리케이션 시작 ---
-st.title("환자 내원 확인 시스템") # 기존 제목
-st.markdown("---") # 구분선 추가
-# 왼쪽 정렬, 작은 글씨로 "directed by HSY"
+st.title("환자 내원 확인 시스템")
+st.markdown("---")
 st.markdown("<p style='text-align: left; color: grey; font-size: small;'>directed by HSY</p>", unsafe_allow_html=True)
 
 # 사용자 입력 필드
@@ -323,7 +331,6 @@ is_admin_mode = (user_name.strip().lower() == "admin" and user_id.strip().lower(
 
 # 입력 유효성 검사 및 초기 안내
 if user_id and user_name:
-    # Admin 모드가 아닐 경우에만 이메일 형식 검사
     if not is_admin_mode and not is_valid_email(user_id):
         st.error("올바른 이메일 주소 형식이 아닙니다. 'user@example.com'과 같이 입력해주세요.")
         st.stop()
@@ -335,25 +342,21 @@ elif not user_id or not user_name:
 firebase_key = sanitize_path(user_id)
 
 # Firebase 데이터베이스 참조 설정
-users_ref = db.reference("users") # 사용자 이름 등 메타 정보 저장용
-# Admin 모드가 아닐 경우에만 해당 사용자의 환자 정보 참조
+users_ref = db.reference("users")
 if not is_admin_mode:
     patients_ref_for_user = db.reference(f"patients/{firebase_key}")
 
-# 사용자 정보 (이름, 이메일) Firebase 'users' 노드에 저장 또는 업데이트
-# Admin 계정일 때는 이 과정 건너뛰기
+# 사용자 정보 Firebase 'users' 노드에 저장 또는 업데이트
 if not is_admin_mode:
     current_user_meta_data = users_ref.child(firebase_key).get()
-    # 사용자 정보가 없거나, 현재 입력된 이름/이메일과 다르면 업데이트
     if not current_user_meta_data or current_user_meta_data.get("name") != user_name or current_user_meta_data.get("email") != user_id:
         users_ref.child(firebase_key).update({"name": user_name, "email": user_id})
         st.success(f"사용자 정보가 업데이트되었습니다: {user_name} ({user_id})")
 
 # --- 사용자 모드 (Admin이 아닌 경우) ---
 if not is_admin_mode:
-    st.subheader(f"{user_name}님의 등록 환자 목록") # 사용자 이름 표시
+    st.subheader(f"{user_name}님의 등록 환자 목록")
 
-    # 해당 사용자의 기존 환자 데이터 로드
     existing_patient_data = patients_ref_for_user.get()
 
     if existing_patient_data:
@@ -364,20 +367,17 @@ if not is_admin_mode:
                     department_display = val.get('등록과', '미지정')
                     st.markdown(f"환자명: {val['환자명']} / 진료번호: {val['진료번호']} / 등록과: {department_display}")
                 with col2:
-                    if st.button("삭제", key=key): # 각 항목마다 고유한 삭제 버튼 키
+                    if st.button("삭제", key=key):
                         patients_ref_for_user.child(key).delete()
                         st.success("환자가 성공적으로 삭제되었습니다.")
-                        st.rerun() # 삭제 후 화면 새로고침
-
+                        st.rerun()
     else:
         st.info("등록된 환자가 없습니다.")
 
-    # 환자 등록 폼
     with st.form("register_form"):
         name = st.text_input("환자명")
         pid = st.text_input("진료번호")
 
-        # 등록 가능한 진료과 목록 생성 및 선택 박스
         departments_for_registration = sorted(list(set(sheet_keyword_to_department_map.values())))
         selected_department = st.selectbox("등록 과", departments_for_registration)
 
@@ -385,16 +385,14 @@ if not is_admin_mode:
         if submitted:
             if not name or not pid:
                 st.warning("모든 항목을 입력해주세요.")
-            # 중복 환자 등록 방지
             elif existing_patient_data and any(
                 v["환자명"] == name and v["진료번호"] == pid and v.get("등록과") == selected_department
                 for v in existing_patient_data.values()):
                 st.error("이미 등록된 환자입니다.")
             else:
-                # Firebase에 환자 정보 저장
                 patients_ref_for_user.push().set({"환자명": name, "진료번호": pid, "등록과": selected_department})
                 st.success(f"{name} ({pid}) [{selected_department}] 환자 등록 완료")
-                st.rerun() # 등록 후 화면 새로고침
+                st.rerun()
 
 # --- 관리자 모드 (Admin인 경우) ---
 else:
@@ -403,7 +401,6 @@ else:
 
     if uploaded_file:
         password = None
-        # 파일이 암호화되어 있으면 비밀번호 입력 필드 표시
         if is_encrypted_excel(uploaded_file):
             password = st.text_input("엑셀 파일 비밀번호 입력", type="password")
             if not password:
@@ -411,12 +408,10 @@ else:
                 st.stop()
 
         try:
-            # 파일 이름에서 날짜 추출
             file_name = uploaded_file.name
             date_match = re.search(r'(\d{4})', file_name)
             extracted_date = date_match.group(1) if date_match else None
 
-            # 엑셀 파일 로드 및 처리
             xl_object, raw_file_io = load_excel(uploaded_file, password)
             excel_data_dfs, styled_excel_bytes = process_excel_file_and_style(raw_file_io)
 
@@ -424,15 +419,12 @@ else:
                 st.warning("엑셀 파일 처리 중 문제가 발생했거나 처리할 데이터가 없습니다.")
                 st.stop()
 
-            # 이메일 전송을 위한 발신자 정보 (secrets.toml에서 로드)
-            sender = st.secrets["gmail"]["sender"] # <-- 여기 변경
-            sender_pw = st.secrets["gmail"]["app_password"] # <-- 여기 변경
+            sender = st.secrets["gmail"]["sender"]
+            sender_pw = st.secrets["gmail"]["app_password"]
 
-            # Firebase에서 모든 사용자 메타 정보 및 모든 환자 데이터 로드
             all_users_meta = users_ref.get()
             all_patients_data = db.reference("patients").get()
 
-            # 데이터 로드 여부에 따른 안내
             if not all_users_meta and not all_patients_data:
                 st.warning("Firebase에 등록된 사용자 또는 환자 데이터가 없습니다. 이메일 전송은 불가능합니다.")
             elif not all_users_meta:
@@ -442,19 +434,17 @@ else:
 
             matched_users = []
 
-            if all_patients_data: # 환자 데이터가 있어야 매칭 로직 실행
-                # 모든 환자 데이터를 순회하며 매칭
+            if all_patients_data:
                 for uid_safe, registered_patients_for_this_user in all_patients_data.items():
-                    user_email = recover_email(uid_safe) # Firebase 키에서 이메일 복원
-                    user_display_name = user_email # 기본 표시 이름은 이메일
+                    user_email = recover_email(uid_safe)
+                    user_display_name = user_email
 
-                    # users 노드에서 사용자 이름 정보 가져오기
                     if all_users_meta and uid_safe in all_users_meta:
                         user_meta = all_users_meta[uid_safe]
                         if "name" in user_meta:
                             user_display_name = user_meta["name"]
                         if "email" in user_meta:
-                            user_email = user_meta["email"] # users 노드에 저장된 실제 이메일 사용
+                            user_email = user_meta["email"]
 
                     registered_patients_data = []
                     if registered_patients_for_this_user:
@@ -467,7 +457,6 @@ else:
 
                     matched_rows_for_user = []
 
-                    # 엑셀 시트별로 매칭 진행
                     for sheet_name_excel_raw, df_sheet in excel_data_dfs.items():
                         excel_sheet_name_lower = sheet_name_excel_raw.strip().lower()
 
@@ -484,7 +473,6 @@ else:
                             excel_patient_name = excel_row["환자명"].strip()
                             excel_patient_pid = excel_row["진료번호"].strip().zfill(8)
 
-                            # 등록된 환자 정보와 엑셀 데이터 매칭
                             for registered_patient in registered_patients_data:
                                 if (registered_patient["환자명"] == excel_patient_name and
                                     registered_patient["진료번호"] == excel_patient_pid and
@@ -499,7 +487,6 @@ else:
                         combined_matched_df = pd.DataFrame(matched_rows_for_user)
                         matched_users.append({"email": user_email, "name": user_display_name, "data": combined_matched_df})
 
-            # 매칭 결과 표시 및 이메일 전송 버튼
             if matched_users:
                 st.success(f"{len(matched_users)}명의 사용자와 일치하는 환자 발견됨.")
 
@@ -519,7 +506,6 @@ else:
             else:
                 st.info("엑셀 파일 처리 완료. 매칭된 환자가 없습니다.")
 
-            # 처리된 엑셀 파일 다운로드 버튼
             output_filename = uploaded_file.name.replace(".xlsx", "_processed.xlsx").replace(".xlsm", "_processed.xlsm")
             st.download_button(
                 "처리된 엑셀 다운로드",
