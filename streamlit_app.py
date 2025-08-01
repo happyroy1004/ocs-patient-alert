@@ -298,7 +298,7 @@ def process_excel_file_and_style(file_bytes_io):
 st.title("환자 내원 확인 시스템")
 
 # ## 변경 사항: 사용자 이름 입력 필드 추가
-user_name = st.text_input("사용자 이름을 입력하세요 (예시: 홍길동)")
+user_name = st.text_input("사용자 이름을 입력하세요 (예시: 황성연)")
 user_id = st.text_input("아이디를 입력하세요 (예시: example@gmail.com)")
 
 # --- 이메일/이름 유효성 검사 적용 ---
