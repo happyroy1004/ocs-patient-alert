@@ -203,7 +203,7 @@ def process_sheet_v8(df, professors_list, sheet_key):
         if current_professor != row['예약의사']:
             if current_professor is not None:
                 final_rows.append(pd.Series([" "] * len(df.columns), index=df.columns))
-            current_professor = row['예약의사']
+            current_professor = row['예 예약의사']
         final_rows.append(row)
 
     final_df = pd.DataFrame(final_rows, columns=df.columns)
@@ -276,8 +276,8 @@ def process_excel_file_and_style(file_bytes_io):
 
     # 스타일 적용을 위해 처리된 데이터를 다시 엑셀로 저장 (메모리 내에서)
     output_buffer_for_styling = io.BytesIO()
-    # compression=0 옵션을 추가하여 엑셀 파일 저장 시 압축하지 않도록 설정
-    with pd.ExcelWriter(output_buffer_for_styling, engine='openpyxl', engine_kwargs={'options': {'compression': 0}}) as writer:
+    # 'options' 인자를 제거합니다.
+    with pd.ExcelWriter(output_buffer_for_styling, engine='openpyxl') as writer:
         for sheet_name_raw, df in processed_sheets_dfs.items():
             df.to_excel(writer, sheet_name=sheet_name_raw, index=False)
 
@@ -422,7 +422,7 @@ else:
 
             # 엑셀 파일 로드 및 처리
             xl_object, raw_file_io = load_excel(uploaded_file, password)
-            # process_excel_file_and_style 함수 내에서 압축 옵션을 추가했습니다.
+            # process_excel_file_and_style 함수 내에서 'options' 인자 제거했습니다.
             excel_data_dfs, styled_excel_bytes = process_excel_file_and_style(raw_file_io)
 
             if excel_data_dfs is None or styled_excel_bytes is None:
