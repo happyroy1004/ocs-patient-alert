@@ -311,7 +311,7 @@ st.markdown("---") # 구분선 추가
 st.markdown("<p style='text-align: left; color: grey; font-size: small;'>directed by HSY</p>", unsafe_allow_html=True) # 왼쪽 정렬, 작은 글씨
 
 # 사용자 입력 필드
-user_name = st.text_input("사용자 이름을 입력하세요 (예시: 황성연)")
+user_name = st.text_input("사용자 이름을 입력하세요 (예시: 김민지)")
 user_id = st.text_input("아이디를 입력하세요 (예시: example@gmail.com)")
 
 # Admin 계정 확인 로직 (이름과 아이디 모두 'admin'일 경우)
