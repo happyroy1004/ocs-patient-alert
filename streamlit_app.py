@@ -15,11 +15,14 @@ import json
 # --- 이메일 유효성 검사 함수 ---
 def is_valid_email(email):
     email_regex = r"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$"
-    return re.match(email_regex, email) is not None
+    return re.match(email_regex) is not None
 
 # Firebase 초기화
 if not firebase_admin._apps:
     try:
+        # secrets.toml 파일에서 Firebase 서비스 계정 JSON 문자열 로드
+        # [firebase] 섹션이 없으므로, 직접 루트 레벨 키를 참조합니다.
+        # 만약 secrets.toml에 [firebase] 섹션이 있다면 st.secrets["firebase"]["FIREBASE_SERVICE_ACCOUNT_JSON"] 처럼 변경해야 합니다.
         firebase_credentials_json_str = st.secrets["FIREBASE_SERVICE_ACCOUNT_JSON"]
         firebase_credentials_dict = json.loads(firebase_credentials_json_str)
 
@@ -188,7 +191,7 @@ def process_sheet_v8(df, professors_list, sheet_key):
             if current_doctor != row['예약의사']:
                 if current_doctor is not None:
                     final_rows.append(pd.Series([" "] * len(df.columns), index=df.columns))
-                current_doctor = row['예 예약의사']
+                current_doctor = row['예약의사'] # <-- 이 부분 오타 수정 완료
         final_rows.append(row)
 
     # 교수님 데이터 처리 전 구분선 및 "<교수님>" 표기
@@ -308,10 +311,11 @@ def process_excel_file_and_style(file_bytes_io):
 # --- Streamlit 애플리케이션 시작 ---
 st.title("환자 내원 확인 시스템") # 기존 제목
 st.markdown("---") # 구분선 추가
-st.markdown("<p style='text-align: left; color: grey; font-size: small;'>directed by HSY</p>", unsafe_allow_html=True) # 왼쪽 정렬, 작은 글씨
+# 왼쪽 정렬, 작은 글씨로 "directed by HSY"
+st.markdown("<p style='text-align: left; color: grey; font-size: small;'>directed by HSY</p>", unsafe_allow_html=True)
 
 # 사용자 입력 필드
-user_name = st.text_input("사용자 이름을 입력하세요 (예시: 김민지)")
+user_name = st.text_input("사용자 이름을 입력하세요 (예시: 홍길동)")
 user_id = st.text_input("아이디를 입력하세요 (예시: example@gmail.com)")
 
 # Admin 계정 확인 로직 (이름과 아이디 모두 'admin'일 경우)
@@ -324,7 +328,7 @@ if user_id and user_name:
         st.error("올바른 이메일 주소 형식이 아닙니다. 'user@example.com'과 같이 입력해주세요.")
         st.stop()
 elif not user_id or not user_name:
-    st.info("내원 알람 노티를 받을 사용자의 이름과 이메일 주소를 입력해주세요.")
+    st.info("내원 알람 노티를 받을 이메일 주소와 사용자 이름을 입력해주세요.")
     st.stop()
 
 # Firebase 경로에 사용할 안전한 키 생성 (Admin 계정은 실제 Firebase 키로 사용되지 않음)
@@ -394,7 +398,7 @@ if not is_admin_mode:
 
 # --- 관리자 모드 (Admin인 경우) ---
 else:
-    st.subheader("엑셀 처리 및 내원 확인 알림 보내기 (관리자 모드)")
+    st.subheader("엑셀 업로드 및 사용자 일치 검사 (관리자 모드)")
     uploaded_file = st.file_uploader("암호화된 Excel 파일을 업로드하세요", type=["xlsx", "xlsm"])
 
     if uploaded_file:
@@ -421,8 +425,8 @@ else:
                 st.stop()
 
             # 이메일 전송을 위한 발신자 정보 (secrets.toml에서 로드)
-            sender = st.secrets["GMAIL_SENDER"]
-            sender_pw = st.secrets["GMAIL_APP_PASSWORD"]
+            sender = st.secrets["gmail"]["sender"] # <-- 여기 변경
+            sender_pw = st.secrets["gmail"]["app_password"] # <-- 여기 변경
 
             # Firebase에서 모든 사용자 메타 정보 및 모든 환자 데이터 로드
             all_users_meta = users_ref.get()
