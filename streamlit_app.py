@@ -8,21 +8,18 @@ import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from openpyxl import load_workbook
-from openpyxl.styles import Font, Alignment # Alignment 임포트 추가
+from openpyxl.styles import Font
 import re
 import json
 
 # --- 이메일 유효성 검사 함수 ---
 def is_valid_email(email):
     email_regex = r"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$"
-    return re.match(email_regex) is not None
+    return re.match(email_regex, email) is not None
 
 # Firebase 초기화
 if not firebase_admin._apps:
     try:
-        # secrets.toml 파일에서 Firebase 서비스 계정 JSON 문자열 로드
-        # [firebase] 섹션이 없으므로, 직접 루트 레벨 키를 참조합니다.
-        # 만약 secrets.toml에 [firebase] 섹션이 있다면 st.secrets["firebase"]["FIREBASE_SERVICE_ACCOUNT_JSON"] 처럼 변경해야 합니다.
         firebase_credentials_json_str = st.secrets["FIREBASE_SERVICE_ACCOUNT_JSON"]
         firebase_credentials_dict = json.loads(firebase_credentials_json_str)
 
@@ -168,7 +165,7 @@ def process_sheet_v8(df, professors_list, sheet_key):
 
     df = df.sort_values(by=['예약의사', '예약시간']) # 기본 정렬
     professors = df[df['예약의사'].isin(professors_list)] # 교수님 데이터 분리
-    non_professors = df[~df['예 예약의사'].isin(professors_list)] # 교수님 아닌 데이터 분리
+    non_professors = df[~df['예약의사'].isin(professors_list)] # 교수님 아닌 데이터 분리
 
     # 진료과에 따른 추가 정렬 (보철과만 특이)
     if sheet_key != '보철':
@@ -191,7 +188,7 @@ def process_sheet_v8(df, professors_list, sheet_key):
             if current_doctor != row['예약의사']:
                 if current_doctor is not None:
                     final_rows.append(pd.Series([" "] * len(df.columns), index=df.columns))
-                current_doctor = row['예약의사']
+                current_doctor = row['예 예약의사']
         final_rows.append(row)
 
     # 교수님 데이터 처리 전 구분선 및 "<교수님>" 표기
@@ -217,7 +214,6 @@ def process_excel_file_and_style(file_bytes_io):
     file_bytes_io.seek(0)
 
     try:
-        # data_only=True로 로드하여 현재 표시된 값을 가져옵니다.
         wb_raw = load_workbook(filename=file_bytes_io, data_only=True)
     except Exception as e:
         raise ValueError(f"엑셀 워크북 로드 실패: {e}")
@@ -276,46 +272,32 @@ def process_excel_file_and_style(file_bytes_io):
     # 스타일 적용을 위해 처리된 데이터를 다시 엑셀로 저장 (메모리 내에서)
     output_buffer_for_styling = io.BytesIO()
     with pd.ExcelWriter(output_buffer_for_styling, engine='openpyxl') as writer:
-        for sheet_name_raw, df_to_write in processed_sheets_dfs.items():
-            df_to_write.to_excel(writer, sheet_name=sheet_name_raw, index=False)
+        for sheet_name_raw, df in processed_sheets_dfs.items():
+            df.to_excel(writer, sheet_name=sheet_name_raw, index=False)
 
-        wb_styled = writer.book
+    output_buffer_for_styling.seek(0)
+    wb_styled = load_workbook(output_buffer_for_styling)
 
-        # 각 시트에 스타일 적용 및 셀 값 처리
-        for sheet_name in wb_styled.sheetnames:
-            ws = wb_styled[sheet_name]
-            header = {cell.value: idx + 1 for idx, cell in enumerate(ws[1])} # 헤더 정보는 1번째 행에서 가져옴
+    # 각 시트에 스타일 적용
+    for sheet_name in wb_styled.sheetnames:
+        ws = wb_styled[sheet_name]
+        header = {cell.value: idx + 1 for idx, cell in enumerate(ws[1])}
 
-            for row_idx, row in enumerate(ws.iter_rows(min_row=1, max_row=ws.max_row), start=1): # 헤더 포함 모든 행 순회
+        for row_idx, row in enumerate(ws.iter_rows(min_row=2, max_row=ws.max_row), start=2):
+            # 교수님 섹션 글씨 진하게
+            if row[0].value == "<교수님>":
                 for cell in row:
-                    # 모든 셀에 대해 기본적으로 텍스트 서식 적용
-                    # 이 부분이 '=' 문제를 해결하는 핵심입니다.
-                    cell.number_format = '@' 
-                    
-                    # 셀 값이 존재하고, 숫자나 None이 아닌 경우에만 처리
-                    if cell.value is not None and not isinstance(cell.value, (int, float)):
-                        original_value = str(cell.value).strip()
-                        # '='으로 시작하는 경우, 앞에 "'"를 붙여 텍스트로 강제 변환
-                        # 이미 '로 시작하는 경우 중복해서 붙이지 않도록 확인
-                        if original_value.startswith("=") and not original_value.startswith("'="):
-                            cell.value = "'" + original_value
-                            
-                # 스타일 적용 (기존 로직 유지)
-                if row_idx >= 2: # 데이터 행부터 적용
-                    # 교수님 섹션 글씨 진하게
-                    if row[0].value == "<교수님>":
-                        for cell in row:
-                            if cell.value:
-                                cell.font = Font(bold=True)
+                    if cell.value:
+                        cell.font = Font(bold=True)
 
-                    # 교정 시트의 '진료내역'에 특정 키워드 포함 시 글씨 진하게
-                    if sheet_name.strip() == "교정" and '진료내역' in header:
-                        idx = header['진료내역'] - 1
-                        if len(row) > idx:
-                            cell = row[idx]
-                            text = str(cell.value)
-                            if any(keyword in text for keyword in ['본딩', 'bonding']):
-                                cell.font = Font(bold=True)
+            # 교정 시트의 '진료내역'에 특정 키워드 포함 시 글씨 진하게
+            if sheet_name.strip() == "교정" and '진료내역' in header:
+                idx = header['진료내역'] - 1
+                if len(row) > idx:
+                    cell = row[idx]
+                    text = str(cell.value)
+                    if any(keyword in text for keyword in ['본딩', 'bonding']):
+                        cell.font = Font(bold=True)
 
     final_output_bytes = io.BytesIO()
     wb_styled.save(final_output_bytes)
@@ -326,11 +308,10 @@ def process_excel_file_and_style(file_bytes_io):
 # --- Streamlit 애플리케이션 시작 ---
 st.title("환자 내원 확인 시스템") # 기존 제목
 st.markdown("---") # 구분선 추가
-# 왼쪽 정렬, 작은 글씨로 "directed by HSY"
-st.markdown("<p style='text-align: left; color: grey; font-size: small;'>directed by HSY</p>", unsafe_allow_html=True)
+st.markdown("<p style='text-align: left; color: grey; font-size: small;'>directed by HSY</p>", unsafe_allow_html=True) # 왼쪽 정렬, 작은 글씨
 
 # 사용자 입력 필드
-user_name = st.text_input("사용자 이름을 입력하세요 (예시: 홍길동)")
+user_name = st.text_input("사용자 이름을 입력하세요 (예시: 김민지)")
 user_id = st.text_input("아이디를 입력하세요 (예시: example@gmail.com)")
 
 # Admin 계정 확인 로직 (이름과 아이디 모두 'admin'일 경우)
@@ -343,7 +324,7 @@ if user_id and user_name:
         st.error("올바른 이메일 주소 형식이 아닙니다. 'user@example.com'과 같이 입력해주세요.")
         st.stop()
 elif not user_id or not user_name:
-    st.info("내원 알람 노티를 받을 이메일 주소와 사용자 이름을 입력해주세요.")
+    st.info("내원 알람 노티를 받을 사용자의 이름과 이메일 주소를 입력해주세요.")
     st.stop()
 
 # Firebase 경로에 사용할 안전한 키 생성 (Admin 계정은 실제 Firebase 키로 사용되지 않음)
@@ -413,7 +394,7 @@ if not is_admin_mode:
 
 # --- 관리자 모드 (Admin인 경우) ---
 else:
-    st.subheader("엑셀 업로드 및 사용자 일치 검사 (관리자 모드)")
+    st.subheader("엑셀 처리 및 내원 확인 알림 보내기 (관리자 모드)")
     uploaded_file = st.file_uploader("암호화된 Excel 파일을 업로드하세요", type=["xlsx", "xlsm"])
 
     if uploaded_file:
@@ -433,15 +414,15 @@ else:
 
             # 엑셀 파일 로드 및 처리
             xl_object, raw_file_io = load_excel(uploaded_file, password)
-            processed_sheets_dfs, styled_excel_bytes = process_excel_file_and_style(raw_file_io)
+            excel_data_dfs, styled_excel_bytes = process_excel_file_and_style(raw_file_io)
 
             if excel_data_dfs is None or styled_excel_bytes is None:
                 st.warning("엑셀 파일 처리 중 문제가 발생했거나 처리할 데이터가 없습니다.")
                 st.stop()
 
             # 이메일 전송을 위한 발신자 정보 (secrets.toml에서 로드)
-            sender = st.secrets["gmail"]["sender"]
-            sender_pw = st.secrets["gmail"]["app_password"]
+            sender = st.secrets["GMAIL_SENDER"]
+            sender_pw = st.secrets["GMAIL_APP_PASSWORD"]
 
             # Firebase에서 모든 사용자 메타 정보 및 모든 환자 데이터 로드
             all_users_meta = users_ref.get()
