@@ -276,12 +276,14 @@ def process_excel_file_and_style(file_bytes_io):
 
     # 스타일 적용을 위해 처리된 데이터를 다시 엑셀로 저장 (메모리 내에서)
     output_buffer_for_styling = io.BytesIO()
-    with pd.ExcelWriter(output_buffer_for_styling, engine='openpyxl') as writer:
+    # compression=0 옵션을 추가하여 엑셀 파일 저장 시 압축하지 않도록 설정
+    with pd.ExcelWriter(output_buffer_for_styling, engine='openpyxl', engine_kwargs={'options': {'compression': 0}}) as writer:
         for sheet_name_raw, df in processed_sheets_dfs.items():
             df.to_excel(writer, sheet_name=sheet_name_raw, index=False)
 
     output_buffer_for_styling.seek(0)
-    wb_styled = load_workbook(output_buffer_for_styling)
+    # 스타일 적용을 위해 로드할 때도 keep_vba=False, data_only=True를 유지하여 일관성 확보
+    wb_styled = load_workbook(output_buffer_for_styling, keep_vba=False, data_only=True)
 
     # 각 시트에 스타일 적용
     for sheet_name in wb_styled.sheetnames:
@@ -420,7 +422,7 @@ else:
 
             # 엑셀 파일 로드 및 처리
             xl_object, raw_file_io = load_excel(uploaded_file, password)
-            # 여기 load_workbook 함수 호출 부분에서 keep_vba=False, data_only=True 옵션을 사용
+            # process_excel_file_and_style 함수 내에서 압축 옵션을 추가했습니다.
             excel_data_dfs, styled_excel_bytes = process_excel_file_and_style(raw_file_io)
 
             if excel_data_dfs is None or styled_excel_bytes is None:
