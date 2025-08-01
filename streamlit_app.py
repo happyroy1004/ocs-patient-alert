@@ -255,8 +255,9 @@ def process_excel_file_and_style(file_bytes_io):
             continue
 
         df = pd.DataFrame(values)
-        # 컬럼명에 불필요한 공백 제거
-        df.columns = [str(col).strip() for col in df.iloc[0]] # 첫 행을 컬럼명으로
+        # 컬럼명에 불필요한 공백 제거 (NAType 오류 방지)
+        # `col if pd.isna(col) else str(col).strip()`을 사용하여 None/NaN 값 처리
+        df.columns = [col if pd.isna(col) else str(col).strip() for col in df.iloc[0]]
         df = df.drop([0]).reset_index(drop=True) # 첫 행 삭제 및 인덱스 재설정
         df = df.fillna("").astype(str) # NaN 값 채우고 모든 컬럼을 문자열로
 
