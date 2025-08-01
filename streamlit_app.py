@@ -39,7 +39,6 @@ def sanitize_path(email):
 # 이메일 주소 복원 (Firebase 안전 키에서 원래 이메일로)
 def recover_email(safe_id: str) -> str:
     email = safe_id.replace("_at_", "@").replace("_dot_", ".")
-    # '.com'이 '_com'으로 변환된 경우를 처리 (필요한 경우에만)
     if not email.endswith(".com") and email.endswith("_com"):
         email = email[:-4] + ".com"
     return email
@@ -189,17 +188,17 @@ def process_sheet_v8(df, professors_list, sheet_key):
         if sheet_key != '보철':
             if current_time != row['예약시간']:
                 if current_time is not None:
-                    final_rows.append(empty_row_series.copy()) # 수정된 빈 줄 삽입
+                    final_rows.append(empty_row_series.copy())
                 current_time = row['예약시간']
         else:
             if current_doctor != row['예약의사']:
                 if current_doctor is not None:
-                    final_rows.append(empty_row_series.copy()) # 수정된 빈 줄 삽입
+                    final_rows.append(empty_row_series.copy())
                 current_doctor = row['예약의사']
         final_rows.append(row)
 
     # 교수님 데이터 처리 전 구분선 및 "<교수님>" 표기
-    final_rows.append(empty_row_series.copy()) # 수정된 빈 줄 삽입
+    final_rows.append(empty_row_series.copy())
     # '<교수님>'이 들어갈 줄 생성
     professor_header_row = empty_row_series.copy()
     if not professor_header_row.empty:
@@ -210,7 +209,7 @@ def process_sheet_v8(df, professors_list, sheet_key):
     for _, row in professors.iterrows():
         if current_professor != row['예약의사']:
             if current_professor is not None:
-                final_rows.append(empty_row_series.copy()) # 수정된 빈 줄 삽입
+                final_rows.append(empty_row_series.copy())
             current_professor = row['예약의사']
         final_rows.append(row)
 
@@ -235,7 +234,6 @@ def process_excel_file_and_style(file_bytes_io):
         sheet_name_lower = sheet_name_raw.strip().lower()
 
         sheet_key = None
-        # 시트 이름을 기반으로 진료과 매핑
         for keyword, department_name in sorted(sheet_keyword_to_department_map.items(), key=lambda item: len(item[0]), reverse=True):
             if keyword.lower() in sheet_name_lower:
                 sheet_key = department_name
@@ -247,19 +245,27 @@ def process_excel_file_and_style(file_bytes_io):
 
         ws = wb_raw[sheet_name_raw]
         values = list(ws.values)
-        # 빈 상단 행 제거
+        
+        # 빈 상단 행 제거 (데이터가 시작하는 첫 행까지 이동)
         while values and (values[0] is None or all((v is None or str(v).strip() == "") for v in values[0])):
             values.pop(0)
-        if len(values) < 2:
+            
+        if len(values) < 2: # 최소한 헤더와 한 줄의 데이터는 있어야 함
             st.warning(f"시트 '{sheet_name_raw}'에 유효한 데이터가 충분하지 않습니다. 건너킵니다.")
             continue
 
-        df = pd.DataFrame(values)
-        # 컬럼명에 불필요한 공백 제거 (NAType 오류 방지)
-        # `col if pd.isna(col) else str(col).strip()`을 사용하여 None/NaN 값 처리
-        df.columns = [col if pd.isna(col) else str(col).strip() for col in df.iloc[0]]
-        df = df.drop([0]).reset_index(drop=True) # 첫 행 삭제 및 인덱스 재설정
-        df = df.fillna("").astype(str) # NaN 값 채우고 모든 컬럼을 문자열로
+        # 컬럼명 추출 및 정리 (가장 중요한 변경 부분)
+        # 첫 번째 행의 값들을 안전하게 문자열로 변환하고 공백 제거
+        columns = [str(col).strip() if col is not None and not pd.isna(col) else "" for col in values[0]]
+
+        # DataFrame 생성 시, 첫 행은 컬럼으로, 나머지 행은 데이터로 사용
+        df = pd.DataFrame(values[1:], columns=columns)
+        
+        # '예약일시' 컬럼이 존재할 경우 삭제 (이미 process_sheet_v8에 있지만 여기서 한 번 더 확인)
+        df = df.drop(columns=['예약일시'], errors='ignore')
+        
+        # 모든 컬럼을 문자열로 변환하고 NaN은 빈 문자열로 채우기
+        df = df.fillna("").astype(str)
 
         if '예약의사' in df.columns:
             df['예약의사'] = df['예약의사'].str.strip().str.replace(" 교수님", "", regex=False)
@@ -272,7 +278,7 @@ def process_excel_file_and_style(file_bytes_io):
             processed_df = process_sheet_v8(df, professors_list, sheet_key)
             processed_sheets_dfs[sheet_name_raw] = processed_df
         except KeyError as e:
-            st.error(f"시트 '{sheet_name_raw}' 처리 중 컬럼 오류: {e}. 이 시트는 건너킵니다.")
+            st.error(f"시트 '{sheet_name_raw}' 처리 중 컬럼 오류: {e}. '예약의사', '예약시간' 등의 컬럼명을 확인해주세요. 이 시트는 건너킵니다.")
             continue
         except Exception as e:
             st.error(f"시트 '{sheet_name_raw}' 처리 중 알 수 없는 오류: {e}. 이 시트는 건너킵니다.")
@@ -282,7 +288,6 @@ def process_excel_file_and_style(file_bytes_io):
         st.info("처리된 시트가 없습니다.")
         return None, None
 
-    # 스타일 적용을 위해 처리된 데이터를 다시 엑셀로 저장 (메모리 내에서)
     output_buffer_for_styling = io.BytesIO()
     with pd.ExcelWriter(output_buffer_for_styling, engine='openpyxl') as writer:
         for sheet_name_raw, df in processed_sheets_dfs.items():
@@ -291,26 +296,25 @@ def process_excel_file_and_style(file_bytes_io):
     output_buffer_for_styling.seek(0)
     wb_styled = load_workbook(output_buffer_for_styling)
 
-    # 각 시트에 스타일 적용
     for sheet_name in wb_styled.sheetnames:
         ws = wb_styled[sheet_name]
-        header = {cell.value: idx + 1 for idx, cell in enumerate(ws[1])}
+        # 헤더가 있는 경우에만 처리 (빈 시트나 문제 있는 시트 방지)
+        if ws.max_row > 1:
+            header = {cell.value: idx + 1 for idx, cell in enumerate(ws[1])}
 
-        for row_idx, row in enumerate(ws.iter_rows(min_row=2, max_row=ws.max_row), start=2):
-            # 교수님 섹션 글씨 진하게
-            if row[0].value == "<교수님>":
-                for cell in row:
-                    if cell.value:
-                        cell.font = Font(bold=True)
+            for row_idx, row in enumerate(ws.iter_rows(min_row=2, max_row=ws.max_row), start=2):
+                if row[0].value == "<교수님>":
+                    for cell in row:
+                        if cell.value:
+                            cell.font = Font(bold=True)
 
-            # 교정 시트의 '진료내역'에 특정 키워드 포함 시 글씨 진하게
-            if sheet_name.strip() == "교정" and '진료내역' in header:
-                idx = header['진료내역'] - 1
-                if len(row) > idx:
-                    cell = row[idx]
-                    text = str(cell.value)
-                    if any(keyword in text for keyword in ['본딩', 'bonding']):
-                        cell.font = Font(bold=True)
+                if sheet_name.strip() == "교정" and '진료내역' in header:
+                    idx = header['진료내-역'] - 1 # 오타 정정 ('진료내역'으로 가정)
+                    if len(row) > idx:
+                        cell = row[idx]
+                        text = str(cell.value)
+                        if any(keyword in text for keyword in ['본딩', 'bonding']):
+                            cell.font = Font(bold=True)
 
     final_output_bytes = io.BytesIO()
     wb_styled.save(final_output_bytes)
@@ -323,14 +327,11 @@ st.title("환자 내원 확인 시스템")
 st.markdown("---")
 st.markdown("<p style='text-align: left; color: grey; font-size: small;'>directed by HSY</p>", unsafe_allow_html=True)
 
-# 사용자 입력 필드
 user_name = st.text_input("사용자 이름을 입력하세요 (예시: 홍길동)")
 user_id = st.text_input("아이디를 입력하세요 (예시: example@gmail.com)")
 
-# Admin 계정 확인 로직 (이름과 아이디 모두 'admin'일 경우)
 is_admin_mode = (user_name.strip().lower() == "admin" and user_id.strip().lower() == "admin")
 
-# 입력 유효성 검사 및 초기 안내
 if user_id and user_name:
     if not is_admin_mode and not is_valid_email(user_id):
         st.error("올바른 이메일 주소 형식이 아닙니다. 'user@example.com'과 같이 입력해주세요.")
@@ -339,15 +340,11 @@ elif not user_id or not user_name:
     st.info("내원 알람 노티를 받을 이메일 주소와 사용자 이름을 입력해주세요.")
     st.stop()
 
-# Firebase 경로에 사용할 안전한 키 생성 (Admin 계정은 실제 Firebase 키로 사용되지 않음)
 firebase_key = sanitize_path(user_id)
-
-# Firebase 데이터베이스 참조 설정
 users_ref = db.reference("users")
 if not is_admin_mode:
     patients_ref_for_user = db.reference(f"patients/{firebase_key}")
 
-# 사용자 정보 Firebase 'users' 노드에 저장 또는 업데이트
 if not is_admin_mode:
     current_user_meta_data = users_ref.child(firebase_key).get()
     if not current_user_meta_data or current_user_meta_data.get("name") != user_name or current_user_meta_data.get("email") != user_id:
