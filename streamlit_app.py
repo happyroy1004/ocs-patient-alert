@@ -188,7 +188,7 @@ def process_sheet_v8(df, professors_list, sheet_key):
             if current_doctor != row['예약의사']:
                 if current_doctor is not None:
                     final_rows.append(pd.Series([" "] * len(df.columns), index=df.columns))
-                current_doctor = row['예약의사']
+                current_doctor = row['예 예약의사']
         final_rows.append(row)
 
     # 교수님 데이터 처리 전 구분선 및 "<교수님>" 표기
@@ -231,7 +231,7 @@ def process_excel_file_and_style(file_bytes_io):
                 break
 
         if not sheet_key:
-            st.warning(f"시트 '{sheet_name_raw}'을(를) 인식할 수 없습니다. 건너뜁니다.")
+            st.warning(f"시트 '{sheet_name_raw}'을(를) 인식할 수 없습니다. 건너킵니다.")
             continue
 
         ws = wb_raw[sheet_name_raw]
@@ -240,7 +240,7 @@ def process_excel_file_and_style(file_bytes_io):
         while values and (values[0] is None or all((v is None or str(v).strip() == "") for v in values[0])):
             values.pop(0)
         if len(values) < 2:
-            st.warning(f"시트 '{sheet_name_raw}'에 유효한 데이터가 충분하지 않습니다. 건너뜁니다.")
+            st.warning(f"시트 '{sheet_name_raw}'에 유효한 데이터가 충분하지 않습니다. 건너킵니다.")
             continue
 
         df = pd.DataFrame(values)
@@ -259,10 +259,10 @@ def process_excel_file_and_style(file_bytes_io):
             processed_df = process_sheet_v8(df, professors_list, sheet_key)
             processed_sheets_dfs[sheet_name_raw] = processed_df
         except KeyError as e:
-            st.error(f"시트 '{sheet_name_raw}' 처리 중 컬럼 오류: {e}. 이 시트는 건너뜁니다.")
+            st.error(f"시트 '{sheet_name_raw}' 처리 중 컬럼 오류: {e}. 이 시트는 건너킵니다.")
             continue
         except Exception as e:
-            st.error(f"시트 '{sheet_name_raw}' 처리 중 알 수 없는 오류: {e}. 이 시트는 건너뜁니다.")
+            st.error(f"시트 '{sheet_name_raw}' 처리 중 알 수 없는 오류: {e}. 이 시트는 건너킵니다.")
             continue
 
     if not processed_sheets_dfs:
@@ -306,9 +306,10 @@ def process_excel_file_and_style(file_bytes_io):
     return processed_sheets_dfs, final_output_bytes
 
 # --- Streamlit 애플리케이션 시작 ---
-st.title("환자 내원 확인 시스템")
-st.markdown("<h3 style='text-align: center; color: grey;'>directed by HSY</h3>", unsafe_allow_html=True)
-# 또는 st.markdown("<h4 style='text-align: center; color: grey;'>directed by HSY</h4>", unsafe_allow_html=True)
+st.title("환자 내원 확인 시스템") # 기존 제목
+st.markdown("---") # 구분선 추가
+st.markdown("<p style='text-align: left; color: grey; font-size: small;'>directed by HSY</p>", unsafe_allow_html=True) # 왼쪽 정렬, 작은 글씨
+
 # 사용자 입력 필드
 user_name = st.text_input("사용자 이름을 입력하세요 (예시: 홍길동)")
 user_id = st.text_input("아이디를 입력하세요 (예시: example@gmail.com)")
@@ -527,7 +528,3 @@ else:
             st.error(f"파일 처리 실패: {ve}")
         except Exception as e:
             st.error(f"예상치 못한 오류 발생: {e}")
-
-# --- 푸터 ---
-st.markdown("---") # 시각적인 구분선
-st.markdown("directed by HSY")
