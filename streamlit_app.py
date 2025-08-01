@@ -309,7 +309,7 @@ def process_excel_file_and_style(file_bytes_io):
 st.title("환자 내원 확인 시스템")
 
 # 사용자 입력 필드
-user_name = st.text_input("사용자 이름을 입력하세요 (예시: 황성연)")
+user_name = st.text_input("사용자 이름을 입력하세요 (예시: 홍길동)")
 user_id = st.text_input("아이디를 입력하세요 (예시: example@gmail.com)")
 
 # Admin 계정 확인 로직 (이름과 아이디 모두 'admin'일 경우)
@@ -322,7 +322,7 @@ if user_id and user_name:
         st.error("올바른 이메일 주소 형식이 아닙니다. 'user@example.com'과 같이 입력해주세요.")
         st.stop()
 elif not user_id or not user_name:
-    st.info("내원 알람 노티를 받을 사용자의 이름과 이메일 주소를 입력해주세요.")
+    st.info("내원 알람 노티를 받을 이메일 주소와 사용자 이름을 입력해주세요.")
     st.stop()
 
 # Firebase 경로에 사용할 안전한 키 생성 (Admin 계정은 실제 Firebase 키로 사용되지 않음)
@@ -530,4 +530,4 @@ else:
 ---
 # --- 푸터 ---
 st.markdown("---")
-st.markdown("directed by HSY")
+st.markdown("제작자 : 황성연")
