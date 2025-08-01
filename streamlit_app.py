@@ -307,7 +307,8 @@ def process_excel_file_and_style(file_bytes_io):
 
 # --- Streamlit 애플리케이션 시작 ---
 st.title("환자 내원 확인 시스템")
-
+st.markdown("<h3 style='text-align: center; color: grey;'>directed by HSY</h3>", unsafe_allow_html=True)
+# 또는 st.markdown("<h4 style='text-align: center; color: grey;'>directed by HSY</h4>", unsafe_allow_html=True)
 # 사용자 입력 필드
 user_name = st.text_input("사용자 이름을 입력하세요 (예시: 홍길동)")
 user_id = st.text_input("아이디를 입력하세요 (예시: example@gmail.com)")
