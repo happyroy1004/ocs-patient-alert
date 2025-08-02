@@ -402,7 +402,7 @@ if not is_admin_mode:
 
 # --- 관리자 모드 (Admin인 경우) ---
 else:
-    st.subheader("엑셀 업로드 및 이메일 발송창 (관리자 모드)")
+    st.subheader("💻 관리자 모드 💻")
     uploaded_file = st.file_uploader("암호화된 Excel 파일을 업로드하세요", type=["xlsx", "xlsm"])
 
     if uploaded_file:
