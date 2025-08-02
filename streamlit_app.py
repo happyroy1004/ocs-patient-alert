@@ -15,7 +15,7 @@ import json
 # --- 이메일 유효성 검사 함수 ---
 def is_valid_email(email):
     email_regex = r"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$"
-    return re.match(email_regex) is not None
+    return re.match(email_regex, email) is not None # <-- email 인자 추가
 
 # Firebase 초기화
 if not firebase_admin._apps:
@@ -32,6 +32,7 @@ if not firebase_admin._apps:
         })
     except Exception as e:
         st.error(f"Firebase 초기화 오류: {e}")
+        #
         st.info("secrets.toml 파일의 Firebase 설정(FIREBASE_SERVICE_ACCOUNT_JSON 또는 database_url)을 [firebase] 섹션 아래에 올바르게 작성했는지 확인해주세요.")
         st.stop()
 
@@ -50,7 +51,7 @@ def recover_email(safe_id: str) -> str:
 # 암호화된 엑셀 파일인지 확인
 def is_encrypted_excel(file):
     try:
-        file.seek(0)
+        file.seek(0) # 파일 포인터를 처음으로 되돌림
         return msoffcrypto.OfficeFile(file).is_encrypted()
     except Exception:
         return False
@@ -203,8 +204,7 @@ def process_sheet_v8(df, professors_list, sheet_key):
         if current_professor != row['예약의사']:
             if current_professor is not None:
                 final_rows.append(pd.Series([" "] * len(df.columns), index=df.columns))
-            # 이 부분이 오타였습니다! '예 예약의사' -> '예약의사'로 수정
-            current_professor = row['예약의사']
+            current_professor = row['예약의사'] # <-- 오타 수정 부분
         final_rows.append(row)
 
     final_df = pd.DataFrame(final_rows, columns=df.columns)
@@ -254,13 +254,6 @@ def process_excel_file_and_style(file_bytes_io):
         df = df.drop([0]).reset_index(drop=True) # 첫 행 삭제 및 인덱스 재설정
         df = df.fillna("").astype(str) # NaN 값 채우고 모든 컬럼을 문자열로
 
-        # 여기서 '예 예약의사'와 같은 오타 컬럼 이름을 '예약의사'로 정규화하는 로직 추가
-        # (만약 엑셀 파일의 컬럼명이 실제로 '예 예약의사'였다면 이 로직이 필요)
-        # 현재는 '예약의사'로 정확하다면 이 부분은 필요 없을 수 있습니다.
-        # 그러나 혹시 모를 상황에 대비하여 추가해 둘 수는 있습니다.
-        # if '예 예약의사' in df.columns:
-        #     df = df.rename(columns={'예 예약의사': '예약의사'})
-
         if '예약의사' in df.columns:
             df['예약의사'] = df['예약의사'].str.strip().str.replace(" 교수님", "", regex=False)
         else:
@@ -280,7 +273,7 @@ def process_excel_file_and_style(file_bytes_io):
 
     if not processed_sheets_dfs:
         st.info("처리된 시트가 없습니다.")
-        return None, None
+        return None, None # 처리된 시트가 없으면 None 반환
 
     # 스타일 적용을 위해 처리된 데이터를 다시 엑셀로 저장 (메모리 내에서)
     output_buffer_for_styling = io.BytesIO()
@@ -321,9 +314,8 @@ def process_excel_file_and_style(file_bytes_io):
     return processed_sheets_dfs, final_output_bytes
 
 # --- Streamlit 애플리케이션 시작 ---
-st.title("환자 내원 확인 시스템") # 기존 제목
-st.markdown("---") # 구분선 추가
-# 왼쪽 정렬, 작은 글씨로 "directed by HSY"
+st.title("환자 내원 확인 시스템")
+st.markdown("---")
 st.markdown("<p style='text-align: left; color: grey; font-size: small;'>directed by HSY</p>", unsafe_allow_html=True)
 
 # 사용자 입력 필드
@@ -414,6 +406,9 @@ else:
     uploaded_file = st.file_uploader("암호화된 Excel 파일을 업로드하세요", type=["xlsx", "xlsm"])
 
     if uploaded_file:
+        # 파일이 업로드될 때마다 파일 포인터를 처음으로 되돌림
+        uploaded_file.seek(0)
+        
         password = None
         # 파일이 암호화되어 있으면 비밀번호 입력 필드 표시
         if is_encrypted_excel(uploaded_file):
@@ -425,12 +420,11 @@ else:
         try:
             # 파일 이름에서 날짜 추출
             file_name = uploaded_file.name
-            date_match = re.search(r'(\d{4})', file_name)
+            date_match = re.search(r'(\d{4})', file_name) # 예를 들어 '2023.xlsx'에서 2023 추출
             extracted_date = date_match.group(1) if date_match else None
 
             # 엑셀 파일 로드 및 처리
             xl_object, raw_file_io = load_excel(uploaded_file, password)
-            # process_excel_file_and_style 함수 내에서 'options' 인자 제거했습니다.
             excel_data_dfs, styled_excel_bytes = process_excel_file_and_style(raw_file_io)
 
             if excel_data_dfs is None or styled_excel_bytes is None:
