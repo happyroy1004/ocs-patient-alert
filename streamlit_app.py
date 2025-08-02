@@ -120,7 +120,7 @@ def send_email(receiver, rows, sender, password, date_str=None):
         </style>
         """
 
-        body = f"다음 등록 환자가 내원했습니다:<br><br><div class='table-container'>{style}{html_table}</div>"
+        body = f"다음 토탈 환자가 내일 내원예정입니다:<br><br><div class='table-container'>{style}{html_table}</div>"
         msg.attach(MIMEText(body, 'html'))
 
         server = smtplib.SMTP('smtp.gmail.com', 587)
@@ -140,8 +140,8 @@ sheet_keyword_to_department_map = {
     '구강 악안면외과' : '외과', '구강악안면외과': '외과', '외과': '외과',
     '구강 내과' : '내과', '구강내과': '내과', '내과': '내과',
     '치과보존과' : '보존', '보존과': '보존', '보존': '보존',
-    '소아치과': '소치', '소치': '소치',
-    '원내생진료센터': '원내생', '원내생': '원내생',
+    '소아치과': '소치', '소치': '소치', '소아 치과': '소치',
+    '원내생진료센터': '원내생', '원내생': '원내생','원내생 진료센터': '원내생',
     '원스톱 협진센터' : '원스톱', '원스톱협진센터': '원스톱', '원스톱': '원스톱',
     '임플란트 진료센터' : '임플란트', '임플란트진료센터': '임플란트', '임플란트': '임플란트',
     '임플' : '임플란트', '치주과': '치주', '치주': '치주',
