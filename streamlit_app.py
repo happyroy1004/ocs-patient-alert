@@ -11,11 +11,12 @@ from openpyxl import load_workbook
 from openpyxl.styles import Font
 import re
 import json
+import os # os 모듈 추가
 
 # --- 이메일 유효성 검사 함수 ---
 def is_valid_email(email):
     email_regex = r"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$"
-    return re.match(email_regex, email) is not None # <-- email 인자 추가
+    return re.match(email_regex, email) is not None
 
 # Firebase 초기화
 if not firebase_admin._apps:
@@ -32,7 +33,6 @@ if not firebase_admin._apps:
         })
     except Exception as e:
         st.error(f"Firebase 초기화 오류: {e}")
-        #
         st.info("secrets.toml 파일의 Firebase 설정(FIREBASE_SERVICE_ACCOUNT_JSON 또는 database_url)을 [firebase] 섹션 아래에 올바르게 작성했는지 확인해주세요.")
         st.stop()
 
@@ -204,7 +204,7 @@ def process_sheet_v8(df, professors_list, sheet_key):
         if current_professor != row['예약의사']:
             if current_professor is not None:
                 final_rows.append(pd.Series([" "] * len(df.columns), index=df.columns))
-            current_professor = row['예약의사'] # <-- 오타 수정 부분
+            current_professor = row['예약의사']
         final_rows.append(row)
 
     final_df = pd.DataFrame(final_rows, columns=df.columns)
@@ -255,7 +255,7 @@ def process_excel_file_and_style(file_bytes_io):
         df = df.fillna("").astype(str) # NaN 값 채우고 모든 컬럼을 문자열로
 
         if '예약의사' in df.columns:
-            df['예약의사'] = df['예약의사'].str.strip().str.replace(" 교수님", "", regex=False)
+            df['예약의사'] = df['예 예약의사'].str.strip().str.replace(" 교수님", "", regex=False) # '예약의사' 컬럼명 그대로 유지
         else:
             st.warning(f"시트 '{sheet_name_raw}': '예약의사' 컬럼이 없습니다. 이 시트는 처리되지 않습니다.")
             continue
@@ -277,7 +277,6 @@ def process_excel_file_and_style(file_bytes_io):
 
     # 스타일 적용을 위해 처리된 데이터를 다시 엑셀로 저장 (메모리 내에서)
     output_buffer_for_styling = io.BytesIO()
-    # 'options' 인자를 제거합니다.
     with pd.ExcelWriter(output_buffer_for_styling, engine='openpyxl') as writer:
         for sheet_name_raw, df in processed_sheets_dfs.items():
             df.to_excel(writer, sheet_name=sheet_name_raw, index=False)
@@ -317,6 +316,23 @@ def process_excel_file_and_style(file_bytes_io):
 st.title("환자 내원 확인 시스템")
 st.markdown("---")
 st.markdown("<p style='text-align: left; color: grey; font-size: small;'>directed by HSY</p>", unsafe_allow_html=True)
+
+# --- 사용 설명서 PDF 다운로드 버튼 추가 ---
+pdf_file_path = "manual.pdf" # PDF 파일의 경로
+pdf_display_name = "사용 설명서" # 사용자에게 보여줄 이름
+
+# 파일 존재 여부 확인 (옵션: 배포 환경에서 파일이 없을 때 오류 방지)
+if os.path.exists(pdf_file_path):
+    with open(pdf_file_path, "rb") as pdf_file:
+        st.download_button(
+            label=f"{pdf_display_name} 다운로드",
+            data=pdf_file,
+            file_name=pdf_file_path,
+            mime="application/pdf"
+        )
+else:
+    st.warning(f"⚠️ {pdf_display_name} 파일을 찾을 수 없습니다. (경로: {pdf_file_path})")
+
 
 # 사용자 입력 필드
 user_name = st.text_input("사용자 이름을 입력하세요 (예시: 홍길동)")
@@ -408,7 +424,7 @@ else:
     if uploaded_file:
         # 파일이 업로드될 때마다 파일 포인터를 처음으로 되돌림
         uploaded_file.seek(0)
-        
+
         password = None
         # 파일이 암호화되어 있으면 비밀번호 입력 필드 표시
         if is_encrypted_excel(uploaded_file):
