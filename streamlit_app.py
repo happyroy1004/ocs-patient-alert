@@ -254,16 +254,11 @@ def process_excel_file_and_style(file_bytes_io):
         df = df.drop([0]).reset_index(drop=True) # 첫 행 삭제 및 인덱스 재설정
         df = df.fillna("").astype(str) # NaN 값 채우고 모든 컬럼을 문자열로
 
-        # 여기서 '예 예약의사' 부분을 '예약의사'로 수정합니다.
-        if '예약의사' in df.columns: # 이미 '예약의사' 컬럼이 있는 경우
-            df['예약의사'] = df['예약의사'].str.strip().str.replace(" 교수님", "", regex=False)
-        elif '예 예약의사' in df.columns: # 만약 '예 예약의사'라는 컬럼이 실제로 있다면
-            df.rename(columns={'예 예약의사': '예약의사'}, inplace=True) # 컬럼 이름 변경
-            df['예약의사'] = df['예약의사'].str.strip().str.replace(" 교수님", "", regex=False)
-        else: # 둘 다 없는 경우
+        if '예약의사' in df.columns:
+            df['예약의사'] = df['예약의사'].str.strip().str.replace(" 교수님", "", regex=False) # '예약의사' 컬럼명 그대로 유지
+        else:
             st.warning(f"시트 '{sheet_name_raw}': '예약의사' 컬럼이 없습니다. 이 시트는 처리되지 않습니다.")
             continue
-
 
         professors_list = professors_dict.get(sheet_key, [])
         try:
