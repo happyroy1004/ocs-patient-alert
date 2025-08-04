@@ -249,7 +249,7 @@ def process_excel_file_and_style(file_bytes_io):
             processed_df = process_sheet_v8(df, professors_list, sheet_key)
             processed_sheets_dfs[sheet_name_raw] = processed_df
         except KeyError as e:
-            st.error(f"시트 '{sheet_name_raw}' 처리 중 컬럼 오류: {e}. 이 시트는 건너킵니다.")
+            st.error(f"시트 '{sheet_name_raw}' 처리 중 컬럼 오류: {e}. 이 시트는 건너깁니다.")
             continue
         except Exception as e:
             st.error(f"시트 '{sheet_name_raw}' 처리 중 알 수 없는 오류: {e}. 이 시트는 건너깁니다.")
@@ -439,56 +439,24 @@ if not is_admin_mode:
 
     existing_patient_data = patients_ref_for_user.get()
 
-    # 체크박스 상태를 저장할 딕셔너리를 세션 상태에 초기화
-    if 'checked_patients' not in st.session_state:
-        st.session_state.checked_patients = {}
-
     if existing_patient_data:
-        # 모든 환자를 처음 로드할 때 체크박스 상태를 False로 초기화
-        for key in existing_patient_data.keys():
-            if key not in st.session_state.checked_patients:
-                st.session_state.checked_patients[key] = False
-
-        st.markdown("**삭제할 환자를 선택하고 아래의 '선택된 환자 삭제' 버튼을 눌러주세요.**")
-        st.markdown("---") # 안내 메시지 아래 구분선
-
+        # 각 환자 항목을 한 줄에 표시하기 위해 컬럼 사용
+        # 정보와 삭제 버튼을 위한 열 비율 조정
         for key, val in existing_patient_data.items():
-            # 체크박스와 환자 정보를 한 줄에 표시
-            # 컬럼 비율 조정: 체크박스에 최소한의 공간, 환자 정보에 나머지 공간
-            col_checkbox, col_info = st.columns([0.1, 0.9])
-            
-            with col_checkbox:
-                # 체크박스 상태를 세션 상태에 연결
-                st.session_state.checked_patients[key] = st.checkbox(
-                    "", # 레이블 없음
-                    value=st.session_state.checked_patients[key], # 현재 세션 상태 값 사용
-                    key=f"checkbox_{key}" # 고유한 키
-                )
-            
-            with col_info:
+            # 첫 번째 컬럼에 환자 정보, 두 번째 컬럼에 삭제 버튼
+            # 정보가 들어갈 컬럼에 더 많은 공간을 할당 (예: 0.75), 삭제 버튼에 적은 공간 할당 (예: 0.25)
+            col1, col2 = st.columns([0.8, 0.2]) 
+            with col1:
                 department_display = val.get('등록과', '미지정')
                 st.markdown(f"**환자명:** {val['환자명']} / **진료번호:** {val['진료번호']} / **등록과:** {department_display}")
-            
-            st.markdown("---") # 각 환자 항목 사이에 구분선
-
-        # 선택된 환자 삭제 버튼 (하단에 배치)
-        if st.button("선택된 환자 삭제", use_container_width=True):
-            patients_to_delete = []
-            for key, is_checked in st.session_state.checked_patients.items():
-                if is_checked:
-                    patients_to_delete.append(key)
-            
-            if patients_to_delete:
-                for key_to_delete in patients_to_delete:
-                    patients_ref_for_user.child(key_to_delete).delete()
-                    # 삭제된 환자는 세션 상태에서도 제거
-                    if key_to_delete in st.session_state.checked_patients:
-                        del st.session_state.checked_patients[key_to_delete]
-                st.success(f"{len(patients_to_delete)}명의 환자가 성공적으로 삭제되었습니다.")
-                st.rerun() # 삭제 후 목록 갱신
-            else:
-                st.warning("삭제할 환자를 선택해주세요.")
-
+            with col2:
+                # 삭제 버튼을 컬럼의 너비에 맞춰 작게 만듭니다.
+                if st.button("삭제", key=f"delete_{key}", use_container_width=True):
+                    patients_ref_for_user.child(key).delete()
+                    st.success("환자가 성공적으로 삭제되었습니다.")
+                    st.rerun()
+            # 각 환자 항목 사이에 구분선 추가 (선택 사항)
+            st.markdown("---")
     else:
         st.info("등록된 환자가 없습니다.")
 
