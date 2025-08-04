@@ -161,7 +161,7 @@ def process_sheet_v8(df, professors_list, sheet_key):
 
     df = df.sort_values(by=['예약의사', '예약시간'])
     professors = df[df['예약의사'].isin(professors_list)]
-    non_professors = df[~df['예약의사'].isin(professors_list)]
+    non_professors = df[~df['예 예약의사'].isin(professors_list)]
 
     if sheet_key != '보철':
         non_professors = non_professors.sort_values(by=['예약시간', '예약의사'])
@@ -440,19 +440,17 @@ if not is_admin_mode:
     existing_patient_data = patients_ref_for_user.get()
 
     if existing_patient_data:
-        # 각 환자 항목을 한 줄에 표시하기 위해 컬럼 사용
         for key, val in existing_patient_data.items():
-            col1, col2 = st.columns([0.8, 0.2]) # 환자 정보와 삭제 버튼의 너비 비율 조정
-            with col1:
-                department_display = val.get('등록과', '미지정')
-                st.markdown(f"**환자명:** {val['환자명']} / **진료번호:** {val['진료번호']} / **등록과:** {department_display}")
-            with col2:
-                # 삭제 버튼을 더 작게 만들기 위해 use_container_width=True 사용
-                if st.button("삭제", key=f"delete_{key}", use_container_width=True):
-                    patients_ref_for_user.child(key).delete()
-                    st.success("환자가 성공적으로 삭제되었습니다.")
-                    st.rerun()
-            st.markdown("---") # 각 환자 항목 사이에 구분선 추가 (선택 사항)
+            with st.container():
+                col1, col2 = st.columns([0.85, 0.15])
+                with col1:
+                    department_display = val.get('등록과', '미지정')
+                    st.markdown(f"환자명: {val['환자명']} / 진료번호: {val['진료번호']} / 등록과: {department_display}")
+                with col2:
+                    if st.button("삭제", key=f"delete_{key}"):
+                        patients_ref_for_user.child(key).delete()
+                        st.success("환자가 성공적으로 삭제되었습니다.")
+                        st.rerun()
     else:
         st.info("등록된 환자가 없습니다.")
 
