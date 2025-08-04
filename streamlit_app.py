@@ -11,7 +11,7 @@ from openpyxl import load_workbook
 from openpyxl.styles import Font
 import re
 import json
-import os # os 모듈 추가
+import os
 
 # --- 이메일 유효성 검사 함수 ---
 def is_valid_email(email):
@@ -21,14 +21,11 @@ def is_valid_email(email):
 # Firebase 초기화
 if not firebase_admin._apps:
     try:
-        # secrets.toml 파일에서 Firebase 서비스 계정 JSON 문자열 로드
-        # [firebase] 섹션 아래에서 찾도록 변경
         firebase_credentials_json_str = st.secrets["firebase"]["FIREBASE_SERVICE_ACCOUNT_JSON"]
         firebase_credentials_dict = json.loads(firebase_credentials_json_str)
 
         cred = credentials.Certificate(firebase_credentials_dict)
         firebase_admin.initialize_app(cred, {
-            # databaseURL 키를 [firebase] 섹션 아래에서 찾도록 변경
             'databaseURL': st.secrets["firebase"]["database_url"]
         })
     except Exception as e:
@@ -43,7 +40,6 @@ def sanitize_path(email):
 # 이메일 주소 복원 (Firebase 안전 키에서 원래 이메일로)
 def recover_email(safe_id: str) -> str:
     email = safe_id.replace("_at_", "@").replace("_dot_", ".")
-    # '.com'이 '_com'으로 변환된 경우를 처리 (필요한 경우에만)
     if not email.endswith(".com") and email.endswith("_com"):
         email = email[:-4] + ".com"
     return email
@@ -51,7 +47,7 @@ def recover_email(safe_id: str) -> str:
 # 암호화된 엑셀 파일인지 확인
 def is_encrypted_excel(file):
     try:
-        file.seek(0) # 파일 포인터를 처음으로 되돌림
+        file.seek(0)
         return msoffcrypto.OfficeFile(file).is_encrypted()
     except Exception:
         return False
@@ -133,7 +129,6 @@ def send_email(receiver, rows, sender, password, date_str=None):
         return str(e)
 
 # --- 엑셀 처리 관련 상수 및 함수 ---
-# 시트 이름 키워드와 해당 진료과 매핑
 sheet_keyword_to_department_map = {
     '치과보철과': '보철', '보철과': '보철', '보철': '보철',
     '치과교정과' : '교정', '교정과': '교정', '교정': '교정',
@@ -148,7 +143,6 @@ sheet_keyword_to_department_map = {
     '임플실': '임플란트', '원진실': '원내생', '병리': '병리'
 }
 
-# 각 진료과별 교수님 명단 (엑셀 시트 정렬에 사용)
 professors_dict = {
     '소치': ['김현태', '장기택', '김정욱', '현홍근', '김영재', '신터전', '송지수'],
     '보존': ['이인복', '금기연', '이우철', '유연지', '서덕규', '이창하', '김선영', '손원준'],
@@ -160,18 +154,15 @@ professors_dict = {
 
 # 엑셀 시트 데이터 처리 (교수님/비교수님, 시간/의사별 정렬)
 def process_sheet_v8(df, professors_list, sheet_key):
-    # '예약일시' 컬럼이 있으면 삭제
     df = df.drop(columns=['예약일시'], errors='ignore')
-    # 필수 컬럼 확인
     if '예약의사' not in df.columns or '예약시간' not in df.columns:
         st.error(f"시트 처리 오류: '예약의사' 또는 '예약시간' 컬럼이 DataFrame에 없습니다.")
         return pd.DataFrame(columns=['진료번호', '예약시간', '환자명', '예약의사', '진료내역'])
 
-    df = df.sort_values(by=['예약의사', '예약시간']) # 기본 정렬
-    professors = df[df['예약의사'].isin(professors_list)] # 교수님 데이터 분리
-    non_professors = df[~df['예약의사'].isin(professors_list)] # 교수님 아닌 데이터 분리
+    df = df.sort_values(by=['예약의사', '예약시간'])
+    professors = df[df['예약의사'].isin(professors_list)]
+    non_professors = df[~df['예 예약의사'].isin(professors_list)]
 
-    # 진료과에 따른 추가 정렬 (보철과만 특이)
     if sheet_key != '보철':
         non_professors = non_professors.sort_values(by=['예약시간', '예약의사'])
     else:
@@ -181,7 +172,6 @@ def process_sheet_v8(df, professors_list, sheet_key):
     current_time = None
     current_doctor = None
 
-    # 교수님 아닌 데이터 처리 (빈 줄 삽입 로직)
     for _, row in non_professors.iterrows():
         if sheet_key != '보철':
             if current_time != row['예약시간']:
@@ -195,7 +185,6 @@ def process_sheet_v8(df, professors_list, sheet_key):
                 current_doctor = row['예약의사']
         final_rows.append(row)
 
-    # 교수님 데이터 처리 전 구분선 및 "<교수님>" 표기
     final_rows.append(pd.Series([" "] * len(df.columns), index=df.columns))
     final_rows.append(pd.Series(["<교수님>"] + [" "] * (len(df.columns) - 1), index=df.columns))
 
@@ -208,7 +197,6 @@ def process_sheet_v8(df, professors_list, sheet_key):
         final_rows.append(row)
 
     final_df = pd.DataFrame(final_rows, columns=df.columns)
-    # 필요한 컬럼만 선택하여 반환
     required_cols = ['진료번호', '예약시간', '환자명', '예약의사', '진료내역']
     final_df = final_df[[col for col in required_cols if col in final_df.columns]]
     return final_df
@@ -218,8 +206,6 @@ def process_excel_file_and_style(file_bytes_io):
     file_bytes_io.seek(0)
 
     try:
-        # 엑셀 복구창 방지를 위해 keep_vba=False (VBA 매크로 제거), data_only=True 유지
-        # read_only=False (기본값)로 쓰기 모드 유지
         wb_raw = load_workbook(filename=file_bytes_io, keep_vba=False, data_only=True)
     except Exception as e:
         raise ValueError(f"엑셀 워크북 로드 실패: {e}")
@@ -230,7 +216,6 @@ def process_excel_file_and_style(file_bytes_io):
         sheet_name_lower = sheet_name_raw.strip().lower()
 
         sheet_key = None
-        # 시트 이름을 기반으로 진료과 매핑
         for keyword, department_name in sorted(sheet_keyword_to_department_map.items(), key=lambda item: len(item[0]), reverse=True):
             if keyword.lower() in sheet_name_lower:
                 sheet_key = department_name
@@ -242,7 +227,6 @@ def process_excel_file_and_style(file_bytes_io):
 
         ws = wb_raw[sheet_name_raw]
         values = list(ws.values)
-        # 빈 상단 행 제거
         while values and (values[0] is None or all((v is None or str(v).strip() == "") for v in values[0])):
             values.pop(0)
         if len(values) < 2:
@@ -250,12 +234,12 @@ def process_excel_file_and_style(file_bytes_io):
             continue
 
         df = pd.DataFrame(values)
-        df.columns = df.iloc[0] # 첫 행을 컬럼명으로
-        df = df.drop([0]).reset_index(drop=True) # 첫 행 삭제 및 인덱스 재설정
-        df = df.fillna("").astype(str) # NaN 값 채우고 모든 컬럼을 문자열로
+        df.columns = df.iloc[0]
+        df = df.drop([0]).reset_index(drop=True)
+        df = df.fillna("").astype(str)
 
         if '예약의사' in df.columns:
-            df['예약의사'] = df['예약의사'].str.strip().str.replace(" 교수님", "", regex=False) # '예약의사' 컬럼명 그대로 유지
+            df['예약의사'] = df['예약의사'].str.strip().str.replace(" 교수님", "", regex=False)
         else:
             st.warning(f"시트 '{sheet_name_raw}': '예약의사' 컬럼이 없습니다. 이 시트는 처리되지 않습니다.")
             continue
@@ -273,31 +257,26 @@ def process_excel_file_and_style(file_bytes_io):
 
     if not processed_sheets_dfs:
         st.info("처리된 시트가 없습니다.")
-        return None, None # 처리된 시트가 없으면 None 반환
+        return None, None
 
-    # 스타일 적용을 위해 처리된 데이터를 다시 엑셀로 저장 (메모리 내에서)
     output_buffer_for_styling = io.BytesIO()
     with pd.ExcelWriter(output_buffer_for_styling, engine='openpyxl') as writer:
         for sheet_name_raw, df in processed_sheets_dfs.items():
             df.to_excel(writer, sheet_name=sheet_name_raw, index=False)
 
     output_buffer_for_styling.seek(0)
-    # 스타일 적용을 위해 로드할 때도 keep_vba=False, data_only=True를 유지하여 일관성 확보
     wb_styled = load_workbook(output_buffer_for_styling, keep_vba=False, data_only=True)
 
-    # 각 시트에 스타일 적용
     for sheet_name in wb_styled.sheetnames:
         ws = wb_styled[sheet_name]
         header = {cell.value: idx + 1 for idx, cell in enumerate(ws[1])}
 
         for row_idx, row in enumerate(ws.iter_rows(min_row=2, max_row=ws.max_row), start=2):
-            # 교수님 섹션 글씨 진하게
             if row[0].value == "<교수님>":
                 for cell in row:
                     if cell.value:
                         cell.font = Font(bold=True)
 
-            # 교정 시트의 '진료내역'에 특정 키워드 포함 시 글씨 진하게
             if sheet_name.strip() == "교정" and '진료내역' in header:
                 idx = header['진료내역'] - 1
                 if len(row) > idx:
@@ -318,10 +297,9 @@ st.markdown("---")
 st.markdown("<p style='text-align: left; color: grey; font-size: small;'>directed by HSY</p>", unsafe_allow_html=True)
 
 # --- 사용 설명서 PDF 다운로드 버튼 추가 ---
-pdf_file_path = "manual.pdf" # PDF 파일의 경로
-pdf_display_name = "사용 설명서" # 사용자에게 보여줄 이름
+pdf_file_path = "manual.pdf"
+pdf_display_name = "사용 설명서"
 
-# 파일 존재 여부 확인 (옵션: 배포 환경에서 파일이 없을 때 오류 방지)
 if os.path.exists(pdf_file_path):
     with open(pdf_file_path, "rb") as pdf_file:
         st.download_button(
@@ -333,47 +311,132 @@ if os.path.exists(pdf_file_path):
 else:
     st.warning(f"⚠️ {pdf_display_name} 파일을 찾을 수 없습니다. (경로: {pdf_file_path})")
 
-
 # 사용자 입력 필드
 user_name = st.text_input("사용자 이름을 입력하세요 (예시: 홍길동)")
-user_id = st.text_input("아이디를 입력하세요 (예시: example@gmail.com)")
 
-# Admin 계정 확인 로직 (이름과 아이디 모두 'admin'일 경우)
-is_admin_mode = (user_name.strip().lower() == "admin" and user_id.strip().lower() == "admin")
+# 세션 상태에 이메일 변경 모드 및 사용자 정보 저장
+if 'email_change_mode' not in st.session_state:
+    st.session_state.email_change_mode = False
+if 'user_id_input_value' not in st.session_state:
+    st.session_state.user_id_input_value = ""
+if 'found_user_email' not in st.session_state:
+    st.session_state.found_user_email = ""
+if 'current_firebase_key' not in st.session_state:
+    st.session_state.current_firebase_key = ""
+if 'current_user_name' not in st.session_state:
+    st.session_state.current_user_name = ""
 
-# 입력 유효성 검사 및 초기 안내
-if user_id and user_name:
-    # Admin 모드가 아닐 경우에만 이메일 형식 검사
-    if not is_admin_mode and not is_valid_email(user_id):
-        st.error("올바른 이메일 주소 형식이 아닙니다. 'user@example.com'과 같이 입력해주세요.")
-        st.stop()
-elif not user_id or not user_name:
+users_ref = db.reference("users")
+
+# Admin 계정 확인 로직
+is_admin_mode = (user_name.strip().lower() == "admin")
+
+# user_name이 입력되었을 때 기존 사용자 검색
+if user_name and not is_admin_mode and not st.session_state.email_change_mode:
+    all_users_meta = users_ref.get()
+    matched_users_by_name = []
+    if all_users_meta:
+        for safe_key, user_info in all_users_meta.items():
+            if user_info and user_info.get("name") == user_name:
+                matched_users_by_name.append({"safe_key": safe_key, "email": user_info.get("email", ""), "name": user_info.get("name", "")})
+
+    if len(matched_users_by_name) == 1:
+        st.session_state.found_user_email = matched_users_by_name[0]["email"]
+        st.session_state.user_id_input_value = matched_users_by_name[0]["email"]
+        st.session_state.current_firebase_key = matched_users_by_name[0]["safe_key"]
+        st.session_state.current_user_name = user_name
+        st.info(f"**{user_name}**님으로 로그인되었습니다. 이메일 주소: **{st.session_state.found_user_email}**")
+    elif len(matched_users_by_name) > 1:
+        st.warning("동일한 이름의 사용자가 여러 명 있습니다. 정확한 이메일 주소를 입력해주세요.")
+        st.session_state.found_user_email = ""
+        st.session_state.user_id_input_value = ""
+        st.session_state.current_firebase_key = ""
+        st.session_state.current_user_name = ""
+    else:
+        st.info("새로운 사용자이거나 등록되지 않은 이름입니다. 이메일 주소를 입력해주세요.")
+        st.session_state.found_user_email = ""
+        st.session_state.user_id_input_value = ""
+        st.session_state.current_firebase_key = ""
+        st.session_state.current_user_name = ""
+
+# 이메일 입력 필드
+if st.session_state.email_change_mode or not st.session_state.found_user_email or is_admin_mode:
+    user_id_input = st.text_input("아이디를 입력하세요 (예시: example@gmail.com)", value=st.session_state.user_id_input_value)
+    if user_id_input != st.session_state.user_id_input_value: # 사용자가 직접 값을 변경했을 때 세션 업데이트
+        st.session_state.user_id_input_value = user_id_input
+else:
+    # 기존 사용자이고 이메일 변경 모드가 아닐 때, 이메일은 표시만 함
+    st.text_input("아이디 (등록된 이메일)", value=st.session_state.found_user_email, disabled=True)
+    if st.button("이메일 주소 변경"):
+        st.session_state.email_change_mode = True
+        st.rerun() # 이메일 변경 모드로 전환 후 새로고침하여 입력 필드 활성화
+
+# 이메일 변경 모드일 때 변경 완료 버튼 표시
+if st.session_state.email_change_mode:
+    if st.button("이메일 주소 변경 완료"):
+        if is_valid_email(st.session_state.user_id_input_value):
+            st.session_state.email_change_mode = False
+            # 이메일 변경 로직 실행
+            old_firebase_key = st.session_state.current_firebase_key
+            new_email = st.session_state.user_id_input_value
+            new_firebase_key = sanitize_path(new_email)
+
+            if old_firebase_key and old_firebase_key != new_firebase_key:
+                # 1. 새로운 이메일로 users 메타 정보 업데이트 (없으면 새로 생성)
+                users_ref.child(new_firebase_key).update({"name": st.session_state.current_user_name, "email": new_email})
+                # 2. patients 노드에서 기존 이메일의 환자 데이터를 새로운 이메일로 이동
+                old_patient_data = db.reference(f"patients/{old_firebase_key}").get()
+                if old_patient_data:
+                    db.reference(f"patients/{new_firebase_key}").set(old_patient_data)
+                    db.reference(f"patients/{old_firebase_key}").delete()
+                # 3. 기존 users 메타 정보 삭제
+                users_ref.child(old_firebase_key).delete()
+
+                st.session_state.current_firebase_key = new_firebase_key
+                st.session_state.found_user_email = new_email
+                st.success(f"이메일 주소가 **{new_email}**로 성공적으로 변경되었습니다.")
+            elif not old_firebase_key: # 이름만 입력해서 기존 사용자를 찾지 못한 경우
+                st.session_state.current_firebase_key = new_firebase_key
+                st.session_state.found_user_email = new_email
+                st.success(f"새로운 사용자 정보가 등록되었습니다: {st.session_state.current_user_name} ({new_email})")
+            else: # 변경 사항 없음
+                st.success("이메일 주소 변경사항이 없습니다.")
+            st.rerun()
+        else:
+            st.error("올바른 이메일 주소 형식이 아닙니다.")
+            
+# user_name과 (입력된 또는 찾아진) user_id가 모두 있을 때만 앱 기능 활성화
+user_id_final = st.session_state.user_id_input_value if st.session_state.email_change_mode or not st.session_state.found_user_email else st.session_state.found_user_email
+
+if not user_name or (not user_id_final and not is_admin_mode):
     st.info("내원 알람 노티를 받을 이메일 주소와 사용자 이름을 입력해주세요.")
     st.stop()
 
-# Firebase 경로에 사용할 안전한 키 생성 (Admin 계정은 실제 Firebase 키로 사용되지 않음)
-firebase_key = sanitize_path(user_id)
+# 최종적으로 사용할 Firebase 키
+firebase_key = sanitize_path(user_id_final) if user_id_final else ""
 
-# Firebase 데이터베이스 참조 설정
-users_ref = db.reference("users") # 사용자 이름 등 메타 정보 저장용
 # Admin 모드가 아닐 경우에만 해당 사용자의 환자 정보 참조
 if not is_admin_mode:
     patients_ref_for_user = db.reference(f"patients/{firebase_key}")
 
-# 사용자 정보 (이름, 이메일) Firebase 'users' 노드에 저장 또는 업데이트
-# Admin 계정일 때는 이 과정 건너뛰기
-if not is_admin_mode:
-    current_user_meta_data = users_ref.child(firebase_key).get()
-    # 사용자 정보가 없거나, 현재 입력된 이름/이메일과 다르면 업데이트
-    if not current_user_meta_data or current_user_meta_data.get("name") != user_name or current_user_meta_data.get("email") != user_id:
-        users_ref.child(firebase_key).update({"name": user_name, "email": user_id})
-        st.success(f"사용자 정보가 업데이트되었습니다: {user_name} ({user_id})")
+    # 사용자 정보 (이름, 이메일) Firebase 'users' 노드에 저장 또는 업데이트
+    # Admin 계정일 때는 이 과정 건너뛰기
+    # 그리고 이메일 변경 모드가 아닐 때 (또는 새로 등록하는 경우)만 업데이트
+    if not st.session_state.email_change_mode:
+        current_user_meta_data = users_ref.child(firebase_key).get()
+        if not current_user_meta_data or current_user_meta_data.get("name") != user_name or current_user_meta_data.get("email") != user_id_final:
+            users_ref.child(firebase_key).update({"name": user_name, "email": user_id_final})
+            st.success(f"사용자 정보가 업데이트되었습니다: {user_name} ({user_id_final})")
+            # 세션 상태 업데이트 (새로운 등록 또는 정보 변경 시)
+            st.session_state.current_firebase_key = firebase_key
+            st.session_state.current_user_name = user_name
+            st.session_state.found_user_email = user_id_final
+
 
 # --- 사용자 모드 (Admin이 아닌 경우) ---
 if not is_admin_mode:
-    st.subheader(f"{user_name}님의 등록 환자 목록") # 사용자 이름 표시
+    st.subheader(f"{user_name}님의 등록 환자 목록")
 
-    # 해당 사용자의 기존 환자 데이터 로드
     existing_patient_data = patients_ref_for_user.get()
 
     if existing_patient_data:
@@ -384,20 +447,17 @@ if not is_admin_mode:
                     department_display = val.get('등록과', '미지정')
                     st.markdown(f"환자명: {val['환자명']} / 진료번호: {val['진료번호']} / 등록과: {department_display}")
                 with col2:
-                    if st.button("삭제", key=key): # 각 항목마다 고유한 삭제 버튼 키
+                    if st.button("삭제", key=f"delete_{key}"):
                         patients_ref_for_user.child(key).delete()
                         st.success("환자가 성공적으로 삭제되었습니다.")
-                        st.rerun() # 삭제 후 화면 새로고침
-
+                        st.rerun()
     else:
         st.info("등록된 환자가 없습니다.")
 
-    # 환자 등록 폼
     with st.form("register_form"):
         name = st.text_input("환자명")
         pid = st.text_input("진료번호")
 
-        # 등록 가능한 진료과 목록 생성 및 선택 박스
         departments_for_registration = sorted(list(set(sheet_keyword_to_department_map.values())))
         selected_department = st.selectbox("등록 과", departments_for_registration)
 
@@ -405,16 +465,14 @@ if not is_admin_mode:
         if submitted:
             if not name or not pid:
                 st.warning("모든 항목을 입력해주세요.")
-            # 중복 환자 등록 방지
             elif existing_patient_data and any(
                 v["환자명"] == name and v["진료번호"] == pid and v.get("등록과") == selected_department
                 for v in existing_patient_data.values()):
                 st.error("이미 등록된 환자입니다.")
             else:
-                # Firebase에 환자 정보 저장
                 patients_ref_for_user.push().set({"환자명": name, "진료번호": pid, "등록과": selected_department})
                 st.success(f"{name} ({pid}) [{selected_department}] 환자 등록 완료")
-                st.rerun() # 등록 후 화면 새로고침
+                st.rerun()
 
 # --- 관리자 모드 (Admin인 경우) ---
 else:
@@ -422,11 +480,9 @@ else:
     uploaded_file = st.file_uploader("암호화된 Excel 파일을 업로드하세요", type=["xlsx", "xlsm"])
 
     if uploaded_file:
-        # 파일이 업로드될 때마다 파일 포인터를 처음으로 되돌림
         uploaded_file.seek(0)
 
         password = None
-        # 파일이 암호화되어 있으면 비밀번호 입력 필드 표시
         if is_encrypted_excel(uploaded_file):
             password = st.text_input("엑셀 파일 비밀번호 입력", type="password")
             if not password:
@@ -434,12 +490,10 @@ else:
                 st.stop()
 
         try:
-            # 파일 이름에서 날짜 추출
             file_name = uploaded_file.name
-            date_match = re.search(r'(\d{4})', file_name) # 예를 들어 '2023.xlsx'에서 2023 추출
+            date_match = re.search(r'(\d{4})', file_name)
             extracted_date = date_match.group(1) if date_match else None
 
-            # 엑셀 파일 로드 및 처리
             xl_object, raw_file_io = load_excel(uploaded_file, password)
             excel_data_dfs, styled_excel_bytes = process_excel_file_and_style(raw_file_io)
 
@@ -447,15 +501,12 @@ else:
                 st.warning("엑셀 파일 처리 중 문제가 발생했거나 처리할 데이터가 없습니다.")
                 st.stop()
 
-            # 이메일 전송을 위한 발신자 정보 (secrets.toml에서 로드)
             sender = st.secrets["gmail"]["sender"]
             sender_pw = st.secrets["gmail"]["app_password"]
 
-            # Firebase에서 모든 사용자 메타 정보 및 모든 환자 데이터 로드
             all_users_meta = users_ref.get()
             all_patients_data = db.reference("patients").get()
 
-            # 데이터 로드 여부에 따른 안내
             if not all_users_meta and not all_patients_data:
                 st.warning("Firebase에 등록된 사용자 또는 환자 데이터가 없습니다. 이메일 전송은 불가능합니다.")
             elif not all_users_meta:
@@ -465,19 +516,17 @@ else:
 
             matched_users = []
 
-            if all_patients_data: # 환자 데이터가 있어야 매칭 로직 실행
-                # 모든 환자 데이터를 순회하며 매칭
+            if all_patients_data:
                 for uid_safe, registered_patients_for_this_user in all_patients_data.items():
-                    user_email = recover_email(uid_safe) # Firebase 키에서 이메일 복원
-                    user_display_name = user_email # 기본 표시 이름은 이메일
+                    user_email = recover_email(uid_safe)
+                    user_display_name = user_email
 
-                    # users 노드에서 사용자 이름 정보 가져오기
                     if all_users_meta and uid_safe in all_users_meta:
                         user_meta = all_users_meta[uid_safe]
                         if "name" in user_meta:
                             user_display_name = user_meta["name"]
                         if "email" in user_meta:
-                            user_email = user_meta["email"] # users 노드에 저장된 실제 이메일 사용
+                            user_email = user_meta["email"]
 
                     registered_patients_data = []
                     if registered_patients_for_this_user:
@@ -490,7 +539,6 @@ else:
 
                     matched_rows_for_user = []
 
-                    # 엑셀 시트별로 매칭 진행
                     for sheet_name_excel_raw, df_sheet in excel_data_dfs.items():
                         excel_sheet_name_lower = sheet_name_excel_raw.strip().lower()
 
@@ -507,7 +555,6 @@ else:
                             excel_patient_name = excel_row["환자명"].strip()
                             excel_patient_pid = excel_row["진료번호"].strip().zfill(8)
 
-                            # 등록된 환자 정보와 엑셀 데이터 매칭
                             for registered_patient in registered_patients_data:
                                 if (registered_patient["환자명"] == excel_patient_name and
                                     registered_patient["진료번호"] == excel_patient_pid and
@@ -522,7 +569,6 @@ else:
                         combined_matched_df = pd.DataFrame(matched_rows_for_user)
                         matched_users.append({"email": user_email, "name": user_display_name, "data": combined_matched_df})
 
-            # 매칭 결과 표시 및 이메일 전송 버튼
             if matched_users:
                 st.success(f"{len(matched_users)}명의 사용자와 일치하는 환자 발견됨.")
 
@@ -542,7 +588,6 @@ else:
             else:
                 st.info("엑셀 파일 처리 완료. 매칭된 환자가 없습니다.")
 
-            # 처리된 엑셀 파일 다운로드 버튼
             output_filename = uploaded_file.name.replace(".xlsx", "_processed.xlsx").replace(".xlsm", "_processed.xlsm")
             st.download_button(
                 "처리된 엑셀 다운로드",
