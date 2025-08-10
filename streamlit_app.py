@@ -420,14 +420,11 @@ if not is_admin_mode:
     patients_ref_for_user = db.reference(f"patients/{firebase_key}")
 
     # 사용자 정보 (이름, 이메일) Firebase 'users' 노드에 저장 또는 업데이트
-    # Admin 계정일 때는 이 과정 건너뛰기
-    # 그리고 이메일 변경 모드가 아닐 때 (또는 새로 등록하는 경우)만 업데이트
     if not st.session_state.email_change_mode:
         current_user_meta_data = users_ref.child(firebase_key).get()
         if not current_user_meta_data or current_user_meta_data.get("name") != user_name or current_user_meta_data.get("email") != user_id_final:
             users_ref.child(firebase_key).update({"name": user_name, "email": user_id_final})
             st.success(f"사용자 정보가 업데이트되었습니다: {user_name} ({user_id_final})")
-            # 세션 상태 업데이트 (새로운 등록 또는 정보 변경 시)
             st.session_state.current_firebase_key = firebase_key
             st.session_state.current_user_name = user_name
             st.session_state.found_user_email = user_id_final
@@ -437,34 +434,28 @@ if not is_admin_mode:
     st.subheader(f"{user_name}님의 등록 환자 목록")
     patients_ref_for_user = db.reference(f"patients/{firebase_key}")
     existing_patient_data = patients_ref_for_user.get()
-    
-    # CSS를 사용하여 삭제 버튼 스타일을 정의
+
+    # 삭제 버튼 스타일 정의
     st.markdown("""
-    <style>
-    div.stButton > button {
-        background-color: #e6e6e6; /* 더 어두운 회색으로 변경 */
-        color: #000000;
-        border: none;
-        padding: 0.2rem 0.5rem; /* 버튼 패딩 조정 */
-        border-radius: 0.3rem;
-        cursor: pointer;
-        font-size: 0.75rem; /* 폰트 크기 조정 */
-        width: 60px; /* 고정 너비 */
-        height: 25px; /* 고정 높이 */
-        flex-shrink: 0; /* 버튼이 줄어들지 않도록 함 */
-        line-height: 1; /* 텍스트 정렬 */
-    }
-    div.stButton > button:hover {
-        background-color: #cccccc; /* 호버 시 색상 변경 */
-    }
-    .patient-container {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        padding: 0.5rem;
-        word-break: break-all;
-    }
-    </style>
+        <style>
+        .small-button {
+            background-color: #e6e6e6;
+            color: #000000;
+            border: none;
+            padding: 0px 0px;
+            border-radius: 0.3rem;
+            cursor: pointer;
+            font-size: 0.6rem;
+            width: 40px;
+            height: 25px;
+            text-align: center;
+            line-height: 25px;
+            margin: 0;
+        }
+        .small-button:hover {
+            background-color: #cccccc;
+        }
+        </style>
     """, unsafe_allow_html=True)
     
     if existing_patient_data:
@@ -478,14 +469,14 @@ if not is_admin_mode:
             patient_info = f"{val['환자명']} / {val['진료번호']} / {val.get('등록과', '미지정')}"
             
             with cols[i % 3]:
-                # Streamlit의 기본 markdown을 사용하여 회색 하이라이트 없이 텍스트만 표시
-                st.markdown(f'<div class="patient-container">{patient_info} <div style="display:inline-block"></div>', unsafe_allow_html=True)
-                
-                # 삭제 버튼을 환자 정보 아래에 배치
-                if st.button("삭제", key=f"delete_btn_{key}"):
-                    patients_ref_for_user.child(key).delete()
-                    st.rerun()
-
+                # 환자 정보와 삭제 버튼을 가로로 정렬하기 위해 내부 컬럼 사용
+                col1, col2 = st.columns([0.8, 0.2])
+                with col1:
+                    st.write(patient_info)
+                with col2:
+                    if st.button("삭제", key=f"delete_btn_{key}"):
+                        patients_ref_for_user.child(key).delete()
+                        st.rerun()
     else:
         st.info("등록된 환자가 없습니다.")
     st.markdown("---")
