@@ -439,25 +439,22 @@ if not is_admin_mode:
     existing_patient_data = patients_ref_for_user.get()
 
     if existing_patient_data:
-        # PC에서는 3단, 모바일에서는 1단으로 보이는 반응형 컬럼 설정
+        # PC에서는 3단, 모바일에서는 한 줄에 텍스트와 버튼이 보이도록 설정
         cols = st.columns(3)
-        
         patient_list = list(existing_patient_data.items())
 
         for i, (key, val) in enumerate(patient_list):
             current_col = cols[(i) % 3]
             with current_col:
-                # 모바일에서도 한 줄로 표시되도록 레이아웃을 다시 구성
+                # 텍스트와 버튼을 한 줄에 배치하기 위해 다시 columns 사용
                 info_col, btn_col = st.columns([0.8, 0.2])
                 with info_col:
-                    # 스타일링을 제거한 일반 텍스트
                     st.text(f"{val['환자명']} / {val['진료번호']} / {val.get('등록과', '미지정')}")
                 with btn_col:
                     if st.button("X", key=f"delete_{key}", use_container_width=True):
                         patients_ref_for_user.child(key).delete()
                         st.rerun()
 
-                # 줄 간격이 너무 넓지 않도록 별도의 구분선 없이 다음 항목으로 넘어감
     else:
         st.info("등록된 환자가 없습니다.")
     st.markdown("---")
