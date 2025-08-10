@@ -438,62 +438,52 @@ if not is_admin_mode:
     patients_ref_for_user = db.reference(f"patients/{firebase_key}")
     existing_patient_data = patients_ref_for_user.get()
 
-    # --- CSS를 이용한 반응형 레이아웃 추가 (수정됨) ---
-    st.markdown("""
-    <style>
-    .patient-list-container {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 1rem;
-        justify-content: flex-start;
-    }
-    .patient-item {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        padding: 0.5rem;
-        background-color: #f0f2f6;
-        border-radius: 0.5rem;
-        flex-grow: 1;
-        min-width: 250px;
-        margin-bottom: 0.5rem;
-    }
-    .patient-info {
-        flex-grow: 1;
-        white-space: nowrap;
-        overflow: hidden;
-        text-overflow: ellipsis;
-        padding-right: 10px;
-    }
-
-    /* 260px 이상부터 3단 레이아웃 적용 */
-    @media (min-width: 260px) {
-        .patient-list-container {
-            justify-content: space-between;
-        }
-        .patient-item {
-            width: 32%;
-        }
-    }
-    </style>
-    """, unsafe_allow_html=True)
-    # --- CSS 끝 ---
-
     if existing_patient_data:
-        st.markdown('<div class="patient-list-container">', unsafe_allow_html=True)
-        for key, val in existing_patient_data.items():
-            with st.container():
-                st.markdown('<div class="patient-item">', unsafe_allow_html=True)
+        # PC에서는 3단, 모바일에서는 1단으로 보이는 반응형 컬럼 설정
+        cols = st.columns(3)
+
+        # 환자 데이터를 리스트로 변환하여 인덱스로 접근
+        patient_list = list(existing_patient_data.items())
+        
+        # 버튼 크기를 더 줄이기 위해 CSS 스타일을 정의
+        button_style = """
+            <style>
+            .small-button > button {
+                background-color: #f0f2f6;
+                color: #495057;
+                font-size: 0.7em;
+                padding: 0.2em 0.4em;
+                border-radius: 0.25rem;
+                border: 1px solid #ced4da;
+            }
+            .small-button > button:hover {
+                background-color: #e2e6ea;
+                color: #495057;
+                border: 1px solid #adb5bd;
+            }
+            </style>
+        """
+        st.markdown(button_style, unsafe_allow_html=True)
+
+        for i, (key, val) in enumerate(patient_list):
+            current_col = cols[(i) % 3]
+
+            with current_col:
+                # 환자 정보와 삭제 버튼을 한 줄에 배치
                 info_col, btn_col = st.columns([0.8, 0.2])
                 with info_col:
-                    st.markdown(f'<div class="patient-info">{val["환자명"]} / {val["진료번호"]} / {val.get("등록과", "미지정")}</div>', unsafe_allow_html=True)
+                    st.markdown(
+                        f"<div style='font-size: 0.9em;'>{val['환자명']} / {val['진료번호']} / {val.get('등록과', '미지정')}</div>",
+                        unsafe_allow_html=True
+                    )
                 with btn_col:
-                    if st.button("X", key=f"delete_{key}", use_container_width=True):
+                    # div로 감싸서 클래스를 적용, 버튼의 크기를 더 작게 조정
+                    st.markdown('<div class="small-button">', unsafe_allow_html=True)
+                    if st.button("삭제", key=f"delete_{key}", use_container_width=True):
                         patients_ref_for_user.child(key).delete()
                         st.rerun()
-                st.markdown('</div>', unsafe_allow_html=True)
-        st.markdown('</div>', unsafe_allow_html=True)
-
+                    st.markdown('</div>', unsafe_allow_html=True)
+                st.markdown("<hr style='margin-top: 0.5em; margin-bottom: 0.5em;'>", unsafe_allow_html=True)
     else:
         st.info("등록된 환자가 없습니다.")
     st.markdown("---")
