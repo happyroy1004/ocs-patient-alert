@@ -438,22 +438,73 @@ if not is_admin_mode:
     patients_ref_for_user = db.reference(f"patients/{firebase_key}")
     existing_patient_data = patients_ref_for_user.get()
 
-    if existing_patient_data:
-        # PC에서는 3단, 모바일에서는 한 줄에 텍스트와 버튼이 보이도록 설정
-        cols = st.columns(3)
-        patient_list = list(existing_patient_data.items())
+    # --- CSS를 이용한 반응형 레이아웃 추가 ---
+    st.markdown("""
+    <style>
+    .patient-list-container {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 1rem;
+        justify-content: flex-start;
+    }
+    .patient-item {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 0.5rem;
+        background-color: #f0f2f6;
+        border-radius: 0.5rem;
+        flex-grow: 1;
+        min-width: 250px;
+        margin-bottom: 0.5rem; /* 항목 간 세로 간격 추가 */
+    }
+    .patient-info {
+        flex-grow: 1;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        padding-right: 10px;
+    }
 
-        for i, (key, val) in enumerate(patient_list):
-            current_col = cols[(i) % 3]
-            with current_col:
-                # 텍스트와 버튼을 한 줄에 배치하기 위해 다시 columns 사용
+    /* 1단 레이아웃 (기본값) */
+    .patient-item {
+        width: 100%;
+    }
+
+    /* 2단 레이아웃 (440px 이상) */
+    @media (min-width: 440px) {
+        .patient-list-container {
+            justify-content: space-between;
+        }
+        .patient-item {
+            width: 48%;
+        }
+    }
+
+    /* 3단 레이아웃 (620px 이상) */
+    @media (min-width: 620px) {
+        .patient-item {
+            width: 32%;
+        }
+    }
+    </style>
+    """, unsafe_allow_html=True)
+    # --- CSS 끝 ---
+
+    if existing_patient_data:
+        st.markdown('<div class="patient-list-container">', unsafe_allow_html=True)
+        for key, val in existing_patient_data.items():
+            with st.container():
+                st.markdown('<div class="patient-item">', unsafe_allow_html=True)
                 info_col, btn_col = st.columns([0.8, 0.2])
                 with info_col:
-                    st.text(f"{val['환자명']} / {val['진료번호']} / {val.get('등록과', '미지정')}")
+                    st.markdown(f'<div class="patient-info">{val["환자명"]} / {val["진료번호"]} / {val.get("등록과", "미지정")}</div>', unsafe_allow_html=True)
                 with btn_col:
                     if st.button("X", key=f"delete_{key}", use_container_width=True):
                         patients_ref_for_user.child(key).delete()
                         st.rerun()
+                st.markdown('</div>', unsafe_allow_html=True)
+        st.markdown('</div>', unsafe_allow_html=True)
 
     else:
         st.info("등록된 환자가 없습니다.")
