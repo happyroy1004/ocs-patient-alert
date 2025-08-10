@@ -443,9 +443,9 @@ if not is_admin_mode:
         for key, val in existing_patient_data.items():
             col1, col2 = st.columns([0.8, 0.2])
             with col1:
-                # 볼드체 제거
+                # 볼드체 및 불필요한 레이블 제거
                 st.markdown(
-                    f"환자명: {val['환자명']} / 진료번호: {val['진료번호']} / 등록과: {val.get('등록과', '미지정')}"
+                    f"{val['환자명']} / {val['진료번호']} / {val.get('등록과', '미지정')}"
                 )
             with col2:
                 if st.button("삭제", key=f"delete_{key}", use_container_width=True):
