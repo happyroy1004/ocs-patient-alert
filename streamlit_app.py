@@ -438,6 +438,12 @@ if not is_admin_mode:
     # 삭제 버튼 스타일 정의
     st.markdown("""
         <style>
+        div[data-testid="column"] > div > div > div > div > div > p {
+            margin-bottom: 0rem;
+        }
+        div[data-testid="column"] > div > div > div > div > div > p:last-child {
+            margin-bottom: 1rem;
+        }
         div.stButton > button {
             background-color: #e6e6e6;
             color: #000000;
@@ -445,27 +451,16 @@ if not is_admin_mode:
             padding: 0;
             border-radius: 0.3rem;
             cursor: pointer;
-            font-size: 0.45rem; /* 폰트 크기 더 줄임 */
-            width: 25px; /* 너비 더 줄임 */
-            height: 25px; /* 높이 더 줄임 */
+            font-size: 0.5rem; /* 폰트 크기 더 줄임 */
+            width: 30px; /* 너비 더 줄임 */
+            height: 30px; /* 높이 더 줄임 */
             display: flex;
             align-items: center;
             justify-content: center;
+            white-space: nowrap; /* 줄바꿈 방지 */
         }
         div.stButton > button:hover {
             background-color: #cccccc;
-        }
-        .patient-row {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 0.5rem;
-            flex-wrap: nowrap; /* 모바일에서 줄바꿈 방지 */
-        }
-        .patient-info {
-            flex-grow: 1;
-            margin-right: 0.5rem;
-            word-break: break-all;
         }
         </style>
     """, unsafe_allow_html=True)
@@ -474,28 +469,22 @@ if not is_admin_mode:
         patient_keys = list(existing_patient_data.keys())
         
         # 3개의 열을 생성하여 환자 정보를 분할
-        cols = st.columns(3)
-        
-        for i, key in enumerate(patient_keys):
-            val = existing_patient_data[key]
-            patient_info = f"{val['환자명']} / {val['진료번호']} / {val.get('등록과', '미지정')}"
-            
-            with cols[i % 3]:
-                # HTML과 CSS를 이용한 flexbox로 가로 정렬
-                st.markdown(
-                    f"""
-                    <div class="patient-row">
-                        <div class="patient-info">{patient_info}</div>
-                        <div style="flex-shrink: 0;">
-                            <style>div[data-testid="stVerticalBlock"] > div:nth-child(2) > div:nth-child(2) {{ margin-top: -10px; }}</style>
-                            <div class="small-button">
-                    """, 
-                    unsafe_allow_html=True
-                )
-                if st.button("삭제", key=f"delete_btn_{key}"):
-                    patients_ref_for_user.child(key).delete()
-                    st.rerun()
-                st.markdown("</div></div></div>", unsafe_allow_html=True)
+        for i in range(0, len(patient_keys), 3):
+            cols = st.columns(3)
+            for j in range(3):
+                if i + j < len(patient_keys):
+                    key = patient_keys[i+j]
+                    val = existing_patient_data[key]
+                    patient_info = f"{val['환자명']} / {val['진료번호']} / {val.get('등록과', '미지정')}"
+                    
+                    with cols[j]:
+                        info_col, btn_col = st.columns([0.8, 0.2])
+                        with info_col:
+                            st.write(patient_info)
+                        with btn_col:
+                            if st.button("삭제", key=f"delete_btn_{key}"):
+                                patients_ref_for_user.child(key).delete()
+                                st.rerun()
     else:
         st.info("등록된 환자가 없습니다.")
     st.markdown("---")
