@@ -585,7 +585,8 @@ if not is_admin_mode:
                     info_col, btn_col = st.columns([4, 1])
                     
                     with info_col:
-                        st.markdown(f"**{val['환자명']}** / {val['진료번호']} / {val.get('등록과', '미지정')}")
+                        # 폰트 크기를 줄이기 위해 <p> 태그와 CSS를 적용합니다.
+                        st.markdown(f"<p style='font-size: small;'>**{val['환자명']}** / {val['진료번호']} / {val.get('등록과', '미지정')}</p>", unsafe_allow_html=True)
                     
                     with btn_col:
                         if st.button("X", key=f"delete_button_{key}"):
