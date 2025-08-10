@@ -444,39 +444,39 @@ if not is_admin_mode:
 
         # 환자 데이터를 리스트로 변환하여 인덱스로 접근
         patient_list = list(existing_patient_data.items())
-        
-        # 버튼 스타일을 CSS로 정의하여 'X' 버튼을 작고 둥글게 만듭니다.
-        # font-size를 줄이고 padding을 더 줄여서 버튼 크기를 최소화합니다.
+
+        # CSS 스타일을 한 번만 정의하여 적용
         button_style = """
             <style>
-            div.stButton > button:first-child {
-                background-color: #f0f2f6;
-                color: #495057;
-                font-size: 0.7em; /* 폰트 크기를 더 줄임 */
-                padding: 0em 0.4em; /* 패딩을 더 줄임 */
-                border-radius: 5px;
-                border: 1px solid #ced4da;
-                line-height: 1.2; /* 텍스트가 버튼 중앙에 오도록 조정 */
-                margin-left: auto; /* 버튼을 오른쪽으로 밀어냅니다. */
+            .stButton>button {
+                font-size: 0.7em !important;
+                padding: 0em 0.4em !important;
+                border-radius: 5px !important;
+                min-width: unset !important; /* 버튼의 최소 너비를 없앰 */
+                min-height: unset !important; /* 버튼의 최소 높이를 없앰 */
+                line-height: 1 !important; /* 텍스트가 버튼 중앙에 오도록 조정 */
+                display: flex !important;
+                align-items: center !important;
+                justify-content: center !important;
+                height: 1.5em !important; /* 높이를 직접 지정 */
+                width: 1.5em !important; /* 너비를 직접 지정하여 정사각형으로 만듦 */
             }
-            div.stButton > button:hover {
-                background-color: #e2e6ea;
-                color: #495057;
-                border: 1px solid #adb5bd;
-            }
-
-            /* CSS Flexbox를 사용하여 텍스트와 버튼을 강제로 한 줄에 정렬 */
-            .flex-container {
+            .patient-entry {
                 display: flex;
                 align-items: center; /* 수직 가운데 정렬 */
-                justify-content: space-between; /* 양 끝 정렬 */
+                justify-content: space-between;
+                width: 100%;
             }
-
             .patient-info {
+                flex: 1;
                 font-size: 0.9em;
-                white-space: nowrap; /* 텍스트 줄 바꿈 방지 */
-                overflow: hidden; /* 넘치는 텍스트 숨기기 */
-                text-overflow: ellipsis; /* 넘치는 텍스트를 ...으로 표시 */
+                white-space: nowrap;
+                overflow: hidden;
+                text-overflow: ellipsis;
+                margin-right: 10px;
+            }
+            .delete-button-container {
+                flex-shrink: 0; /* 버튼이 줄어들지 않도록 설정 */
             }
             </style>
         """
@@ -484,29 +484,39 @@ if not is_admin_mode:
 
         for i, (key, val) in enumerate(patient_list):
             current_col = cols[(i) % 3]
-
             with current_col:
-                # 환자 정보와 삭제 버튼을 한 줄에 배치
+                # `st.columns` 대신 하나의 컨테이너에 Flexbox를 적용
                 st.markdown(
                     f"""
-                    <div class="flex-container">
+                    <div class="patient-entry">
                         <div class="patient-info">
                             {val['환자명']} / {val['진료번호']} / {val.get('등록과', '미지정')}
                         </div>
-                        <div style="margin-left: 10px;">
-                            <button style="background-color: #f0f2f6; color: #495057; font-size: 0.7em; padding: 0em 0.4em; border-radius: 5px; border: 1px solid #ced4da; line-height: 1.2; cursor: pointer;">
-                                X
-                            </button>
+                        <div class="delete-button-container">
+                            <button class="stButton" id="delete-btn-{key}">X</button>
                         </div>
                     </div>
                     """,
                     unsafe_allow_html=True
                 )
-
-                # 버튼 클릭 시 동작을 위한 Streamlit 버튼은 별도로 추가
-                if st.button("X", key=f"delete_{key}", use_container_width=False, help="이 환자를 삭제합니다."):
-                    patients_ref_for_user.child(key).delete()
-                    st.rerun()
+                
+                # 시각적인 'X' 버튼 대신 동작을 위해 숨겨진 Streamlit 버튼 사용
+                # 이 버튼은 사용자가 CSS로 만든 버튼을 클릭했을 때 작동하도록
+                # 자바스크립트 트릭을 쓰거나, 다른 방법을 찾아야 하지만
+                # Streamlit의 한계로 인해 이것은 매우 어렵습니다.
+                # 따라서 가장 최선의 방법은 'X' 버튼을 Streamlit 위젯으로 그대로 사용하는 것입니다.
+                
+                # 기존의 작동하는 st.button을 그대로 사용하여 레이아웃을 다시 시도합니다.
+                info_col, btn_col = st.columns([0.8, 0.2])
+                with info_col:
+                    st.markdown(
+                        f"<div style='font-size: 0.9em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; line-height: 2.2;'>{val['환자명']} / {val['진료번호']} / {val.get('등록과', '미지정')}</div>",
+                        unsafe_allow_html=True
+                    )
+                with btn_col:
+                    if st.button("X", key=f"delete_{key}", help="이 환자를 삭제합니다.", use_container_width=True):
+                        patients_ref_for_user.child(key).delete()
+                        st.rerun()
 
                 st.markdown("<hr style='margin-top: 0.5em; margin-bottom: 0.5em;'>", unsafe_allow_html=True)
     else:
