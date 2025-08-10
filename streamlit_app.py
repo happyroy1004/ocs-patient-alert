@@ -441,15 +441,15 @@ if not is_admin_mode:
     # CSS 스타일링 추가
     st.markdown("""
     <style>
-    /* Streamlit 버튼의 컨테이너 스타일 */
-    .stButton > button {
+    /* 버튼의 컨테이너 스타일 */
+    div.stButton > button {
         font-size: 0.75em !important;
         line-height: 1 !important;
         padding: 0.1em 0.5em !important;
         width: 100%;
         height: 100%;
         margin: 0;
-        max-width: 50px; /* x 버튼의 최대 가로폭 설정 */
+        max-width: 40px; /* x 버튼의 최대 가로폭을 40px로 설정 */
     }
     
     /* 각 환자 정보를 담는 박스 스타일 */
@@ -462,7 +462,7 @@ if not is_admin_mode:
         background-color: #f9f9f9;
         word-break: break-word;
         padding: 0;
-        max-width: 190px; /* 박스 크기 상한선 190px로 설정 */
+        max-width: 190px;
     }
     
     /* 환자 정보 텍스트 컨테이너 */
@@ -484,12 +484,36 @@ if not is_admin_mode:
             grid-template-columns: repeat(2, 1fr) !important;
         }
     }
+
+    /* 환자 정보와 버튼이 한 줄에 있도록 flexbox를 사용 */
+    .patient-entry-container {
+        display: flex;
+        align-items: center;
+        border: 1px solid #e6e6e6;
+        border-radius: 5px;
+        background-color: #f9f9f9;
+        padding: 0;
+        margin-bottom: 10px;
+        max-width: 190px;
+    }
+    .patient-entry-text {
+        flex: 1;
+        padding: 10px;
+        font-size: 0.9em;
+        word-break: break-word;
+    }
+    .patient-entry-button-wrapper {
+        flex-shrink: 0;
+        padding: 5px;
+    }
+
     </style>
     """, unsafe_allow_html=True)
     
     if existing_patient_data:
         patient_list = list(existing_patient_data.items())
 
+        # Streamlit의 컬럼을 사용해 3단(PC) / 2단(모바일) 레이아웃 구성
         cols = st.columns(3)
         num_cols = 3
 
@@ -497,20 +521,21 @@ if not is_admin_mode:
             current_col = cols[i % num_cols]
             
             with current_col:
-                with st.container():
-                    col_text, col_btn = st.columns([0.8, 0.2])
-                    
-                    with col_text:
-                        st.markdown(
-                            f'<div class="patient-box"><div class="patient-info-text"><b>{val["환자명"]}</b> / {val["진료번호"]} / {val.get("등록과", "미지정")}</div></div>',
-                            unsafe_allow_html=True
-                        )
-                    
-                    with col_btn:
-                        # 삭제 버튼
-                        if st.button("X", key=f"delete_button_{key}"):
-                            patients_ref_for_user.child(key).delete()
-                            st.rerun()
+                # flexbox 스타일이 적용된 div를 사용하여 텍스트와 버튼을 한 줄에 배치
+                st.markdown(f"""
+                <div class="patient-entry-container">
+                    <div class="patient-entry-text">
+                        <b>{val['환자명']}</b> / {val['진료번호']} / {val.get('등록과', '미지정')}
+                    </div>
+                </div>
+                """, unsafe_allow_html=True)
+                
+                # 버튼을 별도의 컨테이너로 감싸고, CSS로 크기를 조절
+                # st.button은 st.markdown과 독립적인 컴포넌트이므로, CSS를 직접 적용하는 것이 어려움
+                # 그래서 별도의 컨테이너를 사용하거나, st.columns와 같은 레이아웃 헬퍼를 사용
+                if st.button("X", key=f"delete_button_{key}"):
+                    patients_ref_for_user.child(key).delete()
+                    st.rerun()
 
     else:
         st.info("등록된 환자가 없습니다.")
