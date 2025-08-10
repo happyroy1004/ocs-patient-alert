@@ -439,28 +439,52 @@ if not is_admin_mode:
     existing_patient_data = patients_ref_for_user.get()
 
     if existing_patient_data:
-        # 2단으로 나누기 위한 컬럼 생성
-        cols = st.columns(2)
-        
+        # 3단으로 나누기 위한 컬럼 생성
+        cols = st.columns(3)
+
         # 환자 데이터를 리스트로 변환하여 인덱스로 접근
         patient_list = list(existing_patient_data.items())
-        
+
         for i, (key, val) in enumerate(patient_list):
-            current_col = cols[i % 2]
-            
+            current_col = cols[(i) % 3]
+
             with current_col:
-                # 환자 정보와 삭제 버튼을 한 줄에 배치하기 위해 다시 컬럼을 나눔
+                # 환자 정보와 삭제 버튼을 같은 줄에 배치하기 위해 컬럼을 더 세분화
                 info_col, btn_col = st.columns([0.7, 0.3])
                 with info_col:
                     st.markdown(
-                        f"{val['환자명']} / {val['진료번호']} / {val.get('등록과', '미지정')}"
+                        f"<div style='font-size: 0.9em;'>{val['환자명']} / {val['진료번호']} / {val.get('등록과', '미지정')}</div>",
+                        unsafe_allow_html=True
                     )
                 with btn_col:
+                    button_style = """
+                        <style>
+                        div.stButton > button:first-child {
+                            background-color: #f0f2f6;
+                            color: #495057;
+                            font-size: 0.7em;
+                            padding: 0.2em 0.4em;
+                            border-radius: 0.25rem;
+                            border: 1px solid #ced4da;
+                        }
+                        div.stButton > button:hover {
+                            background-color: #e2e6ea;
+                            color: #495057;
+                            border: 1px solid #adb5bd;
+                        }
+                        div.stButton > button:active {
+                            background-color: #d1d9e0;
+                            color: #495057;
+                            border: 1px solid #adb5bd;
+                        }
+                        </style>
+                    """
+                    st.markdown(button_style, unsafe_allow_html=True)
                     if st.button("삭제", key=f"delete_{key}", use_container_width=True):
                         patients_ref_for_user.child(key).delete()
                         st.success("환자가 성공적으로 삭제되었습니다.")
                         st.rerun()
-                st.markdown("---") # 각 환자 항목 아래에 구분선 추가
+                st.markdown("<hr style='margin-top: 0.5em; margin-bottom: 0.5em;'>", unsafe_allow_html=True)
     else:
         st.info("등록된 환자가 없습니다.")
     st.markdown("---")
