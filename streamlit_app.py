@@ -14,6 +14,34 @@ import json
 import os
 import time
 
+# --- CSS 스타일 추가 ---
+# 이 스타일은 환자 정보와 X 버튼이 한 줄에 표시되도록 강제하고,
+# 텍스트가 길어지면 말줄임표(...)로 처리하여 레이아웃을 유지합니다.
+st.markdown("""
+<style>
+.patient-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    flex-wrap: nowrap; /* 핵심: 줄바꿈을 방지합니다. */
+}
+.patient-info {
+    flex-grow: 1;
+    white-space: nowrap; /* 텍스트 줄바꿈을 방지합니다. */
+    overflow: hidden; /* 영역을 넘어가는 내용을 숨깁니다. */
+    text-overflow: ellipsis; /* 숨겨진 내용을 ...로 표시합니다. */
+}
+/* Streamlit의 버튼 스타일을 약간 조정하여 더 잘 보이게 합니다. */
+.stButton button {
+    padding: 0.25rem 0.5rem;
+    line-height: 1;
+    min-height: 20px;
+}
+</style>
+""", unsafe_allow_html=True)
+
+
 # --- 이메일 유효성 검사 함수 ---
 def is_valid_email(email):
     email_regex = r"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$"
@@ -230,7 +258,7 @@ def process_excel_file_and_style(file_bytes_io):
             values.pop(0)
         if len(values) < 2:
             st.warning(f"시트 '{sheet_name_raw}'에 유효한 데이터가 충분하지 않습니다. 건너깁니다.")
-            continue
+        continue
 
         df = pd.DataFrame(values)
         df.columns = df.iloc[0]
@@ -564,25 +592,31 @@ if not is_admin_mode:
 
     if existing_patient_data:
         patient_list = list(existing_patient_data.items())
-        # PC 환경에서는 3단, 모바일 환경에서는 1단으로 자동 조절됩니다.
-        cols_count = 3
-        cols = st.columns(cols_count)
         
+        # 컬럼 수를 동적으로 조정하는 대신, CSS Flexbox를 사용합니다.
+        # 기존 st.columns 로직을 제거하고, CSS를 적용할 단일 컨테이너로 변경합니다.
         for idx, (key, val) in enumerate(patient_list):
-            with cols[idx % cols_count]:
-                # 각 환자 정보를 st.container로 묶어 박스 형태로 만듭니다.
-                with st.container(border=True):
-                    # 환자 정보와 버튼을 한 줄에 배치하기 위해 다시 columns를 사용합니다.
-                    # 텍스트와 버튼의 너비 비율을 4:1로 설정하여 정렬합니다.
-                    info_col, btn_col = st.columns([4, 1])
-                    
-                    with info_col:
-                        st.markdown(f"**{val['환자명']}** / {val['진료번호']} / {val.get('등록과', '미지정')}")
-                    
-                    with btn_col:
-                        if st.button("X", key=f"delete_button_{key}"):
-                            patients_ref_for_user.child(key).delete()
-                            st.rerun()
+            with st.container(border=True):
+                # st.markdown을 사용하여 HTML과 CSS를 직접 적용합니다.
+                # flex-wrap: nowrap으로 줄바꿈을 방지합니다.
+                st.markdown(f"""
+                <div class="patient-item">
+                    <div class="patient-info">
+                        <strong>{val['환자명']}</strong> / {val['진료번호']} / {val.get('등록과', '미지정')}
+                    </div>
+                    <div>
+                        <button class="streamlit-button small" onclick="window.parent.postMessage({{
+                            type: 'streamlit:setComponentValue',
+                            id: '{'delete_button_' + key}',
+                            value: true
+                        }}, '*')">X</button>
+                    </div>
+                </div>
+                """, unsafe_allow_html=True)
+                # Streamlit 버튼은 `st.button`으로 따로 구현해야 합니다.
+                if st.button("X", key=f"delete_button_{key}"):
+                    patients_ref_for_user.child(key).delete()
+                    st.rerun()
     else:
         st.info("등록된 환자가 없습니다.")
     st.markdown("---")
