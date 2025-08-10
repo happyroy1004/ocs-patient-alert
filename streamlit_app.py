@@ -441,15 +441,19 @@ if not is_admin_mode:
     # st.button의 마진도 줄여서 텍스트와 버튼이 더 가까이 붙도록 합니다.
     st.markdown("""
         <style>
-        .patient-entry p {
-            margin-bottom: 0px !important;
-            margin-top: 0px !important;
+        .patient-entry-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 5px 0; /* 간격 조절 */
+        }
+        .patient-info {
+            flex-grow: 1;
+            margin: 0;
             font-size: 14px;
         }
-        .patient-entry .stButton {
-            margin-top: 0px !important;
-            margin-bottom: 0px !important;
-            padding: 0px !important;
+        .patient-button {
+            margin-left: 10px;
         }
         </style>
     """, unsafe_allow_html=True)
@@ -458,24 +462,36 @@ if not is_admin_mode:
 
     if existing_patient_data:
         for key, val in existing_patient_data.items():
-            # 각 환자 항목을 감싸는 컨테이너
-            with st.container():
-                col1, col2 = st.columns([0.8, 0.2])
-                with col1:
-                    department_display = val.get('등록과', '미지정')
-                    st.markdown(
-                        f"<div class='patient-entry'>**환자명:** {val['환자명']} / **진료번호:** {val['진료번호']} / **등록과:** {department_display}</div>",
-                        unsafe_allow_html=True
-                    )
-                with col2:
-                    if st.button("삭제", key=f"delete_{key}", use_container_width=True):
-                        patients_ref_for_user.child(key).delete()
-                        st.success("환자가 성공적으로 삭제되었습니다.")
-                        st.rerun()
+            department_display = val.get('등록과', '미지정')
+            st.markdown(
+                f"""
+                <div class="patient-entry-row">
+                    <div class="patient-info">
+                        **환자명:** {val['환자명']} / **진료번호:** {val['진료번호']} / **등록과:** {department_display}
+                    </div>
+                    <div class="patient-button">
+                        <form method="post" action="">
+                            <input type="submit" value="삭제" name="delete_patient_{key}">
+                        </form>
+                    </div>
+                </div>
+                """,
+                unsafe_allow_html=True
+            )
+            # Streamlit 버튼을 직접 사용할 경우의 코드
+            # if st.button("삭제", key=f"delete_{key}"):
+            #     patients_ref_for_user.child(key).delete()
+            #     st.success("환자가 성공적으로 삭제되었습니다.")
+            #     st.rerun()
 
-                # 각 환자 항목 사이에 구분선 대신 작은 간격만 추가
-                # st.markdown("<div style='margin-bottom: 5px;'></div>", unsafe_allow_html=True)
-                st.markdown("---") # 줄 간격을 줄이기 위해 `---` 대신 `<br>` 또는 `<div style='...'>` 사용 가능
+            # HTML 버튼 클릭 시에는 rerun이 자동으로 되지 않으므로, Streamlit 버튼을 사용하는 것이 더 좋습니다.
+            if st.button("삭제", key=f"delete_{key}", use_container_width=True):
+                patients_ref_for_user.child(key).delete()
+                st.success("환자가 성공적으로 삭제되었습니다.")
+                st.rerun()
+
+        # 각 환자 항목 사이에 구분선 추가 (선택 사항)
+        st.markdown("---")
     else:
         st.info("등록된 환자가 없습니다.")
 
