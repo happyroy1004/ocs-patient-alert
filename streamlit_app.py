@@ -19,13 +19,26 @@ import time
 # 텍스트가 길어지면 말줄임표(...)로 처리하여 레이아웃을 유지합니다.
 st.markdown("""
 <style>
-.patient-item {
+/* Streamlit의 컬럼이 자동으로 줄바꿈되는 것을 방지합니다. */
+.st-emotion-cache-1r6r06b, .st-emotion-cache-13ln4gm { /* 컬럼의 부모 컨테이너 CSS 클래스 */
     display: flex;
     align-items: center;
-    justify-content: space-between;
-    gap: 10px;
-    flex-wrap: nowrap; /* 핵심: 줄바꿈을 방지합니다. */
+    flex-wrap: nowrap !important; /* 줄바꿈 방지 */
 }
+
+/* 환자 정보 박스 스타일 */
+.patient-box {
+    background-color: #f0f2f6; /* 회색 배경 */
+    border: 1px solid #e0e0e0;
+    border-radius: 8px;
+    padding: 10px;
+    margin-bottom: 10px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 10px;
+}
+
 .patient-info {
     flex-grow: 1;
     white-space: nowrap; /* 텍스트 줄바꿈을 방지합니다. */
@@ -37,6 +50,8 @@ st.markdown("""
     padding: 0.25rem 0.5rem;
     line-height: 1;
     min-height: 20px;
+    border-radius: 5px;
+    font-weight: bold;
 }
 </style>
 """, unsafe_allow_html=True)
@@ -596,19 +611,20 @@ if not is_admin_mode:
         # st.columns를 사용하여 두 개의 열을 만듭니다.
         # 첫 번째 열에 환자 정보를, 두 번째 열에 'X' 버튼을 배치합니다.
         for idx, (key, val) in enumerate(patient_list):
-            col1, col2 = st.columns([0.9, 0.1])
-            with col1:
-                st.markdown(f"""
-                    <div class="patient-item">
+            # 환자 정보 박스처럼 보이도록 st.container 사용
+            with st.container(border=True):
+                #st.columns의 폭 비율을 조정하여 X 버튼을 더 작게 만듭니다.
+                col1, col2 = st.columns([0.9, 0.1])
+                with col1:
+                     st.markdown(f"""
                         <div class="patient-info">
                             <strong>{val['환자명']}</strong> / {val['진료번호']} / {val.get('등록과', '미지정')}
                         </div>
-                    </div>
                     """, unsafe_allow_html=True)
-            with col2:
-                if st.button("X", key=f"delete_button_{key}"):
-                    patients_ref_for_user.child(key).delete()
-                    st.rerun()
+                with col2:
+                    if st.button("X", key=f"delete_button_{key}"):
+                        patients_ref_for_user.child(key).delete()
+                        st.rerun()
     else:
         st.info("등록된 환자가 없습니다.")
     st.markdown("---")
