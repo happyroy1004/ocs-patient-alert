@@ -438,49 +438,40 @@ if not is_admin_mode:
     # CSS 스타일링
     st.markdown("""
     <style>
+    /* 전체 페이지 너비 조정 */
+    .block-container {
+        padding-top: 2rem;
+        padding-bottom: 2rem;
+        padding-left: 1rem;
+        padding-right: 1rem;
+    }
+    
     /* 버튼의 컨테이너 스타일 */
     div.stButton > button {
         font-size: 0.75em !important;
         line-height: 1 !important;
         padding: 0.1em 0.5em !important;
-        max-width: 40px; /* width: 100%를 제거하고 max-width만 남김 */
         height: 100%;
         margin: 0;
-    }
-    
-    /* Streamlit 컬럼 반응형 스타일 (PC 3단, 모바일 2단) */
-    @media (min-width: 650px) {
-        .st-emotion-cache-13k6jc6 {
-            grid-template-columns: repeat(3, 1fr) !important;
-        }
-    }
-    
-    @media (max-width: 649px) {
-        .st-emotion-cache-13k6jc6 {
-            grid-template-columns: repeat(2, 1fr) !important;
-        }
+        max-width: 40px; /* x 버튼의 최대 너비 */
     }
 
-    /* 환자 정보와 버튼을 담는 박스 스타일 */
+    /* 환자 정보와 버튼을 담는 컨테이너 */
     .patient-entry-container {
         display: flex;
         align-items: center;
         border: 1px solid #e6e6e6;
         border-radius: 5px;
         background-color: #f9f9f9;
-        padding: 0;
         margin-bottom: 10px;
-        max-width: 190px;
+        word-break: break-all;
     }
-    .patient-entry-text {
+
+    /* 환자 정보 텍스트 스타일 */
+    .patient-info-text {
         flex: 1;
         padding: 10px;
         font-size: 0.9em;
-        word-break: break-word;
-    }
-    .patient-entry-button-wrapper {
-        flex-shrink: 0;
-        padding: 5px;
     }
     </style>
     """, unsafe_allow_html=True)
@@ -488,6 +479,7 @@ if not is_admin_mode:
     if existing_patient_data:
         patient_list = list(existing_patient_data.items())
 
+        # Streamlit의 컬럼을 사용해 3단(PC) / 2단(모바일) 레이아웃 구성
         cols = st.columns(3)
         num_cols = 3
 
@@ -500,7 +492,7 @@ if not is_admin_mode:
                 
                 with col_text:
                     st.markdown(
-                        f'<div class="patient-entry-text"><b>{val["환자명"]}</b> / {val["진료번호"]} / {val.get("등록과", "미지정")}</div>',
+                        f'<div class="patient-info-text"><b>{val["환자명"]}</b> / {val["진료번호"]} / {val.get("등록과", "미지정")}</div>',
                         unsafe_allow_html=True
                     )
                 
