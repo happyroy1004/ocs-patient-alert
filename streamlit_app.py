@@ -14,50 +14,6 @@ import json
 import os
 import time
 
-# --- CSS 스타일 추가 ---
-# 이 스타일은 환자 정보와 X 버튼이 한 줄에 표시되도록 강제하고,
-# 텍스트가 길어지면 말줄임표(...)로 처리하여 레이아웃을 유지합니다.
-st.markdown("""
-<style>
-/* Streamlit의 컬럼이 자동으로 줄바꿈되는 것을 방지합니다. */
-.st-emotion-cache-1r6r06b, .st-emotion-cache-13ln4gm { /* 컬럼의 부모 컨테이너 CSS 클래스 */
-    display: flex;
-    align-items: center;
-    flex-wrap: nowrap !important; /* 줄바꿈 방지 */
-    min-width: 100%; /* 최소 너비를 100%로 설정하여 가로 스크롤을 방지합니다. */
-}
-
-/* 환자 정보 박스 스타일 */
-.patient-box {
-    background-color: #f0f2f6; /* 회색 배경 */
-    border: 1px solid #e0e0e0;
-    border-radius: 8px;
-    padding: 10px;
-    margin-bottom: 10px;
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    gap: 10px;
-}
-
-.patient-info {
-    flex-grow: 1;
-    white-space: nowrap; /* 텍스트 줄바꿈을 방지합니다. */
-    overflow: hidden; /* 영역을 넘어가는 내용을 숨깁니다. */
-    text-overflow: ellipsis; /* 숨겨진 내용을 ...로 표시합니다. */
-}
-/* Streamlit의 버튼 스타일을 약간 조정하여 더 잘 보이게 합니다. */
-.stButton button {
-    padding: 0.25rem 0.5rem;
-    line-height: 1;
-    min-height: 20px;
-    border-radius: 5px;
-    font-weight: bold;
-}
-</style>
-""", unsafe_allow_html=True)
-
-
 # --- 이메일 유효성 검사 함수 ---
 def is_valid_email(email):
     email_regex = r"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$"
@@ -608,24 +564,25 @@ if not is_admin_mode:
 
     if existing_patient_data:
         patient_list = list(existing_patient_data.items())
+        # PC 환경에서는 3단, 모바일 환경에서는 1단으로 자동 조절됩니다.
+        cols_count = 3
+        cols = st.columns(cols_count)
         
-        # st.columns를 사용하여 두 개의 열을 만듭니다.
-        # 첫 번째 열에 환자 정보를, 두 번째 열에 'X' 버튼을 배치합니다.
         for idx, (key, val) in enumerate(patient_list):
-            # 환자 정보 박스처럼 보이도록 st.container 사용
-            with st.container(border=True):
-                #st.columns의 폭 비율을 조정하여 X 버튼을 더 작게 만듭니다.
-                col1, col2 = st.columns([0.9, 0.1])
-                with col1:
-                     st.markdown(f"""
-                        <div class="patient-info">
-                            <strong>{val['환자명']}</strong> / {val['진료번호']} / {val.get('등록과', '미지정')}
-                        </div>
-                    """, unsafe_allow_html=True)
-                with col2:
-                    if st.button("X", key=f"delete_button_{key}"):
-                        patients_ref_for_user.child(key).delete()
-                        st.rerun()
+            with cols[idx % cols_count]:
+                # 각 환자 정보를 st.container로 묶어 박스 형태로 만듭니다.
+                with st.container(border=True):
+                    # 환자 정보와 버튼을 한 줄에 배치하기 위해 다시 columns를 사용합니다.
+                    # 텍스트와 버튼의 너비 비율을 4:1로 설정하여 정렬합니다.
+                    info_col, btn_col = st.columns([4, 1])
+                    
+                    with info_col:
+                        st.markdown(f"**{val['환자명']}** / {val['진료번호']} / {val.get('등록과', '미지정')}")
+                    
+                    with btn_col:
+                        if st.button("X", key=f"delete_button_{key}"):
+                            patients_ref_for_user.child(key).delete()
+                            st.rerun()
     else:
         st.info("등록된 환자가 없습니다.")
     st.markdown("---")
