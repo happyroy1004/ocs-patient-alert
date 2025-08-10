@@ -564,25 +564,69 @@ if not is_admin_mode:
 
     if existing_patient_data:
         patient_list = list(existing_patient_data.items())
-        # PC 환경에서는 3단, 모바일 환경에서는 1단으로 자동 조절됩니다.
         cols_count = 3
-        cols = st.columns(cols_count)
         
-        for idx, (key, val) in enumerate(patient_list):
-            with cols[idx % cols_count]:
-                # 각 환자 정보를 st.container로 묶어 박스 형태로 만듭니다.
-                with st.container(border=True):
-                    # 환자 정보와 버튼을 한 줄에 배치하기 위해 다시 columns를 사용합니다.
-                    # 텍스트와 버튼의 너비 비율을 4:1로 설정하여 정렬합니다.
-                    info_col, btn_col = st.columns([4, 1])
-                    
-                    with info_col:
-                        st.markdown(f"**{val['환자명']}** / {val['진료번호']} / {val.get('등록과', '미지정')}")
-                    
-                    with btn_col:
-                        if st.button("X", key=f"delete_button_{key}"):
-                            patients_ref_for_user.child(key).delete()
-                            st.rerun()
+        # PC 환경과 모바일 환경을 구분하여 다른 레이아웃을 사용합니다.
+        # Streamlit 1.18.0 이상에서는 반응형 레이아웃이 개선되었으나,
+        # 확실한 제어를 위해 st.sidebar를 이용하여 모바일 여부를 확인합니다.
+        # st.sidebar는 모바일에서 숨겨지고 PC에서만 보이기 때문에,
+        # 이를 통해 화면 너비를 간접적으로 추론할 수 있습니다.
+        # 하지만 st.sidebar는 UI에 영향을 미치므로,
+        # CSS 미디어 쿼리를 사용하는 것이 더 안정적입니다.
+        
+        st.markdown(
+            """
+            <style>
+            .patient-box-container {
+                display: flex;
+                flex-wrap: wrap;
+                gap: 1rem;
+            }
+            .patient-box {
+                flex: 1 1 300px; /* PC에서는 300px 이상, 모바일에서는 100% */
+                border: 1px solid #e6e6e6;
+                border-radius: 5px;
+                padding: 10px;
+                background-color: #f9f9f9;
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+            }
+            .patient-info {
+                flex-grow: 1;
+                font-size: 0.9em;
+            }
+            .delete-button {
+                margin-left: 10px;
+            }
+            </style>
+            """,
+            unsafe_allow_html=True
+        )
+
+        st.markdown('<div class="patient-box-container">', unsafe_allow_html=True)
+        for key, val in existing_patient_data.items():
+            st.markdown(
+                f"""
+                <div class="patient-box">
+                    <div class="patient-info">
+                        <b>{val["환자명"]}</b> / {val["진료번호"]} / {val.get("등록과", "미지정")}
+                    </div>
+                    <div class="delete-button">
+                        <button onclick="window.parent.postMessage({{
+                            'streamlit:command': 'setComponentValue', 
+                            'value': {{ 'widgetId': 'delete_button_{key}', 'value': true }}
+                        }}, '*');">X</button>
+                    </div>
+                </div>
+                """,
+                unsafe_allow_html=True
+            )
+            if st.button("X", key=f"delete_button_{key}", help="환자 삭제", use_container_width=True):
+                patients_ref_for_user.child(key).delete()
+                st.rerun()
+
+        st.markdown('</div>', unsafe_allow_html=True)
     else:
         st.info("등록된 환자가 없습니다.")
     st.markdown("---")
