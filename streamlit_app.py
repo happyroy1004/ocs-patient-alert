@@ -447,6 +447,7 @@ if not is_admin_mode:
         line-height: 1 !important;
         padding: 0.1em 0.5em !important;
         width: 100%; /* 버튼이 컬럼의 전체 너비를 차지하도록 설정 */
+        max-width: 40px; /* 버튼의 최대 너비를 40px로 제한 */
         height: 100%;
         margin: 0;
     }
@@ -461,7 +462,7 @@ if not is_admin_mode:
         background-color: #f9f9f9;
         word-break: break-word;
         padding: 0; /* 내부 padding 제거 */
-        max-width: 190px; /* 박스 크기 상한선 190px로 설정 */
+        max-width: 100%;
     }
     
     /* 환자 정보 텍스트 컨테이너 */
