@@ -441,14 +441,15 @@ if not is_admin_mode:
     # CSS 스타일링 추가
     st.markdown("""
     <style>
-    /* 버튼 폰트 크기 및 여백 조절 */
-    div.stButton > button {
+    /* Streamlit 버튼의 컨테이너 스타일 */
+    .stButton > button {
         font-size: 0.75em !important;
         line-height: 1 !important;
         padding: 0.1em 0.5em !important;
-        width: 100%; /* 버튼이 컬럼의 전체 너비를 차지하도록 설정 */
+        width: 100%;
         height: 100%;
         margin: 0;
+        max-width: 50px; /* x 버튼의 최대 가로폭 설정 */
     }
     
     /* 각 환자 정보를 담는 박스 스타일 */
@@ -460,7 +461,7 @@ if not is_admin_mode:
         border-radius: 5px;
         background-color: #f9f9f9;
         word-break: break-word;
-        padding: 0; /* 내부 padding 제거 */
+        padding: 0;
         max-width: 190px; /* 박스 크기 상한선 190px로 설정 */
     }
     
@@ -468,10 +469,10 @@ if not is_admin_mode:
     .patient-info-text {
         flex: 1;
         font-size: 0.9em;
-        padding: 10px; /* 텍스트에만 패딩 적용 */
+        padding: 10px;
     }
     
-    /* Streamlit 컬럼이 모바일에서 1단으로 바뀌는 문제 해결 */
+    /* Streamlit 컬럼 반응형 스타일 (PC 3단, 모바일 2단) */
     @media (min-width: 650px) {
         .st-emotion-cache-13k6jc6 {
             grid-template-columns: repeat(3, 1fr) !important;
@@ -489,7 +490,6 @@ if not is_admin_mode:
     if existing_patient_data:
         patient_list = list(existing_patient_data.items())
 
-        # st.columns를 사용하여 PC 3단, 모바일 2단 레이아웃을 구현
         cols = st.columns(3)
         num_cols = 3
 
@@ -497,7 +497,6 @@ if not is_admin_mode:
             current_col = cols[i % num_cols]
             
             with current_col:
-                # 하나의 박스 안에 텍스트와 버튼을 배치
                 with st.container():
                     col_text, col_btn = st.columns([0.8, 0.2])
                     
