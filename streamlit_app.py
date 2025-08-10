@@ -420,14 +420,11 @@ if not is_admin_mode:
     patients_ref_for_user = db.reference(f"patients/{firebase_key}")
 
     # 사용자 정보 (이름, 이메일) Firebase 'users' 노드에 저장 또는 업데이트
-    # Admin 계정일 때는 이 과정 건너뛰기
-    # 그리고 이메일 변경 모드가 아닐 때 (또는 새로 등록하는 경우)만 업데이트
     if not st.session_state.email_change_mode:
         current_user_meta_data = users_ref.child(firebase_key).get()
         if not current_user_meta_data or current_user_meta_data.get("name") != user_name or current_user_meta_data.get("email") != user_id_final:
             users_ref.child(firebase_key).update({"name": user_name, "email": user_id_final})
             st.success(f"사용자 정보가 업데이트되었습니다: {user_name} ({user_id_final})")
-            # 세션 상태 업데이트 (새로운 등록 또는 정보 변경 시)
             st.session_state.current_firebase_key = firebase_key
             st.session_state.current_user_name = user_name
             st.session_state.found_user_email = user_id_final
@@ -438,7 +435,7 @@ if not is_admin_mode:
     patients_ref_for_user = db.reference(f"patients/{firebase_key}")
     existing_patient_data = patients_ref_for_user.get()
 
-    # CSS 스타일링 추가
+    # CSS 스타일링
     st.markdown("""
     <style>
     /* 버튼의 컨테이너 스타일 */
@@ -449,7 +446,7 @@ if not is_admin_mode:
         width: 100%;
         height: 100%;
         margin: 0;
-        max-width: 40px; /* x 버튼의 최대 가로폭을 40px로 설정 */
+        max-width: 40px;
     }
     
     /* 각 환자 정보를 담는 박스 스타일 */
@@ -484,29 +481,26 @@ if not is_admin_mode:
             grid-template-columns: repeat(2, 1fr) !important;
         }
     }
-
-    /* 환자 정보와 버튼이 한 줄에 있도록 flexbox를 사용 */
-    .patient-entry-container {
+    
+    /* 새로운 CSS: st.columns 안의 환자 박스 + 버튼이 항상 한 줄에 있도록 함 */
+    .st-emotion-cache-11r2p0n { /* st.columns 내부의 div */
         display: flex;
         align-items: center;
-        border: 1px solid #e6e6e6;
-        border-radius: 5px;
-        background-color: #f9f9f9;
-        padding: 0;
-        margin-bottom: 10px;
-        max-width: 190px;
+        width: 100%;
+        gap: 0.5rem; /* 텍스트와 버튼 사이의 간격 */
     }
-    .patient-entry-text {
-        flex: 1;
-        padding: 10px;
-        font-size: 0.9em;
-        word-break: break-word;
+    .st-emotion-cache-6qob1r { /* st.columns 내부의 div */
+        display: flex;
+        align-items: center;
+        width: 100%;
+        gap: 0.5rem; /* 텍스트와 버튼 사이의 간격 */
     }
-    .patient-entry-button-wrapper {
-        flex-shrink: 0;
-        padding: 5px;
+    .st-emotion-cache-ocqkz7 { /* st.columns 내부의 div */
+        display: flex;
+        align-items: center;
+        width: 100%;
+        gap: 0.5rem; /* 텍스트와 버튼 사이의 간격 */
     }
-
     </style>
     """, unsafe_allow_html=True)
     
@@ -521,21 +515,19 @@ if not is_admin_mode:
             current_col = cols[i % num_cols]
             
             with current_col:
-                # flexbox 스타일이 적용된 div를 사용하여 텍스트와 버튼을 한 줄에 배치
-                st.markdown(f"""
-                <div class="patient-entry-container">
-                    <div class="patient-entry-text">
-                        <b>{val['환자명']}</b> / {val['진료번호']} / {val.get('등록과', '미지정')}
-                    </div>
-                </div>
-                """, unsafe_allow_html=True)
+                # 텍스트와 버튼을 한 줄에 배치하기 위해 다시 내부 columns 사용
+                col_text, col_btn = st.columns([0.8, 0.2], gap="small")
                 
-                # 버튼을 별도의 컨테이너로 감싸고, CSS로 크기를 조절
-                # st.button은 st.markdown과 독립적인 컴포넌트이므로, CSS를 직접 적용하는 것이 어려움
-                # 그래서 별도의 컨테이너를 사용하거나, st.columns와 같은 레이아웃 헬퍼를 사용
-                if st.button("X", key=f"delete_button_{key}"):
-                    patients_ref_for_user.child(key).delete()
-                    st.rerun()
+                with col_text:
+                    st.markdown(
+                        f'<div class="patient-box" style="border:none; background-color:transparent;"><div class="patient-info-text" style="padding: 10px 0; border: 1px solid #e6e6e6; border-radius: 5px; background-color: #f9f9f9; max-width:140px;"><b>{val["환자명"]}</b> / {val["진료번호"]} / {val.get("등록과", "미지정")}</div></div>',
+                        unsafe_allow_html=True
+                    )
+                
+                with col_btn:
+                    if st.button("X", key=f"delete_button_{key}"):
+                        patients_ref_for_user.child(key).delete()
+                        st.rerun()
 
     else:
         st.info("등록된 환자가 없습니다.")
