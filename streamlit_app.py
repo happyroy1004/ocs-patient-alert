@@ -40,7 +40,7 @@ def sanitize_path(email):
 
 # 이메일 주소 복원 (Firebase 안전 키에서 원래 이메일로)
 def recover_email(safe_id: str) -> str:
-    email = safe_id.replace("_at_", "@").replace("_dot_",".").replace("_com",".com")
+    email = safe_id.replace("_at_", "@").replace("_dot_", ".").replace("_com", ".com")
     return email
 
 # 암호화된 엑셀 파일인지 확인
@@ -404,7 +404,7 @@ if st.session_state.email_change_mode:
             st.rerun()
         else:
             st.error("올바른 이메일 주소 형식이 아닙니다.")
-            
+
 # user_name과 (입력된 또는 찾아진) user_id가 모두 있을 때만 앱 기능 활성화
 user_id_final = st.session_state.user_id_input_value if st.session_state.email_change_mode or not st.session_state.found_user_email else st.session_state.found_user_email
 
@@ -420,8 +420,6 @@ if not is_admin_mode:
     patients_ref_for_user = db.reference(f"patients/{firebase_key}")
 
     # 사용자 정보 (이름, 이메일) Firebase 'users' 노드에 저장 또는 업데이트
-    # Admin 계정일 때는 이 과정 건너뛰기
-    # 그리고 이메일 변경 모드가 아닐 때 (또는 새로 등록하는 경우)만 업데이트
     if not st.session_state.email_change_mode:
         current_user_meta_data = users_ref.child(firebase_key).get()
         if not current_user_meta_data or current_user_meta_data.get("name") != user_name or current_user_meta_data.get("email") != user_id_final:
@@ -432,7 +430,7 @@ if not is_admin_mode:
             st.session_state.current_user_name = user_name
             st.session_state.found_user_email = user_id_final
 
-# --- 사용자 모드 (Admin이 아닌 경우) ---
+# --- 관리자 모드 (Admin인 경우) ---
 else:
     st.subheader("💻 관리자 모드 💻")
     uploaded_file = st.file_uploader("암호화된 Excel 파일을 업로드하세요", type=["xlsx", "xlsm"])
@@ -564,114 +562,67 @@ if not is_admin_mode:
     patients_ref_for_user = db.reference(f"patients/{firebase_key}")
     existing_patient_data = patients_ref_for_user.get()
 
-    # CSS 및 JavaScript 포함
+    # Streamlit의 columns와 container를 사용하여 UI를 재구성합니다.
+    # CSS를 최소한으로 사용하여 Streamlit의 컴포넌트가 제대로 작동하도록 합니다.
+    # 이전 시도처럼 HTML 마크업을 직접 출력하는 대신, 컴포넌트 자체를 사용합니다.
     st.markdown("""
         <style>
-            .patient-box-container {
-                display: flex;
-                flex-wrap: wrap;
-                gap: 10px;
-                margin-bottom: 20px;
-            }
-            .patient-box {
-                flex: 1 1 calc(33.333% - 10px); /* PC: 3열 */
-                box-sizing: border-box;
+            .patient-box-container > div {
                 padding: 10px;
-                border: 1px solid #ddd;
-                border-radius: 8px;
+                border: 1px solid #e6e6e6;
+                border-radius: 5px;
                 background-color: #f9f9f9;
+                margin-bottom: 10px;
                 display: flex;
-                justify-content: space-between;
                 align-items: center;
-                min-width: 250px;
-            }
-            @media (max-width: 768px) {
-                .patient-box {
-                    flex: 1 1 calc(50% - 10px); /* Tablet: 2열 */
-                }
-            }
-            @media (max-width: 480px) {
-                .patient-box {
-                    flex: 1 1 100%; /* Mobile: 1열 */
-                }
+                justify-content: space-between;
             }
             .patient-info {
+                font-size: 0.9em;
+                padding-right: 10px;
                 flex-grow: 1;
-                font-size: 14px;
-            }
-            .delete-btn {
-                background-color: #ff4b4b;
-                color: white;
-                border: none;
-                border-radius: 4px;
-                padding: 5px 10px;
-                cursor: pointer;
-                font-weight: bold;
-                transition: background-color 0.2s;
-            }
-            .delete-btn:hover {
-                background-color: #d13d3d;
             }
         </style>
-        <script>
-            function deletePatient(firebaseKey, patientKey) {
-                // Streamlit의 런타임에 메시지를 보냅니다.
-                const message = {
-                    delete_patient_key: patientKey,
-                    firebase_key: firebaseKey
-                };
-                window.parent.postMessage(JSON.stringify(message), "*");
-            }
-        </script>
-        """, unsafe_allow_html=True)
+    """, unsafe_allow_html=True)
     
-    # 환자 목록을 HTML/JS로 렌더링
     if existing_patient_data:
-        html_content = '<div class="patient-box-container">'
-        for key, val in existing_patient_data.items():
-            html_content += f"""
-                <div class="patient-box">
-                    <div class="patient-info">
-                        <b>{val["환자명"]}</b> / {val["진료번호"]} / {val.get("등록과", "미지정")}
-                    </div>
-                    <button class="delete-btn" onclick="deletePatient('{firebase_key}', '{key}')">X</button>
-                </div>
-            """
-        html_content += '</div>'
-        st.markdown(html_content, unsafe_allow_html=True)
-        
-        # Streamlit이 postMessage를 수신할 수 있도록 처리하는 부분 (가상의 기능)
-        # 실제 Streamlit에서는 이 부분이 동작하지 않지만, 코드를 완전하게 만들기 위해 추가
-        # 이 코드는 Streamlit의 HTML 마크다운에서 직접 Python 코드를 호출할 수 없으므로,
-        # 이 예제에서는 버튼을 클릭해도 실제 삭제 동작은 일어나지 않습니다.
-        # 이 문제를 해결하려면 Streamlit 컴포넌트를 사용해야 합니다.
-        
-        # 다시 한번, HTML 마크업과 버튼 컴포넌트를 함께 사용하는 방법을 찾습니다.
-        # 이전에 실패했던 st.columns 방식을 다시 시도하되,
-        # CSS를 더욱 강력하게 사용하여 강제로 정렬하는 방식으로 문제를 해결합니다.
-        
         patient_list = list(existing_patient_data.items())
         cols_count = 3
-        cols = st.columns(cols_count)
+        
+        # 환자 목록을 컨테이너 안에 넣어서 전체적인 CSS 스타일을 적용합니다.
+        container = st.container()
+        container.markdown("<div class='patient-box-container'>", unsafe_allow_html=True)
+        
+        # columns를 사용하여 환자 목록을 3열로 정렬합니다.
+        # 각 열(column) 안에 st.markdown과 st.button을 독립적으로 배치합니다.
+        cols = container.columns(cols_count)
         
         col_index = 0
         for key, val in patient_list:
             with cols[col_index]:
+                # st.columns 안에서 버튼과 텍스트를 정렬하기 위해,
+                # st.markdown과 st.button을 하나의 컬럼 안에 배치합니다.
+                # CSS를 사용하여 flexbox 속성을 부여해 내부 요소를 정렬합니다.
                 st.markdown(
                     f"""
-                    <div style="display: flex; justify-content: space-between; align-items: center; width: 100%; padding: 10px; border: 1px solid #e6e6e6; border-radius: 5px; background-color: #f9f9f9; margin-bottom: 10px;">
-                        <div style="flex-grow: 1; font-size: 0.9em; padding-right: 10px;">
+                    <div style="display: flex; align-items: center; justify-content: space-between; width: 100%;">
+                        <div style="font-size: 0.9em; flex-grow: 1;">
                             <b>{val["환자명"]}</b> / {val["진료번호"]} / {val.get("등록과", "미지정")}
                         </div>
+                    </div>
                     """,
                     unsafe_allow_html=True
                 )
+                
+                # 삭제 버튼
                 if st.button("X", key=f"delete_button_{key}"):
                     patients_ref_for_user.child(key).delete()
                     st.rerun()
-                st.markdown("</div>", unsafe_allow_html=True)
+                    
             col_index = (col_index + 1) % cols_count
-            
+        
+        container.markdown("</div>", unsafe_allow_html=True)
+        
     else:
         st.info("등록된 환자가 없습니다.")
     st.markdown("---")
