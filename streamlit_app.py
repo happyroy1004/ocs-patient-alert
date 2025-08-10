@@ -564,22 +564,23 @@ if not is_admin_mode:
 
     if existing_patient_data:
         patient_list = list(existing_patient_data.items())
+        # PC 환경에서는 3단, 모바일 환경에서는 1단으로 자동 조절됩니다.
         cols_count = 3
         cols = st.columns(cols_count)
         
         for idx, (key, val) in enumerate(patient_list):
             with cols[idx % cols_count]:
+                # 각 환자 정보를 st.container로 묶어 박스 형태로 만듭니다.
                 with st.container(border=True):
-                    # 환자 정보 텍스트가 길어져도 한 줄에 보이도록 CSS를 적용
-                    info_col, btn_col = st.columns([1, 0.2], gap="tiny")
+                    # 환자 정보와 버튼을 한 줄에 배치하기 위해 다시 columns를 사용합니다.
+                    # 텍스트와 버튼의 너비 비율을 4:1로 설정하여 정렬합니다.
+                    info_col, btn_col = st.columns([4, 1])
                     
                     with info_col:
-                        # 텍스트가 길어지면 잘리고 말줄임표가 표시되도록 설정
-                        st.markdown(f"<div style='white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding-right: 5px;'><b>{val['환자명']}</b> / {val['진료번호']} / {val.get('등록과', '미지정')}</div>", unsafe_allow_html=True)
+                        st.markdown(f"**{val['환자명']}** / {val['진료번호']} / {val.get('등록과', '미지정')}")
                     
                     with btn_col:
-                        # 실제 작동하는 X 버튼. use_container_width=True로 공간을 채웁니다.
-                        if st.button("X", key=f"delete_button_{key}", use_container_width=True):
+                        if st.button("X", key=f"delete_button_{key}"):
                             patients_ref_for_user.child(key).delete()
                             st.rerun()
     else:
