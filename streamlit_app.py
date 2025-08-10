@@ -230,7 +230,7 @@ def process_excel_file_and_style(file_bytes_io):
         while values and (values[0] is None or all((v is None or str(v).strip() == "") for v in values[0])):
             values.pop(0)
         if len(values) < 2:
-            st.warning(f"시트 '{sheet_name_raw}'에 유효한 데이터가 충분하지 않습니다. 건너깁니다.")
+            st.warning(f"시트 '{sheet_name_raw}'에 유효한 데이터가 충분하지 않습니다. 건너킵니다.")
             continue
 
         df = pd.DataFrame(values)
@@ -420,21 +420,131 @@ if not is_admin_mode:
     patients_ref_for_user = db.reference(f"patients/{firebase_key}")
 
     # 사용자 정보 (이름, 이메일) Firebase 'users' 노드에 저장 또는 업데이트
+    # Admin 계정일 때는 이 과정 건너뛰기
+    # 그리고 이메일 변경 모드가 아닐 때 (또는 새로 등록하는 경우)만 업데이트
     if not st.session_state.email_change_mode:
         current_user_meta_data = users_ref.child(firebase_key).get()
         if not current_user_meta_data or current_user_meta_data.get("name") != user_name or current_user_meta_data.get("email") != user_id_final:
             users_ref.child(firebase_key).update({"name": user_name, "email": user_id_final})
+            st.success(f"사용자 정보가 업데이트되었습니다: {user_name} ({user_id_final})")
+            # 세션 상태 업데이트 (새로운 등록 또는 정보 변경 시)
             st.session_state.current_firebase_key = firebase_key
             st.session_state.current_user_name = user_name
             st.session_state.found_user_email = user_id_final
 
 # --- 사용자 모드 (Admin이 아닌 경우) ---
+if not is_admin_mode:
+    st.subheader(f"{user_name}님의 등록 환자 목록")
+    patients_ref_for_user = db.reference(f"patients/{firebase_key}")
+    existing_patient_data = patients_ref_for_user.get()
+
+    # CSS 스타일링 추가
+    st.markdown("""
+    <style>
+    /* 버튼 폰트 크기 및 여백 조절 */
+    div.stButton > button {
+        font-size: 0.75em !important;
+        line-height: 1 !important;
+        padding: 0.1em 0.5em !important;
+        width: 100%; /* 버튼이 컬럼의 전체 너비를 차지하도록 설정 */
+        height: 100%;
+        margin: 0;
+    }
+    
+    /* 각 환자 정보를 담는 박스 스타일 */
+    .patient-box {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        border: 1px solid #e6e6e6;
+        border-radius: 5px;
+        background-color: #f9f9f9;
+        word-break: break-word;
+        padding: 0; /* 내부 padding 제거 */
+        max-width: 190px; /* 박스 크기 상한선 190px로 설정 */
+    }
+    
+    /* 환자 정보 텍스트 컨테이너 */
+    .patient-info-text {
+        flex: 1;
+        font-size: 0.9em;
+        padding: 10px; /* 텍스트에만 패딩 적용 */
+    }
+    
+    /* Streamlit 컬럼이 모바일에서 1단으로 바뀌는 문제 해결 */
+    @media (min-width: 650px) {
+        .st-emotion-cache-13k6jc6 {
+            grid-template-columns: repeat(3, 1fr) !important;
+        }
+    }
+    
+    @media (max-width: 649px) {
+        .st-emotion-cache-13k6jc6 {
+            grid-template-columns: repeat(2, 1fr) !important;
+        }
+    }
+    </style>
+    """, unsafe_allow_html=True)
+    
+    if existing_patient_data:
+        patient_list = list(existing_patient_data.items())
+
+        # st.columns를 사용하여 PC 3단, 모바일 2단 레이아웃을 구현
+        cols = st.columns(3)
+        num_cols = 3
+
+        for i, (key, val) in enumerate(patient_list):
+            current_col = cols[i % num_cols]
+            
+            with current_col:
+                # 하나의 박스 안에 텍스트와 버튼을 배치
+                with st.container():
+                    col_text, col_btn = st.columns([0.8, 0.2])
+                    
+                    with col_text:
+                        st.markdown(
+                            f'<div class="patient-box"><div class="patient-info-text"><b>{val["환자명"]}</b> / {val["진료번호"]} / {val.get("등록과", "미지정")}</div></div>',
+                            unsafe_allow_html=True
+                        )
+                    
+                    with col_btn:
+                        # 삭제 버튼
+                        if st.button("X", key=f"delete_button_{key}"):
+                            patients_ref_for_user.child(key).delete()
+                            st.rerun()
+
+    else:
+        st.info("등록된 환자가 없습니다.")
+    st.markdown("---")
+
+    with st.form("register_form"):
+        name = st.text_input("환자명")
+        pid = st.text_input("진료번호")
+
+        departments_for_registration = sorted(list(set(sheet_keyword_to_department_map.values())))
+        selected_department = st.selectbox("등록 과", departments_for_registration)
+
+        submitted = st.form_submit_button("등록")
+        if submitted:
+            if not name or not pid:
+                st.warning("모든 항목을 입력해주세요.")
+            elif existing_patient_data and any(
+                v["환자명"] == name and v["진료번호"] == pid and v.get("등록과") == selected_department
+                for v in existing_patient_data.values()):
+                st.error("이미 등록된 환자입니다.")
+            else:
+                patients_ref_for_user.push().set({"환자명": name, "진료번호": pid, "등록과": selected_department})
+                st.success(f"{name} ({pid}) [{selected_department}] 환자 등록 완료")
+                st.rerun()
+
+# --- 관리자 모드 (Admin인 경우) ---
 else:
     st.subheader("💻 관리자 모드 💻")
     uploaded_file = st.file_uploader("암호화된 Excel 파일을 업로드하세요", type=["xlsx", "xlsm"])
-    # ... (관리자 모드 코드는 동일)
+
     if uploaded_file:
         uploaded_file.seek(0)
+
         password = None
         if is_encrypted_excel(uploaded_file):
             password = st.text_input("엑셀 파일 비밀번호 입력", type="password")
