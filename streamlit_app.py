@@ -562,67 +562,27 @@ if not is_admin_mode:
     patients_ref_for_user = db.reference(f"patients/{firebase_key}")
     existing_patient_data = patients_ref_for_user.get()
 
-    # Streamlit의 columns와 container를 사용하여 UI를 재구성합니다.
-    # CSS를 최소한으로 사용하여 Streamlit의 컴포넌트가 제대로 작동하도록 합니다.
-    # 이전 시도처럼 HTML 마크업을 직접 출력하는 대신, 컴포넌트 자체를 사용합니다.
-    st.markdown("""
-        <style>
-            .patient-box-container > div {
-                padding: 10px;
-                border: 1px solid #e6e6e6;
-                border-radius: 5px;
-                background-color: #f9f9f9;
-                margin-bottom: 10px;
-                display: flex;
-                align-items: center;
-                justify-content: space-between;
-            }
-            .patient-info {
-                font-size: 0.9em;
-                padding-right: 10px;
-                flex-grow: 1;
-            }
-        </style>
-    """, unsafe_allow_html=True)
-    
     if existing_patient_data:
         patient_list = list(existing_patient_data.items())
+        # PC 환경에서는 3단, 모바일 환경에서는 1단으로 자동 조절됩니다.
         cols_count = 3
+        cols = st.columns(cols_count)
         
-        # 환자 목록을 컨테이너 안에 넣어서 전체적인 CSS 스타일을 적용합니다.
-        container = st.container()
-        container.markdown("<div class='patient-box-container'>", unsafe_allow_html=True)
-        
-        # columns를 사용하여 환자 목록을 3열로 정렬합니다.
-        # 각 열(column) 안에 st.markdown과 st.button을 독립적으로 배치합니다.
-        cols = container.columns(cols_count)
-        
-        col_index = 0
-        for key, val in patient_list:
-            with cols[col_index]:
-                # st.columns 안에서 버튼과 텍스트를 정렬하기 위해,
-                # st.markdown과 st.button을 하나의 컬럼 안에 배치합니다.
-                # CSS를 사용하여 flexbox 속성을 부여해 내부 요소를 정렬합니다.
-                st.markdown(
-                    f"""
-                    <div style="display: flex; align-items: center; justify-content: space-between; width: 100%;">
-                        <div style="font-size: 0.9em; flex-grow: 1;">
-                            <b>{val["환자명"]}</b> / {val["진료번호"]} / {val.get("등록과", "미지정")}
-                        </div>
-                    </div>
-                    """,
-                    unsafe_allow_html=True
-                )
-                
-                # 삭제 버튼
-                if st.button("X", key=f"delete_button_{key}"):
-                    patients_ref_for_user.child(key).delete()
-                    st.rerun()
+        for idx, (key, val) in enumerate(patient_list):
+            with cols[idx % cols_count]:
+                # 각 환자 정보를 st.container로 묶어 박스 형태로 만듭니다.
+                with st.container(border=True):
+                    # 환자 정보와 버튼을 한 줄에 배치하기 위해 다시 columns를 사용합니다.
+                    # 텍스트와 버튼의 너비 비율을 4:1로 설정하여 정렬합니다.
+                    info_col, btn_col = st.columns([4, 1])
                     
-            col_index = (col_index + 1) % cols_count
-        
-        container.markdown("</div>", unsafe_allow_html=True)
-        
+                    with info_col:
+                        st.markdown(f"**{val['환자명']}** / {val['진료번호']} / {val.get('등록과', '미지정')}")
+                    
+                    with btn_col:
+                        if st.button("X", key=f"delete_button_{key}"):
+                            patients_ref_for_user.child(key).delete()
+                            st.rerun()
     else:
         st.info("등록된 환자가 없습니다.")
     st.markdown("---")
