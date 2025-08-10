@@ -441,18 +441,15 @@ if not is_admin_mode:
     if existing_patient_data:
         # st.markdown과 HTML 대신 Streamlit 컴포넌트 사용
         for key, val in existing_patient_data.items():
-            col1, col2 = st.columns([0.8, 0.2])
-            with col1:
-                # 볼드체 및 불필요한 레이블 제거
-                st.markdown(
-                    f"{val['환자명']} / {val['진료번호']} / {val.get('등록과', '미지정')}"
-                )
-            with col2:
-                if st.button("삭제", key=f"delete_{key}", use_container_width=True):
-                    patients_ref_for_user.child(key).delete()
-                    st.success("환자가 성공적으로 삭제되었습니다.")
-                    st.rerun()
-
+            # 두 줄로 나누기 위해 st.columns를 제거하고 순차적으로 표시
+            st.markdown(
+                f"{val['환자명']} / {val['진료번호']} / {val.get('등록과', '미지정')}"
+            )
+            if st.button("삭제", key=f"delete_{key}", use_container_width=True):
+                patients_ref_for_user.child(key).delete()
+                st.success("환자가 성공적으로 삭제되었습니다.")
+                st.rerun()
+            st.markdown("---") # 각 환자 항목 아래에 구분선 추가하여 가독성 높임
     else:
         st.info("등록된 환자가 없습니다.")
     st.markdown("---") # 항목 아래에 구분선 추가
