@@ -448,35 +448,54 @@ if not is_admin_mode:
             padding: 0.1em 0.5em !important;
         }
 
-        /* Streamlit의 컬럼 컨테이너에 반응형 스타일 적용 */
-        @media (min-width: 768px) {
-            div[data-testid="stColumns"] {
-                grid-template-columns: repeat(3, 1fr) !important;
+        /* 환자 목록을 담을 컨테이너 (CSS Grid 사용) */
+        .patient-grid-container {
+            display: grid;
+            gap: 10px; /* 아이템 간 간격 */
+            padding: 10px;
+        }
+        
+        /* 650px 이상일 때 3단 레이아웃 */
+        @media (min-width: 650px) {
+            .patient-grid-container {
+                grid-template-columns: repeat(3, 1fr);
             }
         }
         
-        @media (max-width: 767px) {
-            div[data-testid="stColumns"] {
-                grid-template-columns: repeat(2, 1fr) !important;
+        /* 400px 이상 649px 이하일 때 2단 레이아웃 */
+        @media (min-width: 400px) and (max-width: 649px) {
+            .patient-grid-container {
+                grid-template-columns: repeat(2, 1fr);
+            }
+        }
+        
+        /* 399px 이하일 때 1단 레이아웃 */
+        @media (max-width: 399px) {
+            .patient-grid-container {
+                grid-template-columns: repeat(1, 1fr);
             }
         }
 
-        /* 환자 정보와 버튼을 담는 컨테이너 스타일 */
-        .patient-entry-container {
+        /* 각 환자 정보를 담는 카드 스타일 */
+        .patient-card {
             display: flex;
             align-items: center;
             justify-content: space-between;
-            padding: 0.5rem;
+            padding: 10px;
             border: 1px solid #ddd;
             border-radius: 5px;
-            margin-bottom: 0.5rem;
-            word-break: break-all;
+            background-color: #f9f9f9;
         }
         
-        .patient-entry-text {
+        .patient-info {
             flex: 1;
-            padding-right: 0.5rem;
             font-size: 0.9em;
+            word-break: break-word;
+            padding-right: 10px; /* 버튼과의 간격 */
+        }
+        
+        .stButton {
+            white-space: nowrap;
         }
         </style>
         """, unsafe_allow_html=True)
@@ -484,25 +503,28 @@ if not is_admin_mode:
     if existing_patient_data:
         patient_list = list(existing_patient_data.items())
 
-        # st.columns를 사용하여 텍스트와 버튼을 같은 줄에 배치
-        # 이 방식으로 PC 3단, 모바일 2단 레이아웃을 구현하려면 CSS를 활용해야 함
-        cols = st.columns(3)
-        num_cols = 3
+        # 환자 목록을 위한 HTML 컨테이너 시작
+        st.markdown('<div class="patient-grid-container">', unsafe_allow_html=True)
 
-        for i, (key, val) in enumerate(patient_list):
-            current_col = cols[i % num_cols]
-            
-            with current_col:
-                with st.container():
-                    col_text, col_btn = st.columns([0.8, 0.2])
-                    with col_text:
-                        st.markdown(f"**{val['환자명']}** / {val['진료번호']} / {val.get('등록과', '미지정')}")
-                    
-                    with col_btn:
-                        if st.button("X", key=f"delete_button_{key}"):
-                            patients_ref_for_user.child(key).delete()
-                            st.rerun()
-
+        for key, val in patient_list:
+            # 개별 환자 카드를 Streamlit 컬럼에 배치
+            col1, col2 = st.columns([0.8, 0.2])
+            with col1:
+                st.markdown(f"""
+                    <div class="patient-card">
+                        <div class="patient-info">
+                            <b>{val['환자명']}</b> / {val['진료번호']} / {val.get('등록과', '미지정')}
+                        </div>
+                    </div>
+                """, unsafe_allow_html=True)
+            with col2:
+                # 버튼은 Streamlit의 고유한 기능을 사용
+                if st.button("X", key=f"delete_button_{key}"):
+                    patients_ref_for_user.child(key).delete()
+                    st.rerun()
+        
+        # 환자 목록을 위한 HTML 컨테이너 종료
+        st.markdown('</div>', unsafe_allow_html=True)
     else:
         st.info("등록된 환자가 없습니다.")
     st.markdown("---")
