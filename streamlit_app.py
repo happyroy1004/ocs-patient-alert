@@ -482,7 +482,7 @@ if not is_admin_mode:
                     st.markdown(button_style, unsafe_allow_html=True)
                     if st.button("삭제", key=f"delete_{key}", use_container_width=True):
                         patients_ref_for_user.child(key).delete()
-                        st.success("환자가 성공적으로 삭제되었습니다.")
+                        # st.success("환자가 성공적으로 삭제되었습니다.") # 이 줄을 삭제했습니다
                         st.rerun()
                 st.markdown("<hr style='margin-top: 0.5em; margin-bottom: 0.5em;'>", unsafe_allow_html=True)
     else:
