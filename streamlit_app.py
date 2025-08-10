@@ -439,28 +439,29 @@ if not is_admin_mode:
     existing_patient_data = patients_ref_for_user.get()
 
     if existing_patient_data:
-        # **핵심 변경: PC에서는 3단, 모바일에서는 1단으로 보이는 반응형 컬럼 설정**
+        # **수정된 코드: PC에서는 3단, 모바일에서는 1단으로 보이는 반응형 컬럼 설정**
         cols = st.columns(3)
         
-        # 환자 데이터를 리스트로 변환하여 인덱스로 접근
         patient_list = list(existing_patient_data.items())
 
         for i, (key, val) in enumerate(patient_list):
-            current_col = cols[(i) % 3] # i % 3을 사용하여 3개의 컬럼을 순환
+            current_col = cols[(i) % 3]
             with current_col:
                 # 환자 정보를 표시하는 Markdown과 삭제 버튼을 한 번에 묶습니다.
-                # 모바일에서도 한 줄로 표시되도록 레이아웃을 다시 구성
+                # 모바일에서는 1단, PC에서는 3단으로 표시되도록 재구성
                 info_col, btn_col = st.columns([0.8, 0.2])
                 with info_col:
+                    # 스타일링을 제거한 일반 텍스트
                     st.markdown(
-                        f"**{val['환자명']}** / `{val['진료번호']}` / _{val.get('등록과', '미지정')}_"
+                        f"{val['환자명']} / {val['진료번호']} / {val.get('등록과', '미지정')}"
                     )
                 with btn_col:
-                    if st.button("삭제", key=f"delete_{key}", use_container_width=True):
+                    # 버튼 텍스트를 "X"로 변경
+                    if st.button("X", key=f"delete_{key}", use_container_width=True):
                         patients_ref_for_user.child(key).delete()
                         st.rerun()
 
-                st.markdown("---") # 각 환자 항목을 구분하기 위해 줄 추가
+                st.markdown("---")
     else:
         st.info("등록된 환자가 없습니다.")
     st.markdown("---")
