@@ -12,6 +12,7 @@ from openpyxl.styles import Font
 import re
 import json
 import os
+import time
 
 # --- 이메일 유효성 검사 함수 ---
 def is_valid_email(email):
@@ -433,138 +434,6 @@ if not is_admin_mode:
             st.session_state.found_user_email = user_id_final
 
 # --- 사용자 모드 (Admin이 아닌 경우) ---
-if not is_admin_mode:
-    st.subheader(f"{user_name}님의 등록 환자 목록")
-    patients_ref_for_user = db.reference(f"patients/{firebase_key}")
-    existing_patient_data = patients_ref_for_user.get()
-
-    # CSS 스타일링 추가
-    st.markdown("""
-        <style>
-        /* 버튼 내 폰트 크기 조절 */
-        div.stButton > button {
-            font-size: 0.75em !important;
-            line-height: 1 !important;
-            padding: 0.1em 0.5em !important;
-        }
-
-        /* 환자 목록을 담을 컨테이너 (CSS Grid 사용) */
-        .patient-grid-container {
-            display: grid;
-            gap: 10px; /* 아이템 간 간격 */
-            padding: 10px;
-        }
-        
-        /* 650px 이상일 때 3단 레이아웃 */
-        @media (min-width: 650px) {
-            .patient-grid-container {
-                grid-template-columns: repeat(3, 1fr);
-            }
-        }
-        
-        /* 400px 이상 649px 이하일 때 2단 레이아웃 */
-        @media (min-width: 400px) and (max-width: 649px) {
-            .patient-grid-container {
-                grid-template-columns: repeat(2, 1fr);
-            }
-        }
-        
-        /* 399px 이하일 때 1단 레이아웃 */
-        @media (max-width: 399px) {
-            .patient-grid-container {
-                grid-template-columns: repeat(1, 1fr);
-            }
-        }
-
-        /* 각 환자 정보를 담는 카드 스타일 */
-        .patient-card {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            padding: 10px;
-            border: 1px solid #ddd;
-            border-radius: 5px;
-            background-color: #f9f9f9;
-        }
-        
-        .patient-info {
-            flex: 1;
-            font-size: 0.9em;
-            word-break: break-word;
-            padding-right: 10px; /* 버튼과의 간격 */
-        }
-        
-        .stButton {
-            white-space: nowrap;
-        }
-        </style>
-        """, unsafe_allow_html=True)
-
-    if existing_patient_data:
-        patient_list = list(existing_patient_data.items())
-
-        # 환자 목록을 위한 HTML 컨테이너 시작
-        st.markdown('<div class="patient-grid-container">', unsafe_allow_html=True)
-
-        for key, val in patient_list:
-            # 개별 환자 카드를 HTML 컨테이너 안에 직접 렌더링
-            # 스트림릿 컬럼을 사용하지 않고 CSS Grid로 레이아웃을 처리
-            st.markdown(f"""
-                <div class="patient-card">
-                    <div class="patient-info">
-                        <b>{val['환자명']}</b> / {val['진료번호']} / {val.get('등록과', '미지정')}
-                    </div>
-                    <div>
-                        <button onclick="
-                            const parent = this.parentElement.parentElement;
-                            const key = parent.dataset.key;
-                            // Streamlit에 이벤트를 보내는 방법이 직접적이지 않으므로,
-                            // 실제로는 이 부분에 삭제 로직을 연결해야 합니다.
-                            // 여기서는 Streamlit 버튼을 사용하여 이벤트를 처리합니다.
-                        ">X</button>
-                    </div>
-                </div>
-            """, unsafe_allow_html=True)
-            # 스트림릿 버튼은 위 HTML div 내부에 직접 삽입할 수 없으므로,
-            # 별도의 컴포넌트를 사용하거나, 기존 코드처럼 st.columns를 사용해야 함.
-            # 제공된 코드의 st.columns 방식이 Streamlit에서 동작하는 방식이므로, 해당 방식을 유지합니다.
-            
-            # 아래는 기존 코드 1의 방식을 유지하며 CSS Grid를 활용하는 예시입니다.
-            with st.container():
-                cols = st.columns([0.8, 0.2])
-                cols[0].markdown(
-                    f"**{val['환자명']}** / {val['진료번호']} / {val.get('등록과', '미지정')}",
-                    unsafe_allow_html=True
-                )
-                if cols[1].button("X", key=f"delete_button_{key}"):
-                    patients_ref_for_user.child(key).delete()
-                    st.rerun()
-
-    else:
-        st.info("등록된 환자가 없습니다.")
-    st.markdown("---")
-
-    with st.form("register_form"):
-        name = st.text_input("환자명")
-        pid = st.text_input("진료번호")
-
-        departments_for_registration = sorted(list(set(sheet_keyword_to_department_map.values())))
-        selected_department = st.selectbox("등록 과", departments_for_registration)
-
-        submitted = st.form_submit_button("등록")
-        if submitted:
-            if not name or not pid:
-                st.warning("모든 항목을 입력해주세요.")
-            elif existing_patient_data and any(
-                v["환자명"] == name and v["진료번호"] == pid and v.get("등록과") == selected_department
-                for v in existing_patient_data.values()):
-                st.error("이미 등록된 환자입니다.")
-            else:
-                patients_ref_for_user.push().set({"환자명": name, "진료번호": pid, "등록과": selected_department})
-                st.success(f"{name} ({pid}) [{selected_department}] 환자 등록 완료")
-                st.rerun()
-
-# --- 관리자 모드 (Admin인 경우) ---
 else:
     st.subheader("💻 관리자 모드 💻")
     uploaded_file = st.file_uploader("암호화된 Excel 파일을 업로드하세요", type=["xlsx", "xlsm"])
@@ -647,8 +516,8 @@ else:
 
                             for registered_patient in registered_patients_data:
                                 if (registered_patient["환자명"] == excel_patient_name and
-                                    registered_patient["진료번호"] == excel_patient_pid and
-                                    registered_patient["등록과"] == excel_sheet_department):
+                                        registered_patient["진료번호"] == excel_patient_pid and
+                                        registered_patient["등록과"] == excel_sheet_department):
 
                                     matched_row_copy = excel_row.copy()
                                     matched_row_copy["시트"] = sheet_name_excel_raw
@@ -690,3 +559,100 @@ else:
             st.error(f"파일 처리 실패: {ve}")
         except Exception as e:
             st.error(f"예상치 못한 오류 발생: {e}")
+
+if not is_admin_mode:
+    st.subheader(f"{user_name}님의 등록 환자 목록")
+    patients_ref_for_user = db.reference(f"patients/{firebase_key}")
+    existing_patient_data = patients_ref_for_user.get()
+
+    # CSS 스타일링 추가
+    st.markdown("""
+    <style>
+    /* PC: 3단 레이아웃, 모바일: 2단 레이아웃 */
+    @media (min-width: 650px) {
+        div[data-testid="stColumns"] {
+            grid-template-columns: repeat(3, 1fr) !important;
+        }
+    }
+    @media (max-width: 649px) {
+        div[data-testid="stColumns"] {
+            grid-template-columns: repeat(2, 1fr) !important;
+        }
+    }
+
+    /* 환자 정보 박스 전체를 Flexbox로 설정 */
+    .patient-box {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        border: 1px solid #e6e6e6;
+        border-radius: 5px;
+        background-color: #f9f9f9;
+        padding: 5px;
+        margin-bottom: 5px;
+        word-break: break-word;
+    }
+
+    /* 환자 정보 텍스트 컨테이너 */
+    .patient-info-text {
+        flex-grow: 1; /* 남은 공간을 모두 차지하도록 설정 */
+        font-size: 0.9em;
+        padding-right: 10px; /* 버튼과의 간격 */
+    }
+
+    /* 삭제 버튼 스타일 */
+    div.stButton > button {
+        font-size: 0.75em !important;
+        line-height: 1 !important;
+        padding: 0.1em 0.5em !important;
+        width: auto;
+        height: auto;
+        margin: 0;
+    }
+    </style>
+    """, unsafe_allow_html=True)
+    
+    if existing_patient_data:
+        patient_list = list(existing_patient_data.items())
+
+        # PC는 3단, 모바일은 2단 레이아웃을 위한 Streamlit 컬럼 생성
+        cols = st.columns(3)
+        num_cols = 3
+
+        for i, (key, val) in enumerate(patient_list):
+            with cols[i % num_cols]:
+                # 하나의 박스 안에 텍스트와 버튼을 배치
+                st.markdown(
+                    f'<div class="patient-box">'
+                    f'<div class="patient-info-text"><b>{val["환자명"]}</b> / {val["진료번호"]} / {val.get("등록과", "미지정")}</div>'
+                    f'<div>',
+                    unsafe_allow_html=True
+                )
+                if st.button("X", key=f"delete_button_{key}"):
+                    patients_ref_for_user.child(key).delete()
+                    st.rerun()
+                st.markdown('</div></div>', unsafe_allow_html=True)
+
+    else:
+        st.info("등록된 환자가 없습니다.")
+    st.markdown("---")
+
+    with st.form("register_form"):
+        name = st.text_input("환자명")
+        pid = st.text_input("진료번호")
+
+        departments_for_registration = sorted(list(set(sheet_keyword_to_department_map.values())))
+        selected_department = st.selectbox("등록 과", departments_for_registration)
+
+        submitted = st.form_submit_button("등록")
+        if submitted:
+            if not name or not pid:
+                st.warning("모든 항목을 입력해주세요.")
+            elif existing_patient_data and any(
+                v["환자명"] == name and v["진료번호"] == pid and v.get("등록과") == selected_department
+                for v in existing_patient_data.values()):
+                st.error("이미 등록된 환자입니다.")
+            else:
+                patients_ref_for_user.push().set({"환자명": name, "진료번호": pid, "등록과": selected_department})
+                st.success(f"{name} ({pid}) [{selected_department}] 환자 등록 완료")
+                st.rerun()
