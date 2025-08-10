@@ -420,11 +420,14 @@ if not is_admin_mode:
     patients_ref_for_user = db.reference(f"patients/{firebase_key}")
 
     # 사용자 정보 (이름, 이메일) Firebase 'users' 노드에 저장 또는 업데이트
+    # Admin 계정일 때는 이 과정 건너뛰기
+    # 그리고 이메일 변경 모드가 아닐 때 (또는 새로 등록하는 경우)만 업데이트
     if not st.session_state.email_change_mode:
         current_user_meta_data = users_ref.child(firebase_key).get()
         if not current_user_meta_data or current_user_meta_data.get("name") != user_name or current_user_meta_data.get("email") != user_id_final:
             users_ref.child(firebase_key).update({"name": user_name, "email": user_id_final})
             st.success(f"사용자 정보가 업데이트되었습니다: {user_name} ({user_id_final})")
+            # 세션 상태 업데이트 (새로운 등록 또는 정보 변경 시)
             st.session_state.current_firebase_key = firebase_key
             st.session_state.current_user_name = user_name
             st.session_state.found_user_email = user_id_final
@@ -435,43 +438,50 @@ if not is_admin_mode:
     patients_ref_for_user = db.reference(f"patients/{firebase_key}")
     existing_patient_data = patients_ref_for_user.get()
 
-    # CSS 스타일링
+    # CSS 스타일링 추가
     st.markdown("""
     <style>
-    /* 전체 페이지 너비 조정 */
-    .block-container {
-        padding-top: 2rem;
-        padding-bottom: 2rem;
-        padding-left: 1rem;
-        padding-right: 1rem;
-    }
-    
-    /* 버튼의 컨테이너 스타일 */
+    /* 버튼 폰트 크기 및 여백 조절 */
     div.stButton > button {
         font-size: 0.75em !important;
         line-height: 1 !important;
         padding: 0.1em 0.5em !important;
+        width: 100%; /* 버튼이 컬럼의 전체 너비를 차지하도록 설정 */
         height: 100%;
         margin: 0;
-        max-width: 40px; /* x 버튼의 최대 너비 */
     }
-
-    /* 환자 정보와 버튼을 담는 컨테이너 */
-    .patient-entry-container {
+    
+    /* 각 환자 정보를 담는 박스 스타일 */
+    .patient-box {
         display: flex;
         align-items: center;
+        justify-content: space-between;
         border: 1px solid #e6e6e6;
         border-radius: 5px;
         background-color: #f9f9f9;
-        margin-bottom: 10px;
-        word-break: break-all;
+        word-break: break-word;
+        padding: 0; /* 내부 padding 제거 */
+        max-width: 190px; /* 박스 크기 상한선 190px로 설정 */
     }
-
-    /* 환자 정보 텍스트 스타일 */
+    
+    /* 환자 정보 텍스트 컨테이너 */
     .patient-info-text {
         flex: 1;
-        padding: 10px;
         font-size: 0.9em;
+        padding: 10px; /* 텍스트에만 패딩 적용 */
+    }
+    
+    /* Streamlit 컬럼이 모바일에서 1단으로 바뀌는 문제 해결 */
+    @media (min-width: 650px) {
+        .st-emotion-cache-13k6jc6 {
+            grid-template-columns: repeat(3, 1fr) !important;
+        }
+    }
+    
+    @media (max-width: 649px) {
+        .st-emotion-cache-13k6jc6 {
+            grid-template-columns: repeat(2, 1fr) !important;
+        }
     }
     </style>
     """, unsafe_allow_html=True)
@@ -479,7 +489,7 @@ if not is_admin_mode:
     if existing_patient_data:
         patient_list = list(existing_patient_data.items())
 
-        # Streamlit의 컬럼을 사용해 3단(PC) / 2단(모바일) 레이아웃 구성
+        # st.columns를 사용하여 PC 3단, 모바일 2단 레이아웃을 구현
         cols = st.columns(3)
         num_cols = 3
 
@@ -487,19 +497,21 @@ if not is_admin_mode:
             current_col = cols[i % num_cols]
             
             with current_col:
-                # 텍스트와 버튼을 한 줄에 배치하기 위해 st.columns 사용
-                col_text, col_btn = st.columns([0.8, 0.2], gap="small")
-                
-                with col_text:
-                    st.markdown(
-                        f'<div class="patient-info-text"><b>{val["환자명"]}</b> / {val["진료번호"]} / {val.get("등록과", "미지정")}</div>',
-                        unsafe_allow_html=True
-                    )
-                
-                with col_btn:
-                    if st.button("X", key=f"delete_button_{key}"):
-                        patients_ref_for_user.child(key).delete()
-                        st.rerun()
+                # 하나의 박스 안에 텍스트와 버튼을 배치
+                with st.container():
+                    col_text, col_btn = st.columns([0.8, 0.2])
+                    
+                    with col_text:
+                        st.markdown(
+                            f'<div class="patient-box"><div class="patient-info-text"><b>{val["환자명"]}</b> / {val["진료번호"]} / {val.get("등록과", "미지정")}</div></div>',
+                            unsafe_allow_html=True
+                        )
+                    
+                    with col_btn:
+                        # 삭제 버튼
+                        if st.button("X", key=f"delete_button_{key}"):
+                            patients_ref_for_user.child(key).delete()
+                            st.rerun()
 
     else:
         st.info("등록된 환자가 없습니다.")
