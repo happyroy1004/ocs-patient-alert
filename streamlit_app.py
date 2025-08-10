@@ -445,18 +445,19 @@ if not is_admin_mode:
         # 환자 데이터를 리스트로 변환하여 인덱스로 접근
         patient_list = list(existing_patient_data.items())
         
-        # 버튼 크기를 더 줄이기 위해 CSS 스타일을 정의
+        # 버튼 스타일을 CSS로 정의하여 'X' 버튼을 작고 둥글게 만듭니다.
         button_style = """
             <style>
-            .small-button > button {
+            div.stButton > button:first-child {
                 background-color: #f0f2f6;
                 color: #495057;
-                font-size: 0.7em;
-                padding: 0.2em 0.4em;
-                border-radius: 0.25rem;
+                font-size: 0.8em;
+                padding: 0.1em 0.4em;
+                border-radius: 5px;
                 border: 1px solid #ced4da;
+                line-height: 1; /* 텍스트가 버튼 중앙에 오도록 조정 */
             }
-            .small-button > button:hover {
+            div.stButton > button:hover {
                 background-color: #e2e6ea;
                 color: #495057;
                 border: 1px solid #adb5bd;
@@ -470,19 +471,18 @@ if not is_admin_mode:
 
             with current_col:
                 # 환자 정보와 삭제 버튼을 한 줄에 배치
-                info_col, btn_col = st.columns([0.8, 0.2])
+                # 모바일 화면 너비를 고려하여 비율을 9:1로 조정
+                info_col, btn_col = st.columns([0.9, 0.1])
                 with info_col:
                     st.markdown(
                         f"<div style='font-size: 0.9em;'>{val['환자명']} / {val['진료번호']} / {val.get('등록과', '미지정')}</div>",
                         unsafe_allow_html=True
                     )
                 with btn_col:
-                    # div로 감싸서 클래스를 적용, 버튼의 크기를 더 작게 조정
-                    st.markdown('<div class="small-button">', unsafe_allow_html=True)
-                    if st.button("삭제", key=f"delete_{key}", use_container_width=True):
+                    # 버튼의 use_container_width를 False로 설정하여 크기 고정
+                    if st.button("X", key=f"delete_{key}", use_container_width=False):
                         patients_ref_for_user.child(key).delete()
                         st.rerun()
-                    st.markdown('</div>', unsafe_allow_html=True)
                 st.markdown("<hr style='margin-top: 0.5em; margin-bottom: 0.5em;'>", unsafe_allow_html=True)
     else:
         st.info("등록된 환자가 없습니다.")
