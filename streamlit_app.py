@@ -404,7 +404,7 @@ if st.session_state.email_change_mode:
             st.rerun()
         else:
             st.error("올바른 이메일 주소 형식이 아닙니다.")
-
+            
 # user_name과 (입력된 또는 찾아진) user_id가 모두 있을 때만 앱 기능 활성화
 user_id_final = st.session_state.user_id_input_value if st.session_state.email_change_mode or not st.session_state.found_user_email else st.session_state.found_user_email
 
@@ -439,28 +439,28 @@ if not is_admin_mode:
     existing_patient_data = patients_ref_for_user.get()
 
     if existing_patient_data:
-        # **핵심 변경: CSS를 제거하고 Streamlit 위젯으로만 레이아웃을 구성**
-        # patient_list를 한 번만 리스트로 변환
+        # **핵심 변경: PC에서는 3단, 모바일에서는 1단으로 보이는 반응형 컬럼 설정**
+        cols = st.columns(3)
+        
+        # 환자 데이터를 리스트로 변환하여 인덱스로 접근
         patient_list = list(existing_patient_data.items())
 
-        for key, val in patient_list:
-            # st.columns를 사용하여 텍스트와 버튼을 명확하게 분리
-            info_col, btn_col = st.columns([0.8, 0.2])
-            
-            with info_col:
-                # Markdown으로 환자 정보를 표시
-                st.markdown(
-                    f"**{val['환자명']}** / `{val['진료번호']}` / _{val.get('등록과', '미지정')}_"
-                )
-            
-            with btn_col:
-                # 삭제 버튼을 생성 (use_container_width=True로 버튼 크기를 컬럼에 맞춤)
-                if st.button("삭제", key=f"delete_{key}", help="이 환자를 삭제합니다.", use_container_width=True):
-                    patients_ref_for_user.child(key).delete()
-                    st.rerun()
-            
-            # 각 환자 항목을 구분하기 위해 줄 추가
-            st.markdown("---")
+        for i, (key, val) in enumerate(patient_list):
+            current_col = cols[(i) % 3] # i % 3을 사용하여 3개의 컬럼을 순환
+            with current_col:
+                # 환자 정보를 표시하는 Markdown과 삭제 버튼을 한 번에 묶습니다.
+                # 모바일에서도 한 줄로 표시되도록 레이아웃을 다시 구성
+                info_col, btn_col = st.columns([0.8, 0.2])
+                with info_col:
+                    st.markdown(
+                        f"**{val['환자명']}** / `{val['진료번호']}` / _{val.get('등록과', '미지정')}_"
+                    )
+                with btn_col:
+                    if st.button("삭제", key=f"delete_{key}", use_container_width=True):
+                        patients_ref_for_user.child(key).delete()
+                        st.rerun()
+
+                st.markdown("---") # 각 환자 항목을 구분하기 위해 줄 추가
     else:
         st.info("등록된 환자가 없습니다.")
     st.markdown("---")
