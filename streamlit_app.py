@@ -438,89 +438,41 @@ if not is_admin_mode:
     patients_ref_for_user = db.reference(f"patients/{firebase_key}")
     existing_patient_data = patients_ref_for_user.get()
 
-    # --- CSS를 이용한 반응형 레이아웃 추가 (수정됨) ---
+    # CSS를 사용하여 버튼 스타일을 정의
     st.markdown("""
-    <style>
-    .patient-list-container {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 1rem;
-        justify-content: flex-start;
-    }
-    .patient-item {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        padding: 0.5rem;
-        background-color: #f0f2f6;
-        border-radius: 0.5rem;
-        flex-grow: 1;
-        min-width: 250px;
-        margin-bottom: 0.5rem;
-        word-break: break-all; /* 긴 텍스트 줄바꿈 */
-    }
-    .patient-info {
-        flex-grow: 1;
-        white-space: nowrap;
-        overflow: hidden;
-        text-overflow: ellipsis;
-        padding-right: 10px;
-    }
-    .small-delete-button {
-        background-color: #e6e6e6; /* 더 어두운 회색으로 변경 */
-        color: #000000;
-        border: none;
-        padding: 0.2rem 0.5rem; /* 버튼 패딩 조정 */
-        border-radius: 0.3rem;
-        cursor: pointer;
-        font-size: 0.75rem; /* 폰트 크기 조정 */
-        width: auto; /* 너비를 내용에 맞게 조정 */
-        flex-shrink: 0; /* 버튼이 줄어들지 않도록 함 */
-    }
-    .small-delete-button:hover {
-        background-color: #cccccc; /* 호버 시 색상 변경 */
-    }
-
-    /* 260px 이상부터 3단 레이아웃 적용 */
-    @media (min-width: 260px) {
-        .patient-list-container {
-            justify-content: space-between;
-        }
-        .patient-item {
-            width: 32%; /* 화면 너비의 약 33% */
-        }
-    }
-    </style>
+        <style>
+            div.stButton > button.css-1f9g55i {
+                background-color: #f0f0f0;
+                color: black;
+                font-size: 0.75rem;
+                padding: 0.2rem 0.5rem;
+                border-radius: 0.3rem;
+                margin-left: 0.5rem;
+                line-height: 1;
+            }
+        </style>
     """, unsafe_allow_html=True)
-    # --- CSS 끝 ---
-
+    
     if existing_patient_data:
-        st.markdown('<div class="patient-list-container">', unsafe_allow_html=True)
-        for key, val in existing_patient_data.items():
-            st.markdown('<div class="patient-item">', unsafe_allow_html=True)
-            info_col, btn_col = st.columns([0.8, 0.2])
-            with info_col:
-                st.markdown(f'<div class="patient-info">{val["환자명"]} / {val["진료번호"]} / {val.get("등록과", "미지정")}</div>', unsafe_allow_html=True)
-            with btn_col:
-                # HTML을 사용하여 버튼을 직접 구성하고 CSS 클래스를 적용
-                st.markdown(
-                    f"""
-                    <form action="" method="post" style="display:inline-block; margin:0; padding:0;">
-                        <input type="hidden" name="delete_key" value="{key}">
-                        <button type="submit" class="small-delete-button">삭제</button>
-                    </form>
-                    """,
-                    unsafe_allow_html=True
-                )
-            st.markdown('</div>', unsafe_allow_html=True)
-        st.markdown('</div>', unsafe_allow_html=True)
+        patient_keys = list(existing_patient_data.keys())
         
-        # 삭제 버튼 클릭 처리
-        if "delete_key" in st.query_params:
-            key_to_delete = st.query_params["delete_key"]
-            patients_ref_for_user.child(key_to_delete).delete()
-            st.rerun()
-
+        # 3개의 열을 생성하여 환자 정보를 분할
+        cols = st.columns(3)
+        
+        for i, key in enumerate(patient_keys):
+            val = existing_patient_data[key]
+            patient_info = f"{val['환자명']} / {val['진료번호']} / {val.get('등록과', '미지정')}"
+            
+            with cols[i % 3]:
+                # 회색 하이라이트 제거 및 텍스트만 표시
+                # Streamlit의 기본 마크다운을 사용하면 회색 배경이 생기지 않음
+                col1, col2 = st.columns([0.8, 0.2])
+                with col1:
+                    st.write(patient_info)
+                with col2:
+                    if st.button("삭제", key=f"delete_btn_{key}"):
+                        patients_ref_for_user.child(key).delete()
+                        st.rerun()
     else:
         st.info("등록된 환자가 없습니다.")
     st.markdown("---")
