@@ -446,16 +446,17 @@ if not is_admin_mode:
         patient_list = list(existing_patient_data.items())
         
         # 버튼 스타일을 CSS로 정의하여 'X' 버튼을 작고 둥글게 만듭니다.
+        # font-size를 줄이고 padding을 더 줄여서 버튼 크기를 최소화합니다.
         button_style = """
             <style>
             div.stButton > button:first-child {
                 background-color: #f0f2f6;
                 color: #495057;
-                font-size: 0.8em;
-                padding: 0.1em 0.4em;
+                font-size: 0.7em; /* 폰트 크기를 더 줄임 */
+                padding: 0em 0.4em; /* 패딩을 더 줄임 */
                 border-radius: 5px;
                 border: 1px solid #ced4da;
-                line-height: 1; /* 텍스트가 버튼 중앙에 오도록 조정 */
+                line-height: 1.2; /* 텍스트가 버튼 중앙에 오도록 조정 */
             }
             div.stButton > button:hover {
                 background-color: #e2e6ea;
@@ -472,10 +473,10 @@ if not is_admin_mode:
             with current_col:
                 # 환자 정보와 삭제 버튼을 한 줄에 배치
                 # 모바일 화면 너비를 고려하여 비율을 9:1로 조정
-                info_col, btn_col = st.columns([0.9, 0.1])
+                info_col, btn_col = st.columns([0.8, 0.2])
                 with info_col:
                     st.markdown(
-                        f"<div style='font-size: 0.9em;'>{val['환자명']} / {val['진료번호']} / {val.get('등록과', '미지정')}</div>",
+                        f"<div style='font-size: 0.9em; overflow-wrap: break-word;'>{val['환자명']} / {val['진료번호']} / {val.get('등록과', '미지정')}</div>",
                         unsafe_allow_html=True
                     )
                 with btn_col:
