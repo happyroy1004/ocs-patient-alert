@@ -440,91 +440,114 @@ if not is_admin_mode:
 
     # CSS 스타일링 추가
     st.markdown("""
-        <style>
-        /* 버튼 내 폰트 크기 조절 */
-        div.stButton > button {
-            font-size: 0.75em !important;
-            line-height: 1 !important;
-            padding: 0.1em 0.5em !important;
-        }
+    <style>
+    /* 버튼 내 폰트 크기 및 여백 조절 */
+    div.stButton > button {
+        font-size: 0.75em !important;
+        line-height: 1 !important;
+        padding: 0.1em 0.5em !important;
+    }
 
-        /* 환자 목록을 담을 컨테이너 (CSS Grid 사용) */
-        .patient-grid-container {
-            display: grid;
-            gap: 10px; /* 아이템 간 간격 */
-            padding: 10px;
-        }
-        
-        /* 650px 이상일 때 3단 레이아웃 */
-        @media (min-width: 650px) {
-            .patient-grid-container {
-                grid-template-columns: repeat(3, 1fr);
-            }
-        }
-        
-        /* 400px 이상 649px 이하일 때 2단 레이아웃 */
-        @media (min-width: 400px) and (max-width: 649px) {
-            .patient-grid-container {
-                grid-template-columns: repeat(2, 1fr);
-            }
-        }
-        
-        /* 399px 이하일 때 1단 레이아웃 */
-        @media (max-width: 399px) {
-            .patient-grid-container {
-                grid-template-columns: repeat(1, 1fr);
-            }
-        }
+    /* 환자 목록을 담을 전체 컨테이너 */
+    .patient-list-container {
+        display: grid;
+        gap: 10px; /* 아이템 간 간격 */
+        grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+    }
+    
+    /* 각 환자 정보 박스 스타일 */
+    .patient-box {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 10px;
+        border: 1px solid #e6e6e6;
+        border-radius: 5px;
+        background-color: #f9f9f9;
+        word-break: break-word;
+        max-width: 400px; /* 박스 크기 상한선 설정 */
+    }
+    
+    .patient-info {
+        flex: 1;
+        font-size: 0.9em;
+        padding-right: 10px;
+    }
 
-        /* 각 환자 정보를 담는 카드 스타일 */
-        .patient-card {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            padding: 10px;
-            border: 1px solid #ddd;
-            border-radius: 5px;
-            background-color: #f9f9f9;
-        }
-        
-        .patient-info {
-            flex: 1;
-            font-size: 0.9em;
-            word-break: break-word;
-            padding-right: 10px; /* 버튼과의 간격 */
-        }
-        
-        .stButton {
-            white-space: nowrap;
-        }
-        </style>
-        """, unsafe_allow_html=True)
+    /* Streamlit 컬럼이 모바일에서 1단으로 바뀌는 문제 해결 */
+    /* st.columns를 사용하여 레이아웃을 제어하지만, 실제로는 HTML에 직접 마크업을 넣어서 flexbox나 grid로 제어 */
+    /* Streamlit의 `st.columns`를 직접 사용하지 않고, HTML과 CSS로 레이아웃을 구성하는 것이 더 안정적임 */
 
+    /* st.columns의 내부 컨테이너에 직접 스타일 적용 */
+    @media (min-width: 650px) {
+        .st-emotion-cache-13k6jc6 {
+            grid-template-columns: repeat(3, 1fr) !important;
+        }
+    }
+    
+    @media (max-width: 649px) {
+        .st-emotion-cache-13k6jc6 {
+            grid-template-columns: repeat(2, 1fr) !important;
+        }
+    }
+
+    /* 환자 정보와 버튼이 한 줄에 있도록 하는 Flexbox 레이아웃 */
+    .patient-entry {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        border: 1px solid #ddd;
+        border-radius: 5px;
+        padding: 8px;
+        margin-bottom: 5px;
+        background-color: #f9f9f9;
+        word-break: break-word;
+        max-width: 400px; /* 박스 크기 상한선 설정 */
+    }
+    .patient-entry-text {
+        flex: 1;
+        padding-right: 10px;
+    }
+    .patient-entry-button {
+        flex-shrink: 0;
+    }
+    </style>
+    """, unsafe_allow_html=True)
+    
     if existing_patient_data:
         patient_list = list(existing_patient_data.items())
 
-        # 환자 목록을 위한 HTML 컨테이너 시작
-        st.markdown('<div class="patient-grid-container">', unsafe_allow_html=True)
+        # st.columns를 사용하여 PC 3단, 모바일 2단 레이아웃을 구현
+        cols = st.columns(3)
+        num_cols = 3
 
-        for key, val in patient_list:
-            # 개별 환자 카드를 Streamlit 컬럼에 배치
-            col1, col2 = st.columns([0.8, 0.2])
-            with col1:
-                st.markdown(f"""
-                    <div class="patient-card">
-                        <div class="patient-info">
-                            <b>{val['환자명']}</b> / {val['진료번호']} / {val.get('등록과', '미지정')}
+        for i, (key, val) in enumerate(patient_list):
+            current_col = cols[i % num_cols]
+            
+            with current_col:
+                with st.container():
+                    # 환자 정보와 버튼을 하나의 박스 안에 배치
+                    st.markdown(
+                        f"""
+                        <div class="patient-entry">
+                            <div class="patient-entry-text">
+                                <b>{val['환자명']}</b> / {val['진료번호']} / {val.get('등록과', '미지정')}
+                            </div>
+                            <div class="patient-entry-button">
+                                <form action="" method="post">
+                                    <button class="stButton" type="submit" name="delete_button_{key}">X</button>
+                                </form>
+                            </div>
                         </div>
-                    </div>
-                """, unsafe_allow_html=True)
-            with col2:
-                # 버튼은 Streamlit의 고유한 기능을 사용
-                if st.button("X", key=f"delete_button_{key}"):
-                    patients_ref_for_user.child(key).delete()
-                    st.rerun()
-        
-        # 환자 목록을 위한 HTML 컨테이너 종료
-        st.markdown('</div>', unsafe_allow_html=True)
+                        """, 
+                        unsafe_allow_html=True
+                    )
+                    
+                    # 삭제 버튼 로직 처리
+                    if st.button("X", key=f"delete_button_{key}"):
+                        patients_ref_for_user.child(key).delete()
+                        st.rerun()
+
     else:
         st.info("등록된 환자가 없습니다.")
     st.markdown("---")
