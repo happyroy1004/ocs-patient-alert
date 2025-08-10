@@ -260,7 +260,7 @@ def process_excel_file_and_style(file_bytes_io):
         return None, None
 
     output_buffer_for_styling = io.BytesIO()
-    with pd.ExcelWriter(output_buffer_for_styling, engine='openyxl') as writer:
+    with pd.ExcelWriter(output_buffer_for_styling, engine='openpyxl') as writer:
         for sheet_name_raw, df in processed_sheets_dfs.items():
             df.to_excel(writer, sheet_name=sheet_name_raw, index=False)
 
@@ -441,18 +441,12 @@ if not is_admin_mode:
     # CSS 스타일링 추가
     st.markdown("""
     <style>
-    /* Streamlit 버튼의 기본 스타일로 복원 */
+    /* 버튼 폰트 크기 및 여백 조절 */
     div.stButton > button {
-        /* 기존 스타일 제거 */
-    }
-
-    /* 삭제 버튼 스타일 */
-    div.stButton > button[kind="secondary"] {
         font-size: 0.75em !important;
         line-height: 1 !important;
         padding: 0.1em 0.5em !important;
-        width: 100%;
-        max-width: 40px;
+        width: 100%; /* 버튼이 컬럼의 전체 너비를 차지하도록 설정 */
         height: 100%;
         margin: 0;
     }
@@ -466,20 +460,28 @@ if not is_admin_mode:
         border-radius: 5px;
         background-color: #f9f9f9;
         word-break: break-word;
-        padding: 0;
-        max-width: 100%;
+        padding: 0; /* 내부 padding 제거 */
+        max-width: 190px; /* 박스 크기 상한선 190px로 설정 */
     }
     
     /* 환자 정보 텍스트 컨테이너 */
     .patient-info-text {
         flex: 1;
         font-size: 0.9em;
-        padding: 10px;
+        padding: 10px; /* 텍스트에만 패딩 적용 */
     }
     
-    /* PC와 모바일 모두 2단으로 고정 */
-    .st-emotion-cache-13k6jc6 {
-        grid-template-columns: repeat(2, 1fr) !important;
+    /* Streamlit 컬럼이 모바일에서 1단으로 바뀌는 문제 해결 */
+    @media (min-width: 650px) {
+        .st-emotion-cache-13k6jc6 {
+            grid-template-columns: repeat(3, 1fr) !important;
+        }
+    }
+    
+    @media (max-width: 649px) {
+        .st-emotion-cache-13k6jc6 {
+            grid-template-columns: repeat(2, 1fr) !important;
+        }
     }
     </style>
     """, unsafe_allow_html=True)
@@ -487,9 +489,9 @@ if not is_admin_mode:
     if existing_patient_data:
         patient_list = list(existing_patient_data.items())
 
-        # PC 2단, 모바일 2단 레이아웃을 구현
-        cols = st.columns(2)
-        num_cols = 2
+        # st.columns를 사용하여 PC 3단, 모바일 2단 레이아웃을 구현
+        cols = st.columns(3)
+        num_cols = 3
 
         for i, (key, val) in enumerate(patient_list):
             current_col = cols[i % num_cols]
