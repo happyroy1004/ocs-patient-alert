@@ -593,27 +593,19 @@ if not is_admin_mode:
     if existing_patient_data:
         patient_list = list(existing_patient_data.items())
         
-        # 컬럼 수를 동적으로 조정하는 대신, CSS Flexbox를 사용합니다.
-        # 기존 st.columns 로직을 제거하고, CSS를 적용할 단일 컨테이너로 변경합니다.
+        # st.columns를 사용하여 두 개의 열을 만듭니다.
+        # 첫 번째 열에 환자 정보를, 두 번째 열에 'X' 버튼을 배치합니다.
         for idx, (key, val) in enumerate(patient_list):
-            with st.container(border=True):
-                # st.markdown을 사용하여 HTML과 CSS를 직접 적용합니다.
-                # flex-wrap: nowrap으로 줄바꿈을 방지합니다.
+            col1, col2 = st.columns([0.9, 0.1])
+            with col1:
                 st.markdown(f"""
-                <div class="patient-item">
-                    <div class="patient-info">
-                        <strong>{val['환자명']}</strong> / {val['진료번호']} / {val.get('등록과', '미지정')}
+                    <div class="patient-item">
+                        <div class="patient-info">
+                            <strong>{val['환자명']}</strong> / {val['진료번호']} / {val.get('등록과', '미지정')}
+                        </div>
                     </div>
-                    <div>
-                        <button class="streamlit-button small" onclick="window.parent.postMessage({{
-                            type: 'streamlit:setComponentValue',
-                            id: '{'delete_button_' + key}',
-                            value: true
-                        }}, '*')">X</button>
-                    </div>
-                </div>
-                """, unsafe_allow_html=True)
-                # Streamlit 버튼은 `st.button`으로 따로 구현해야 합니다.
+                    """, unsafe_allow_html=True)
+            with col2:
                 if st.button("X", key=f"delete_button_{key}"):
                     patients_ref_for_user.child(key).delete()
                     st.rerun()
