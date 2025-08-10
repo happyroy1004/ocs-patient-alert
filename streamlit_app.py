@@ -563,12 +563,20 @@ if not is_admin_mode:
     existing_patient_data = patients_ref_for_user.get()
 
     if existing_patient_data:
+        # 요청하신 진료과 순서를 정의합니다.
+        desired_order = ['소치', '외과', '보철', '내과', '교정']
+        order_map = {dept: i for i, dept in enumerate(desired_order)}
+
         patient_list = list(existing_patient_data.items())
+
+        # 진료과 순서에 따라 환자 목록을 정렬합니다.
+        sorted_patient_list = sorted(patient_list, key=lambda item: order_map.get(item[1].get('등록과', '미지정'), float('inf')))
+
         # PC 환경에서는 3단, 모바일 환경에서는 1단으로 자동 조절됩니다.
         cols_count = 3
         cols = st.columns(cols_count)
         
-        for idx, (key, val) in enumerate(patient_list):
+        for idx, (key, val) in enumerate(sorted_patient_list):
             with cols[idx % cols_count]:
                 # 각 환자 정보를 st.container로 묶어 박스 형태로 만듭니다.
                 with st.container(border=True):
