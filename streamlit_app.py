@@ -448,26 +448,43 @@ if not is_admin_mode:
             padding: 0.1em 0.5em !important;
         }
 
-        /* 큰 화면(PC)에서 3단 레이아웃 */
+        /* Streamlit의 컬럼 컨테이너에 반응형 스타일 적용 */
         @media (min-width: 768px) {
-            .st-emotion-cache-13k6jc6 {
-                grid-template-columns: repeat(3, 1fr);
+            div[data-testid="stColumns"] {
+                grid-template-columns: repeat(3, 1fr) !important;
             }
         }
         
-        /* 작은 화면(모바일)에서 2단 레이아웃 */
         @media (max-width: 767px) {
-            .st-emotion-cache-13k6jc6 {
-                grid-template-columns: repeat(2, 1fr);
+            div[data-testid="stColumns"] {
+                grid-template-columns: repeat(2, 1fr) !important;
             }
+        }
+
+        /* 환자 정보와 버튼을 담는 컨테이너 스타일 */
+        .patient-entry-container {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0.5rem;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            margin-bottom: 0.5rem;
+            word-break: break-all;
+        }
+        
+        .patient-entry-text {
+            flex: 1;
+            padding-right: 0.5rem;
+            font-size: 0.9em;
         }
         </style>
         """, unsafe_allow_html=True)
-        
+
     if existing_patient_data:
         patient_list = list(existing_patient_data.items())
 
-        # st.columns를 사용하여 텍스트와 버튼을 별도의 컬럼에 배치
+        # st.columns를 사용하여 텍스트와 버튼을 같은 줄에 배치
         # 이 방식으로 PC 3단, 모바일 2단 레이아웃을 구현하려면 CSS를 활용해야 함
         cols = st.columns(3)
         num_cols = 3
@@ -476,15 +493,15 @@ if not is_admin_mode:
             current_col = cols[i % num_cols]
             
             with current_col:
-                # 텍스트와 버튼을 같은 줄에 배치하기 위해 st.columns 사용
-                col_text, col_btn = st.columns([0.8, 0.2])
-                with col_text:
-                    st.markdown(f"**{val['환자명']}** / {val['진료번호']} / {val.get('등록과', '미지정')}", unsafe_allow_html=True)
-                
-                with col_btn:
-                    if st.button("X", key=f"delete_button_{key}"):
-                        patients_ref_for_user.child(key).delete()
-                        st.rerun()
+                with st.container():
+                    col_text, col_btn = st.columns([0.8, 0.2])
+                    with col_text:
+                        st.markdown(f"**{val['환자명']}** / {val['진료번호']} / {val.get('등록과', '미지정')}")
+                    
+                    with col_btn:
+                        if st.button("X", key=f"delete_button_{key}"):
+                            patients_ref_for_user.child(key).delete()
+                            st.rerun()
 
     else:
         st.info("등록된 환자가 없습니다.")
