@@ -437,47 +437,88 @@ if not is_admin_mode:
 
     st.markdown("""
     <style>
-    div.stButton > button {
+    .patient-grid {
+        display: grid;
+        grid-template-columns: 1fr;
+        gap: 1rem;
+    }
+    .patient-entry {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding-bottom: 0.5rem;
+        border-bottom: 1px solid #e6e6e6;
+    }
+    .patient-entry:last-child {
+        border-bottom: none;
+    }
+    .patient-info {
+        flex-grow: 1;
+    }
+    div.stButton>button {
         background-color: #e6e6e6;
         color: #000000;
         border: none;
         padding: 0;
         border-radius: 0.3rem;
         cursor: pointer;
-        font-size: 0.45rem; /* 폰트 크기 더 줄임 */
-        width: 25px; /* 너비 더 줄임 */
-        height: 25px; /* 높이 더 줄임 */
+        font-size: 0.4rem; /* 폰트 크기 더 줄임 */
+        font-weight: bold;
+        width: 20px; /* 너비 더 줄임 */
+        height: 20px; /* 높이 더 줄임 */
         display: flex;
         align-items: center;
         justify-content: center;
         white-space: nowrap;
     }
-    div.stButton > button:hover {
+    div.stButton>button:hover {
         background-color: #cccccc;
+    }
+    /* 이메일 주소 변경 버튼은 스타일 변경에서 제외 */
+    div[data-testid="stVerticalBlock"] > div:nth-child(2) > div:nth-child(3) > div > button {
+         font-size: 1rem;
+         width: auto;
+         height: auto;
+         padding: 0.5rem 1rem;
+         border: 1px solid rgba(49, 51, 63, 0.2);
+         background-color: rgb(255, 255, 255);
+         color: rgb(49, 51, 63);
+    }
+    
+    /* 미디어 쿼리를 사용한 반응형 레이아웃 */
+    @media (min-width: 440px) {
+        .patient-grid {
+            grid-template-columns: 1fr 1fr;
+            gap: 1.5rem;
+        }
+    }
+    @media (min-width: 645px) {
+        .patient-grid {
+            grid-template-columns: 1fr 1fr 1fr;
+            gap: 2rem;
+        }
     }
     </style>
     """, unsafe_allow_html=True)
     
     if existing_patient_data:
         patient_keys = list(existing_patient_data.keys())
-        
-        # 3개의 열을 생성하여 환자 정보를 분할
-        for i in range(0, len(patient_keys), 3):
-            cols = st.columns(3)
-            for j in range(3):
-                if i + j < len(patient_keys):
-                    key = patient_keys[i+j]
-                    val = existing_patient_data[key]
-                    patient_info = f"{val['환자명']} / {val['진료번호']} / {val.get('등록과', '미지정')}"
-                    
-                    with cols[j]:
-                        info_col, btn_col = st.columns([0.8, 0.2])
-                        with info_col:
-                            st.write(patient_info)
-                        with btn_col:
-                            if st.button("삭제", key=f"delete_btn_{key}"):
-                                patients_ref_for_user.child(key).delete()
-                                st.rerun()
+        st.markdown('<div class="patient-grid">', unsafe_allow_html=True)
+        for key in patient_keys:
+            val = existing_patient_data[key]
+            patient_info = f"{val['환자명']} / {val['진료번호']} / {val.get('등록과', '미지정')}"
+            
+            st.markdown(f"""
+            <div class="patient-entry">
+                <div class="patient-info">{patient_info}</div>
+                <div style="flex-shrink: 0;">
+            """, unsafe_allow_html=True)
+            if st.button("X", key=f"delete_btn_{key}"):
+                patients_ref_for_user.child(key).delete()
+                st.rerun()
+            st.markdown("</div></div>", unsafe_allow_html=True)
+        st.markdown('</div>', unsafe_allow_html=True)
+
     else:
         st.info("등록된 환자가 없습니다.")
     st.markdown("---")
