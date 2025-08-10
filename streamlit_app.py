@@ -464,6 +464,20 @@ if not is_admin_mode:
                 color: #495057;
                 border: 1px solid #adb5bd;
             }
+
+            /* CSS Flexbox를 사용하여 텍스트와 버튼을 강제로 한 줄에 정렬 */
+            .flex-container {
+                display: flex;
+                align-items: center; /* 수직 가운데 정렬 */
+                justify-content: space-between; /* 양 끝 정렬 */
+            }
+
+            .patient-info {
+                font-size: 0.9em;
+                white-space: nowrap; /* 텍스트 줄 바꿈 방지 */
+                overflow: hidden; /* 넘치는 텍스트 숨기기 */
+                text-overflow: ellipsis; /* 넘치는 텍스트를 ...으로 표시 */
+            }
             </style>
         """
         st.markdown(button_style, unsafe_allow_html=True)
@@ -473,19 +487,27 @@ if not is_admin_mode:
 
             with current_col:
                 # 환자 정보와 삭제 버튼을 한 줄에 배치
-                # 모바일 화면 너비를 고려하여 비율을 9:1로 조정
-                info_col, btn_col = st.columns([0.8, 0.2])
-                with info_col:
-                    # 환자 정보 텍스트를 한 줄로 표시
-                    st.markdown(
-                        f"<div style='font-size: 0.9em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;'>{val['환자명']} / {val['진료번호']} / {val.get('등록과', '미지정')}</div>",
-                        unsafe_allow_html=True
-                    )
-                with btn_col:
-                    # 버튼의 use_container_width를 False로 설정하여 크기 고정
-                    if st.button("X", key=f"delete_{key}", use_container_width=False):
-                        patients_ref_for_user.child(key).delete()
-                        st.rerun()
+                st.markdown(
+                    f"""
+                    <div class="flex-container">
+                        <div class="patient-info">
+                            {val['환자명']} / {val['진료번호']} / {val.get('등록과', '미지정')}
+                        </div>
+                        <div style="margin-left: 10px;">
+                            <button style="background-color: #f0f2f6; color: #495057; font-size: 0.7em; padding: 0em 0.4em; border-radius: 5px; border: 1px solid #ced4da; line-height: 1.2; cursor: pointer;">
+                                X
+                            </button>
+                        </div>
+                    </div>
+                    """,
+                    unsafe_allow_html=True
+                )
+
+                # 버튼 클릭 시 동작을 위한 Streamlit 버튼은 별도로 추가
+                if st.button("X", key=f"delete_{key}", use_container_width=False, help="이 환자를 삭제합니다."):
+                    patients_ref_for_user.child(key).delete()
+                    st.rerun()
+
                 st.markdown("<hr style='margin-top: 0.5em; margin-bottom: 0.5em;'>", unsafe_allow_html=True)
     else:
         st.info("등록된 환자가 없습니다.")
