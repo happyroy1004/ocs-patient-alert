@@ -437,26 +437,45 @@ if not is_admin_mode:
 if not is_admin_mode:
     st.subheader(f"{user_name}님의 등록 환자 목록")
 
+    # CSS를 사용하여 st.markdown의 마진을 줄여 줄 간격을 좁힙니다.
+    # st.button의 마진도 줄여서 텍스트와 버튼이 더 가까이 붙도록 합니다.
+    st.markdown("""
+        <style>
+        .patient-entry p {
+            margin-bottom: 0px !important;
+            margin-top: 0px !important;
+            font-size: 14px;
+        }
+        .patient-entry .stButton {
+            margin-top: 0px !important;
+            margin-bottom: 0px !important;
+            padding: 0px !important;
+        }
+        </style>
+    """, unsafe_allow_html=True)
+
     existing_patient_data = patients_ref_for_user.get()
 
     if existing_patient_data:
-        # 각 환자 항목을 한 줄에 표시하기 위해 컬럼 사용
-        # 정보와 삭제 버튼을 위한 열 비율 조정
         for key, val in existing_patient_data.items():
-            # 첫 번째 컬럼에 환자 정보, 두 번째 컬럼에 삭제 버튼
-            # 정보가 들어갈 컬럼에 더 많은 공간을 할당 (예: 0.75), 삭제 버튼에 적은 공간 할당 (예: 0.25)
-            col1, col2 = st.columns([0.8, 0.2]) 
-            with col1:
-                department_display = val.get('등록과', '미지정')
-                st.markdown(f"**환자명:** {val['환자명']} / **진료번호:** {val['진료번호']} / **등록과:** {department_display}")
-            with col2:
-                # 삭제 버튼을 컬럼의 너비에 맞춰 작게 만듭니다.
-                if st.button("삭제", key=f"delete_{key}", use_container_width=True):
-                    patients_ref_for_user.child(key).delete()
-                    st.success("환자가 성공적으로 삭제되었습니다.")
-                    st.rerun()
-            # 각 환자 항목 사이에 구분선 추가 (선택 사항)
-            st.markdown("---")
+            # 각 환자 항목을 감싸는 컨테이너
+            with st.container():
+                col1, col2 = st.columns([0.8, 0.2])
+                with col1:
+                    department_display = val.get('등록과', '미지정')
+                    st.markdown(
+                        f"<div class='patient-entry'>**환자명:** {val['환자명']} / **진료번호:** {val['진료번호']} / **등록과:** {department_display}</div>",
+                        unsafe_allow_html=True
+                    )
+                with col2:
+                    if st.button("삭제", key=f"delete_{key}", use_container_width=True):
+                        patients_ref_for_user.child(key).delete()
+                        st.success("환자가 성공적으로 삭제되었습니다.")
+                        st.rerun()
+
+                # 각 환자 항목 사이에 구분선 대신 작은 간격만 추가
+                # st.markdown("<div style='margin-bottom: 5px;'></div>", unsafe_allow_html=True)
+                st.markdown("---") # 줄 간격을 줄이기 위해 `---` 대신 `<br>` 또는 `<div style='...'>` 사용 가능
     else:
         st.info("등록된 환자가 없습니다.")
 
