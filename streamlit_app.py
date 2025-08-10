@@ -443,30 +443,9 @@ if not is_admin_mode:
         font-size: 0.75em !important;
         line-height: 1 !important;
         padding: 0.1em 0.5em !important;
-        width: 100%;
+        max-width: 40px; /* width: 100%를 제거하고 max-width만 남김 */
         height: 100%;
         margin: 0;
-        max-width: 40px;
-    }
-    
-    /* 각 환자 정보를 담는 박스 스타일 */
-    .patient-box {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        border: 1px solid #e6e6e6;
-        border-radius: 5px;
-        background-color: #f9f9f9;
-        word-break: break-word;
-        padding: 0;
-        max-width: 190px;
-    }
-    
-    /* 환자 정보 텍스트 컨테이너 */
-    .patient-info-text {
-        flex: 1;
-        font-size: 0.9em;
-        padding: 10px;
     }
     
     /* Streamlit 컬럼 반응형 스타일 (PC 3단, 모바일 2단) */
@@ -481,25 +460,27 @@ if not is_admin_mode:
             grid-template-columns: repeat(2, 1fr) !important;
         }
     }
-    
-    /* 새로운 CSS: st.columns 안의 환자 박스 + 버튼이 항상 한 줄에 있도록 함 */
-    .st-emotion-cache-11r2p0n { /* st.columns 내부의 div */
+
+    /* 환자 정보와 버튼을 담는 박스 스타일 */
+    .patient-entry-container {
         display: flex;
         align-items: center;
-        width: 100%;
-        gap: 0.5rem; /* 텍스트와 버튼 사이의 간격 */
+        border: 1px solid #e6e6e6;
+        border-radius: 5px;
+        background-color: #f9f9f9;
+        padding: 0;
+        margin-bottom: 10px;
+        max-width: 190px;
     }
-    .st-emotion-cache-6qob1r { /* st.columns 내부의 div */
-        display: flex;
-        align-items: center;
-        width: 100%;
-        gap: 0.5rem; /* 텍스트와 버튼 사이의 간격 */
+    .patient-entry-text {
+        flex: 1;
+        padding: 10px;
+        font-size: 0.9em;
+        word-break: break-word;
     }
-    .st-emotion-cache-ocqkz7 { /* st.columns 내부의 div */
-        display: flex;
-        align-items: center;
-        width: 100%;
-        gap: 0.5rem; /* 텍스트와 버튼 사이의 간격 */
+    .patient-entry-button-wrapper {
+        flex-shrink: 0;
+        padding: 5px;
     }
     </style>
     """, unsafe_allow_html=True)
@@ -507,7 +488,6 @@ if not is_admin_mode:
     if existing_patient_data:
         patient_list = list(existing_patient_data.items())
 
-        # Streamlit의 컬럼을 사용해 3단(PC) / 2단(모바일) 레이아웃 구성
         cols = st.columns(3)
         num_cols = 3
 
@@ -515,12 +495,12 @@ if not is_admin_mode:
             current_col = cols[i % num_cols]
             
             with current_col:
-                # 텍스트와 버튼을 한 줄에 배치하기 위해 다시 내부 columns 사용
+                # 텍스트와 버튼을 한 줄에 배치하기 위해 st.columns 사용
                 col_text, col_btn = st.columns([0.8, 0.2], gap="small")
                 
                 with col_text:
                     st.markdown(
-                        f'<div class="patient-box" style="border:none; background-color:transparent;"><div class="patient-info-text" style="padding: 10px 0; border: 1px solid #e6e6e6; border-radius: 5px; background-color: #f9f9f9; max-width:140px;"><b>{val["환자명"]}</b> / {val["진료번호"]} / {val.get("등록과", "미지정")}</div></div>',
+                        f'<div class="patient-entry-text"><b>{val["환자명"]}</b> / {val["진료번호"]} / {val.get("등록과", "미지정")}</div>',
                         unsafe_allow_html=True
                     )
                 
