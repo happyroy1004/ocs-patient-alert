@@ -420,11 +420,14 @@ if not is_admin_mode:
     patients_ref_for_user = db.reference(f"patients/{firebase_key}")
 
     # 사용자 정보 (이름, 이메일) Firebase 'users' 노드에 저장 또는 업데이트
+    # Admin 계정일 때는 이 과정 건너뛰기
+    # 그리고 이메일 변경 모드가 아닐 때 (또는 새로 등록하는 경우)만 업데이트
     if not st.session_state.email_change_mode:
         current_user_meta_data = users_ref.child(firebase_key).get()
         if not current_user_meta_data or current_user_meta_data.get("name") != user_name or current_user_meta_data.get("email") != user_id_final:
             users_ref.child(firebase_key).update({"name": user_name, "email": user_id_final})
             st.success(f"사용자 정보가 업데이트되었습니다: {user_name} ({user_id_final})")
+            # 세션 상태 업데이트 (새로운 등록 또는 정보 변경 시)
             st.session_state.current_firebase_key = firebase_key
             st.session_state.current_user_name = user_name
             st.session_state.found_user_email = user_id_final
@@ -435,90 +438,77 @@ if not is_admin_mode:
     patients_ref_for_user = db.reference(f"patients/{firebase_key}")
     existing_patient_data = patients_ref_for_user.get()
 
-    st.markdown("""
-    <style>
-    .patient-grid {
-        display: grid;
-        grid-template-columns: 1fr;
-        gap: 1rem;
-    }
-    .patient-entry {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        padding-bottom: 0.5rem;
-        border-bottom: 1px solid #e6e6e6;
-    }
-    .patient-entry:last-child {
-        border-bottom: none;
-    }
-    .patient-info {
-        flex-grow: 1;
-    }
-    div.stButton>button {
-        background-color: #e6e6e6;
-        color: #000000;
-        border: none;
-        padding: 0;
-        border-radius: 0.3rem;
-        cursor: pointer;
-        font-size: 0.4rem; /* 폰트 크기 더 줄임 */
-        font-weight: bold;
-        width: 20px; /* 너비 더 줄임 */
-        height: 20px; /* 높이 더 줄임 */
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        white-space: nowrap;
-    }
-    div.stButton>button:hover {
-        background-color: #cccccc;
-    }
-    /* 이메일 주소 변경 버튼은 스타일 변경에서 제외 */
-    div[data-testid="stVerticalBlock"] > div:nth-child(2) > div:nth-child(3) > div > button {
-         font-size: 1rem;
-         width: auto;
-         height: auto;
-         padding: 0.5rem 1rem;
-         border: 1px solid rgba(49, 51, 63, 0.2);
-         background-color: rgb(255, 255, 255);
-         color: rgb(49, 51, 63);
-    }
-    
-    /* 미디어 쿼리를 사용한 반응형 레이아웃 */
-    @media (min-width: 440px) {
-        .patient-grid {
-            grid-template-columns: 1fr 1fr;
-            gap: 1.5rem;
-        }
-    }
-    @media (min-width: 645px) {
-        .patient-grid {
-            grid-template-columns: 1fr 1fr 1fr;
-            gap: 2rem;
-        }
-    }
-    </style>
-    """, unsafe_allow_html=True)
-    
     if existing_patient_data:
-        patient_keys = list(existing_patient_data.keys())
-        st.markdown('<div class="patient-grid">', unsafe_allow_html=True)
-        for key in patient_keys:
-            val = existing_patient_data[key]
-            patient_info = f"{val['환자명']} / {val['진료번호']} / {val.get('등록과', '미지정')}"
-            
-            st.markdown(f"""
-            <div class="patient-entry">
-                <div class="patient-info">{patient_info}</div>
-                <div style="flex-shrink: 0;">
-            """, unsafe_allow_html=True)
-            if st.button("X", key=f"delete_btn_{key}"):
-                patients_ref_for_user.child(key).delete()
-                st.rerun()
-            st.markdown("</div></div>", unsafe_allow_html=True)
-        st.markdown('</div>', unsafe_allow_html=True)
+        # PC에서는 3단, 모바일에서는 1단으로 보이는 반응형 컬럼 설정
+        cols = st.columns(3)
 
+        # 환자 데이터를 리스트로 변환하여 인덱스로 접근
+        patient_list = list(existing_patient_data.items())
+        
+        # 버튼 스타일을 CSS로 정의하여 'X' 버튼을 작고 둥글게 만듭니다.
+        # font-size를 줄이고 padding을 더 줄여서 버튼 크기를 최소화합니다.
+        button_style = """
+            <style>
+            div.stButton > button:first-child {
+                background-color: #f0f2f6;
+                color: #495057;
+                font-size: 0.7em; /* 폰트 크기를 더 줄임 */
+                padding: 0em 0.4em; /* 패딩을 더 줄임 */
+                border-radius: 5px;
+                border: 1px solid #ced4da;
+                line-height: 1.2; /* 텍스트가 버튼 중앙에 오도록 조정 */
+                margin-left: auto; /* 버튼을 오른쪽으로 밀어냅니다. */
+            }
+            div.stButton > button:hover {
+                background-color: #e2e6ea;
+                color: #495057;
+                border: 1px solid #adb5bd;
+            }
+
+            /* CSS Flexbox를 사용하여 텍스트와 버튼을 강제로 한 줄에 정렬 */
+            .flex-container {
+                display: flex;
+                align-items: center; /* 수직 가운데 정렬 */
+                justify-content: space-between; /* 양 끝 정렬 */
+            }
+
+            .patient-info {
+                font-size: 0.9em;
+                white-space: nowrap; /* 텍스트 줄 바꿈 방지 */
+                overflow: hidden; /* 넘치는 텍스트 숨기기 */
+                text-overflow: ellipsis; /* 넘치는 텍스트를 ...으로 표시 */
+            }
+            </style>
+        """
+        st.markdown(button_style, unsafe_allow_html=True)
+
+        for i, (key, val) in enumerate(patient_list):
+            current_col = cols[(i) % 3]
+
+            with current_col:
+                # 환자 정보와 삭제 버튼을 한 줄에 배치
+                st.markdown(
+                    f"""
+                    <div class="flex-container">
+                        <div class="patient-info">
+                            {val['환자명']} / {val['진료번호']} / {val.get('등록과', '미지정')}
+                        </div>
+                        <div style="margin-left: 10px;">
+                            <button style="background-color: #f0f2f6; color: #495057; font-size: 0.7em; padding: 0em 0.4em; border-radius: 5px; border: 1px solid #ced4da; line-height: 1.2; cursor: pointer;">
+                                X
+                            </button>
+                        </div>
+                    </div>
+                    """,
+                    unsafe_allow_html=True
+                )
+
+                # 버튼 클릭 시 동작을 위한 Streamlit 버튼은 별도로 추가
+                if st.button("X", key=f"delete_{key}", use_container_width=False, help="이 환자를 삭제합니다."):
+                    patients_ref_for_user.child(key).delete()
+                    st.rerun()
+
+                st.markdown("<hr style='margin-top: 0.5em; margin-bottom: 0.5em;'>", unsafe_allow_html=True)
     else:
         st.info("등록된 환자가 없습니다.")
     st.markdown("---")
