@@ -441,26 +441,19 @@ if not is_admin_mode:
     # CSS 스타일링 추가
     st.markdown("""
     <style>
-    /* 삭제 버튼 (X)의 크기 및 스타일 */
-    .delete-button > button {
+    /* 버튼 폰트 크기 및 여백 조절 */
+    div.stButton > button {
         font-size: 0.75em !important;
         line-height: 1 !important;
         padding: 0.1em 0.5em !important;
-        width: 100%;
-        max-width: 40px;
+        width: 100%; /* 버튼이 컬럼의 전체 너비를 차지하도록 설정 */
+        max-width: 40px; /* 버튼의 최대 너비를 40px로 제한 */
         height: 100%;
         margin: 0;
     }
     
-    /* 환자 목록 그리드 컨테이너 */
-    .patient-grid {
-        display: grid;
-        grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-        gap: 15px;
-    }
-    
     /* 각 환자 정보를 담는 박스 스타일 */
-    .patient-item {
+    .patient-box {
         display: flex;
         align-items: center;
         justify-content: space-between;
@@ -468,7 +461,7 @@ if not is_admin_mode:
         border-radius: 5px;
         background-color: #f9f9f9;
         word-break: break-word;
-        padding: 0;
+        padding: 0; /* 내부 padding 제거 */
         max-width: 100%;
     }
     
@@ -476,18 +469,18 @@ if not is_admin_mode:
     .patient-info-text {
         flex: 1;
         font-size: 0.9em;
-        padding: 10px;
+        padding: 10px; /* 텍스트에만 패딩 적용 */
     }
     
-    /* 화면 너비에 따라 컬럼 수 조절 */
+    /* Streamlit 컬럼이 모바일에서 1단으로 바뀌는 문제 해결 */
     @media (min-width: 650px) {
-        .patient-grid {
+        .st-emotion-cache-13k6jc6 {
             grid-template-columns: repeat(3, 1fr) !important;
         }
     }
     
     @media (max-width: 649px) {
-        .patient-grid {
+        .st-emotion-cache-13k6jc6 {
             grid-template-columns: repeat(2, 1fr) !important;
         }
     }
@@ -495,49 +488,31 @@ if not is_admin_mode:
     """, unsafe_allow_html=True)
     
     if existing_patient_data:
-        st.markdown('<div class="patient-grid">', unsafe_allow_html=True)
         patient_list = list(existing_patient_data.items())
 
-        # 버튼 클릭을 감지할 세션 상태 초기화
-        for key, val in patient_list:
-            if f'delete_clicked_{key}' not in st.session_state:
-                st.session_state[f'delete_clicked_{key}'] = False
+        # st.columns를 사용하여 PC 3단, 모바일 2단 레이아웃을 구현
+        cols = st.columns(3)
+        num_cols = 3
 
-        for key, val in patient_list:
-            # HTML 구조를 직접 생성하여 CSS 클래스 적용
-            patient_html = f"""
-            <div class="patient-item">
-                <div class="patient-info-text"><b>{val["환자명"]}</b> / {val["진료번호"]} / {val.get("등록과", "미지정")}</div>
-                <div class="delete-button-container">
-                    <button class="delete-button" id="delete-btn-{key}">X</button>
-                </div>
-            </div>
-            """
-            st.markdown(patient_html, unsafe_allow_html=True)
-
-        # JavaScript를 사용하여 버튼 클릭 이벤트를 Streamlit으로 전달
-        st.markdown(f"""
-        <script>
-            const deleteButtons = document.querySelectorAll('.delete-button');
-            deleteButtons.forEach(button => {{
-                button.addEventListener('click', function(e) {{
-                    const key = this.id.replace('delete-btn-', '');
-                    window.parent.postMessage({{
-                        streamlit: {{
-                            command: 'setComponentValue',
-                            value: {{ key: key, clicked: true }}
-                        }}
-                    }}, '*');
-                }});
-            }});
-        </script>
-        """, unsafe_allow_html=True)
-        
-        # Streamlit 앱에서 클릭 이벤트를 감지하고 삭제 로직 실행
-        if st.session_state.get('delete_clicked_key'):
-            patients_ref_for_user.child(st.session_state['delete_clicked_key']).delete()
-            st.session_state['delete_clicked_key'] = None # 키 초기화
-            st.rerun()
+        for i, (key, val) in enumerate(patient_list):
+            current_col = cols[i % num_cols]
+            
+            with current_col:
+                # 하나의 박스 안에 텍스트와 버튼을 배치
+                with st.container():
+                    col_text, col_btn = st.columns([0.8, 0.2])
+                    
+                    with col_text:
+                        st.markdown(
+                            f'<div class="patient-box"><div class="patient-info-text"><b>{val["환자명"]}</b> / {val["진료번호"]} / {val.get("등록과", "미지정")}</div></div>',
+                            unsafe_allow_html=True
+                        )
+                    
+                    with col_btn:
+                        # 삭제 버튼
+                        if st.button("X", key=f"delete_button_{key}"):
+                            patients_ref_for_user.child(key).delete()
+                            st.rerun()
 
     else:
         st.info("등록된 환자가 없습니다.")
