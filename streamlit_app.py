@@ -437,20 +437,34 @@ if not is_admin_mode:
     st.subheader(f"{user_name}님의 등록 환자 목록")
     patients_ref_for_user = db.reference(f"patients/{firebase_key}")
     existing_patient_data = patients_ref_for_user.get()
-
-    # CSS를 사용하여 버튼 스타일을 정의
+    
+    # CSS를 사용하여 삭제 버튼 스타일을 정의
     st.markdown("""
-        <style>
-            div.stButton > button.css-1f9g55i {
-                background-color: #f0f0f0;
-                color: black;
-                font-size: 0.75rem;
-                padding: 0.2rem 0.5rem;
-                border-radius: 0.3rem;
-                margin-left: 0.5rem;
-                line-height: 1;
-            }
-        </style>
+    <style>
+    div.stButton > button {
+        background-color: #e6e6e6; /* 더 어두운 회색으로 변경 */
+        color: #000000;
+        border: none;
+        padding: 0.2rem 0.5rem; /* 버튼 패딩 조정 */
+        border-radius: 0.3rem;
+        cursor: pointer;
+        font-size: 0.75rem; /* 폰트 크기 조정 */
+        width: 60px; /* 고정 너비 */
+        height: 25px; /* 고정 높이 */
+        flex-shrink: 0; /* 버튼이 줄어들지 않도록 함 */
+        line-height: 1; /* 텍스트 정렬 */
+    }
+    div.stButton > button:hover {
+        background-color: #cccccc; /* 호버 시 색상 변경 */
+    }
+    .patient-container {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 0.5rem;
+        word-break: break-all;
+    }
+    </style>
     """, unsafe_allow_html=True)
     
     if existing_patient_data:
@@ -464,15 +478,14 @@ if not is_admin_mode:
             patient_info = f"{val['환자명']} / {val['진료번호']} / {val.get('등록과', '미지정')}"
             
             with cols[i % 3]:
-                # 회색 하이라이트 제거 및 텍스트만 표시
-                # Streamlit의 기본 마크다운을 사용하면 회색 배경이 생기지 않음
-                col1, col2 = st.columns([0.8, 0.2])
-                with col1:
-                    st.write(patient_info)
-                with col2:
-                    if st.button("삭제", key=f"delete_btn_{key}"):
-                        patients_ref_for_user.child(key).delete()
-                        st.rerun()
+                # Streamlit의 기본 markdown을 사용하여 회색 하이라이트 없이 텍스트만 표시
+                st.markdown(f'<div class="patient-container">{patient_info} <div style="display:inline-block"></div>', unsafe_allow_html=True)
+                
+                # 삭제 버튼을 환자 정보 아래에 배치
+                if st.button("삭제", key=f"delete_btn_{key}"):
+                    patients_ref_for_user.child(key).delete()
+                    st.rerun()
+
     else:
         st.info("등록된 환자가 없습니다.")
     st.markdown("---")
