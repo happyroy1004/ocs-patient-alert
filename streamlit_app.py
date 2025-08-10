@@ -231,7 +231,7 @@ def process_excel_file_and_style(file_bytes_io):
         while values and (values[0] is None or all((v is None or str(v).strip() == "") for v in values[0])):
             values.pop(0)
         if len(values) < 2:
-            st.warning(f"시트 '{sheet_name_raw}'에 유효한 데이터가 충분하지 않습니다. 건너킵니다.")
+            st.warning(f"시트 '{sheet_name_raw}'에 유효한 데이터가 충분하지 않습니다. 건너깁니다.")
             continue
 
         df = pd.DataFrame(values)
@@ -601,7 +601,10 @@ if not is_admin_mode:
     }
 
     /* 삭제 버튼 스타일 */
-    div.stButton > button {
+    .delete-button-container {
+        flex-shrink: 0; /* 버튼이 줄어들지 않도록 설정 */
+    }
+    .delete-button-container > div.stButton > button {
         font-size: 0.75em !important;
         line-height: 1 !important;
         padding: 0.1em 0.5em !important;
@@ -614,24 +617,31 @@ if not is_admin_mode:
     
     if existing_patient_data:
         patient_list = list(existing_patient_data.items())
-
-        # PC는 3단, 모바일은 2단 레이아웃을 위한 Streamlit 컬럼 생성
-        cols = st.columns(3)
         num_cols = 3
+        cols = st.columns(num_cols)
 
         for i, (key, val) in enumerate(patient_list):
             with cols[i % num_cols]:
-                # 하나의 박스 안에 텍스트와 버튼을 배치
                 st.markdown(
-                    f'<div class="patient-box">'
-                    f'<div class="patient-info-text"><b>{val["환자명"]}</b> / {val["진료번호"]} / {val.get("등록과", "미지정")}</div>'
-                    f'<div>',
+                    f"""
+                    <div class="patient-box">
+                        <div class="patient-info-text">
+                            <b>{val["환자명"]}</b> / {val["진료번호"]} / {val.get("등록과", "미지정")}
+                        </div>
+                        <div class="delete-button-container">
+                    """,
                     unsafe_allow_html=True
                 )
                 if st.button("X", key=f"delete_button_{key}"):
                     patients_ref_for_user.child(key).delete()
                     st.rerun()
-                st.markdown('</div></div>', unsafe_allow_html=True)
+                st.markdown(
+                    """
+                        </div>
+                    </div>
+                    """,
+                    unsafe_allow_html=True
+                )
 
     else:
         st.info("등록된 환자가 없습니다.")
