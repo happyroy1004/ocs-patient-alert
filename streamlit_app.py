@@ -440,23 +440,26 @@ if not is_admin_mode:
 
     if existing_patient_data:
         # 2단으로 나누기 위한 컬럼 생성
-        col1, col2 = st.columns([0.5, 0.5])
+        cols = st.columns(2)
         
         # 환자 데이터를 리스트로 변환하여 인덱스로 접근
         patient_list = list(existing_patient_data.items())
         
         for i, (key, val) in enumerate(patient_list):
-            # 홀수 번째 항목은 첫 번째 열에, 짝수 번째는 두 번째 열에 배치
-            current_col = col1 if i % 2 == 0 else col2
+            current_col = cols[i % 2]
             
             with current_col:
-                st.markdown(
-                    f"{val['환자명']} / {val['진료번호']} / {val.get('등록과', '미지정')}"
-                )
-                if st.button("삭제", key=f"delete_{key}", use_container_width=True):
-                    patients_ref_for_user.child(key).delete()
-                    st.success("환자가 성공적으로 삭제되었습니다.")
-                    st.rerun()
+                # 환자 정보와 삭제 버튼을 한 줄에 배치하기 위해 다시 컬럼을 나눔
+                info_col, btn_col = st.columns([0.7, 0.3])
+                with info_col:
+                    st.markdown(
+                        f"{val['환자명']} / {val['진료번호']} / {val.get('등록과', '미지정')}"
+                    )
+                with btn_col:
+                    if st.button("삭제", key=f"delete_{key}", use_container_width=True):
+                        patients_ref_for_user.child(key).delete()
+                        st.success("환자가 성공적으로 삭제되었습니다.")
+                        st.rerun()
                 st.markdown("---") # 각 환자 항목 아래에 구분선 추가
     else:
         st.info("등록된 환자가 없습니다.")
