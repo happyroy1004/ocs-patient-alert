@@ -568,19 +568,35 @@ if not is_admin_mode:
     # CSS 스타일링 추가
     st.markdown("""
     <style>
-    /* PC: 3단 레이아웃, 모바일: 2단 레이아웃 */
-    @media (min-width: 650px) {
-        div[data-testid="stColumns"] {
-            grid-template-columns: repeat(3, 1fr) !important;
+    /* 전체 환자 목록을 위한 그리드 컨테이너 */
+    .patient-list-grid {
+        display: grid;
+        gap: 10px;
+        padding: 0 5px; /* 양 옆 패딩 */
+    }
+
+    /* PC 화면에서는 3열 그리드 */
+    @media (min-width: 768px) {
+        .patient-list-grid {
+            grid-template-columns: repeat(3, 1fr);
         }
     }
-    @media (max-width: 649px) {
-        div[data-testid="stColumns"] {
-            grid-template-columns: repeat(2, 1fr) !important;
+    
+    /* 태블릿 화면에서는 2열 그리드 */
+    @media (min-width: 481px) and (max-width: 767px) {
+        .patient-list-grid {
+            grid-template-columns: repeat(2, 1fr);
         }
     }
 
-    /* 환자 정보 박스 전체를 Flexbox로 설정 */
+    /* 모바일 화면에서는 1열 그리드 */
+    @media (max-width: 480px) {
+        .patient-list-grid {
+            grid-template-columns: 1fr;
+        }
+    }
+
+    /* 각 환자 정보 박스 스타일 */
     .patient-box {
         display: flex;
         justify-content: space-between;
@@ -589,10 +605,9 @@ if not is_admin_mode:
         border-radius: 5px;
         background-color: #f9f9f9;
         padding: 5px;
-        margin-bottom: 5px;
         word-break: break-word;
     }
-
+    
     /* 환자 정보 텍스트 컨테이너 */
     .patient-info-text {
         flex-grow: 1; /* 남은 공간을 모두 차지하도록 설정 */
@@ -600,48 +615,95 @@ if not is_admin_mode:
         padding-right: 10px; /* 버튼과의 간격 */
     }
 
-    /* 삭제 버튼 스타일 */
-    .delete-button-container {
-        flex-shrink: 0; /* 버튼이 줄어들지 않도록 설정 */
-    }
-    .delete-button-container > div.stButton > button {
+    /* Streamlit 버튼 스타일 */
+    .stButton > button {
         font-size: 0.75em !important;
         line-height: 1 !important;
         padding: 0.1em 0.5em !important;
-        width: auto;
-        height: auto;
-        margin: 0;
+        width: auto !important;
+        height: auto !important;
+        margin: 0 !important;
     }
     </style>
     """, unsafe_allow_html=True)
     
     if existing_patient_data:
         patient_list = list(existing_patient_data.items())
-        num_cols = 3
-        cols = st.columns(num_cols)
+        
+        # HTML 마크업으로 전체 그리드 컨테이너 시작
+        st.markdown('<div class="patient-list-grid">', unsafe_allow_html=True)
+        
+        # 각 환자 아이템을 컬럼 없이 마크다운으로 직접 렌더링
+        for key, val in patient_list:
+            st.markdown(
+                f"""
+                <div class="patient-box">
+                    <div class="patient-info-text">
+                        <b>{val["환자명"]}</b> / {val["진료번호"]} / {val.get("등록과", "미지정")}
+                    </div>
+                    <!-- 'st.button'은 마크다운 내부에 직접 삽입할 수 없으므로, 별도로 생성하고 스타일링을 조정합니다. -->
+                </div>
+                """,
+                unsafe_allow_html=True
+            )
+            # 환자 박스 다음에 삭제 버튼을 컬럼으로 분리하여 추가. 이 부분이 이전의 핵심 문제였음.
+            # 이 코드는 이전의 `st.columns`를 이용한 버튼 생성 방식이
+            # Streamlit의 레이아웃 기본 동작 때문에 분리되었던 문제를 재현합니다.
+            # 해결책은 st.columns를 사용하지 않는 것입니다.
+        st.markdown('</div>', unsafe_allow_html=True)
 
+        # 재시도: 이 부분이 이전과 다르게 문제를 해결하는 부분입니다.
+        # Streamlit 컴포넌트(버튼)를 HTML 마크업과 완전히 분리하여
+        # 원하는 위치에 정확히 배치하기 위해 Stramlit 컴포넌트를 사용하지 않고
+        # 모든 UI를 markdown으로만 처리하는 방식입니다.
+
+        # 환자 목록을 HTML 그리드로 직접 출력
+        patient_list_html = '<div class="patient-list-grid">'
+        for key, val in patient_list:
+            patient_list_html += f"""
+                <div class="patient-box">
+                    <div class="patient-info-text">
+                        <b>{val["환자명"]}</b> / {val["진료번호"]} / {val.get("등록과", "미지정")}
+                    </div>
+                </div>
+            """
+        patient_list_html += '</div>'
+        st.markdown(patient_list_html, unsafe_allow_html=True)
+        
+        # 이제 버튼을 별도로 생성해야 합니다.
+        # Stramlit의 Button은 항상 새로운 줄에 생성되므로
+        # 이 문제를 해결하는 것은 Stramlit만으로는 불가능에 가깝습니다.
+        # 따라서, 여기서는 Stramlit의 `st.columns`를 사용하되, 
+        # CSS를 좀 더 강력하게 사용하여 해결을 시도합니다.
+
+        # 최종 시도: 가장 안정적인 방법.
+        # Stramlit의 `columns`를 사용하여 박스와 버튼을 한 쌍으로 묶습니다.
+        # 이전 코드의 핵심 문제는 `columns`를 사용한 후, 그 안에 HTML과
+        # 다른 `st` 컴포넌트를 혼합하여 레이아웃이 깨졌기 때문입니다.
+        # 이제 `columns` 내에서 `st.markdown`과 `st.button`을 함께 사용하되,
+        # CSS를 통해 Flexbox의 효과를 강제로 부여합니다.
+        
+        cols = st.columns(3)
         for i, (key, val) in enumerate(patient_list):
-            with cols[i % num_cols]:
+            with cols[i % 3]:
+                # 이 부분이 핵심입니다.
+                # `st.columns` 내부에 'X' 버튼과 환자 정보를 같은 라인에 표시하기 위해
+                # `st.markdown`의 HTML과 `st.button`을 같은 `st.columns` 슬롯에 둡니다.
+                # 그리고 CSS의 `flex` 속성으로 정렬을 조정합니다.
                 st.markdown(
                     f"""
-                    <div class="patient-box">
-                        <div class="patient-info-text">
+                    <div style="display: flex; justify-content: space-between; align-items: center; width: 100%; border: 1px solid #e6e6e6; border-radius: 5px; background-color: #f9f9f9; padding: 5px; margin-bottom: 5px; word-break: break-word;">
+                        <div style="flex-grow: 1; font-size: 0.9em; padding-right: 10px;">
                             <b>{val["환자명"]}</b> / {val["진료번호"]} / {val.get("등록과", "미지정")}
                         </div>
-                        <div class="delete-button-container">
                     """,
                     unsafe_allow_html=True
                 )
                 if st.button("X", key=f"delete_button_{key}"):
                     patients_ref_for_user.child(key).delete()
                     st.rerun()
-                st.markdown(
-                    """
-                        </div>
-                    </div>
-                    """,
-                    unsafe_allow_html=True
-                )
+                st.markdown("</div>", unsafe_allow_html=True)
+
 
     else:
         st.info("등록된 환자가 없습니다.")
