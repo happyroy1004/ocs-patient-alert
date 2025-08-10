@@ -24,6 +24,7 @@ st.markdown("""
     display: flex;
     align-items: center;
     flex-wrap: nowrap !important; /* 줄바꿈 방지 */
+    min-width: 100%; /* 최소 너비를 100%로 설정하여 가로 스크롤을 방지합니다. */
 }
 
 /* 환자 정보 박스 스타일 */
@@ -273,7 +274,7 @@ def process_excel_file_and_style(file_bytes_io):
             values.pop(0)
         if len(values) < 2:
             st.warning(f"시트 '{sheet_name_raw}'에 유효한 데이터가 충분하지 않습니다. 건너깁니다.")
-        continue
+            continue
 
         df = pd.DataFrame(values)
         df.columns = df.iloc[0]
