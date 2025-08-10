@@ -457,6 +457,7 @@ if not is_admin_mode:
                 border-radius: 5px;
                 border: 1px solid #ced4da;
                 line-height: 1.2; /* 텍스트가 버튼 중앙에 오도록 조정 */
+                margin-left: auto; /* 버튼을 오른쪽으로 밀어냅니다. */
             }
             div.stButton > button:hover {
                 background-color: #e2e6ea;
@@ -475,8 +476,9 @@ if not is_admin_mode:
                 # 모바일 화면 너비를 고려하여 비율을 9:1로 조정
                 info_col, btn_col = st.columns([0.8, 0.2])
                 with info_col:
+                    # 환자 정보 텍스트를 한 줄로 표시
                     st.markdown(
-                        f"<div style='font-size: 0.9em; overflow-wrap: break-word;'>{val['환자명']} / {val['진료번호']} / {val.get('등록과', '미지정')}</div>",
+                        f"<div style='font-size: 0.9em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;'>{val['환자명']} / {val['진료번호']} / {val.get('등록과', '미지정')}</div>",
                         unsafe_allow_html=True
                     )
                 with btn_col:
