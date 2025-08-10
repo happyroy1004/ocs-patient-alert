@@ -498,55 +498,46 @@ if not is_admin_mode:
         st.markdown('<div class="patient-grid">', unsafe_allow_html=True)
         patient_list = list(existing_patient_data.items())
 
+        # 버튼 클릭을 감지할 세션 상태 초기화
         for key, val in patient_list:
-            
+            if f'delete_clicked_{key}' not in st.session_state:
+                st.session_state[f'delete_clicked_{key}'] = False
+
+        for key, val in patient_list:
             # HTML 구조를 직접 생성하여 CSS 클래스 적용
             patient_html = f"""
             <div class="patient-item">
                 <div class="patient-info-text"><b>{val["환자명"]}</b> / {val["진료번호"]} / {val.get("등록과", "미지정")}</div>
-                <div class="delete-button">
-                    <button class="delete-btn-specific" onclick="window.parent.postMessage({{
-                        streamlit: {{
-                            command: 'SPECIAL_COMMAND_DELETE_PATIENT',
-                            key: '{key}'
-                        }}
-                    }}, '*')" >X</button>
+                <div class="delete-button-container">
+                    <button class="delete-button" id="delete-btn-{key}">X</button>
                 </div>
             </div>
             """
-            
-            # 버튼을 Streamlit으로 직접 렌더링
-            # 버튼 클릭 시 Streamlit rerun이 일어나도록 버튼을 따로 렌더링
-            col_text, col_btn = st.columns([0.8, 0.2])
-            with col_text:
-                st.markdown(
-                    f'<div class="patient-item"><div class="patient-info-text"><b>{val["환자명"]}</b> / {val["진료번호"]} / {val.get("등록과", "미지정")}</div></div>',
-                    unsafe_allow_html=True
-                )
-            with col_btn:
-                 if st.button("X", key=f"delete_button_{key}"):
-                    patients_ref_for_user.child(key).delete()
-                    st.rerun()
+            st.markdown(patient_html, unsafe_allow_html=True)
 
-        # st.columns를 사용한 레이아웃 유지 (이 부분이 기존 문제의 원인일 수 있습니다. HTML 직접 생성이 더 확실)
-        cols = st.columns(3)
-        num_cols = 3
+        # JavaScript를 사용하여 버튼 클릭 이벤트를 Streamlit으로 전달
+        st.markdown(f"""
+        <script>
+            const deleteButtons = document.querySelectorAll('.delete-button');
+            deleteButtons.forEach(button => {{
+                button.addEventListener('click', function(e) {{
+                    const key = this.id.replace('delete-btn-', '');
+                    window.parent.postMessage({{
+                        streamlit: {{
+                            command: 'setComponentValue',
+                            value: {{ key: key, clicked: true }}
+                        }}
+                    }}, '*');
+                }});
+            }});
+        </script>
+        """, unsafe_allow_html=True)
         
-        for i, (key, val) in enumerate(patient_list):
-            current_col = cols[i % num_cols]
-            with current_col:
-                with st.container():
-                    col_text, col_btn = st.columns([0.8, 0.2])
-                    with col_text:
-                        st.markdown(
-                            f'<div class="patient-box"><div class="patient-info-text"><b>{val["환자명"]}</b> / {val["진료번호"]} / {val.get("등록과", "미지정")}</div></div>',
-                            unsafe_allow_html=True
-                        )
-                    with col_btn:
-                        # 삭제 버튼에 클래스 추가
-                        if st.button("X", key=f"delete_button_{key}"):
-                            patients_ref_for_user.child(key).delete()
-                            st.rerun()
+        # Streamlit 앱에서 클릭 이벤트를 감지하고 삭제 로직 실행
+        if st.session_state.get('delete_clicked_key'):
+            patients_ref_for_user.child(st.session_state['delete_clicked_key']).delete()
+            st.session_state['delete_clicked_key'] = None # 키 초기화
+            st.rerun()
 
     else:
         st.info("등록된 환자가 없습니다.")
