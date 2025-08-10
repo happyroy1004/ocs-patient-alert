@@ -438,21 +438,21 @@ if not is_admin_mode:
     # 삭제 버튼 스타일 정의
     st.markdown("""
         <style>
-        .small-button {
+        .small-button > button {
             background-color: #e6e6e6;
             color: #000000;
             border: none;
-            padding: 0px 0px;
+            padding: 0;
             border-radius: 0.3rem;
             cursor: pointer;
-            font-size: 0.6rem;
-            width: 40px;
-            height: 25px;
-            text-align: center;
-            line-height: 25px;
-            margin: 0;
+            font-size: 0.5rem; /* 폰트 크기 더 줄임 */
+            width: 30px; /* 너비 더 줄임 */
+            height: 30px; /* 높이 더 줄임 */
+            display: flex;
+            align-items: center;
+            justify-content: center;
         }
-        .small-button:hover {
+        .small-button > button:hover {
             background-color: #cccccc;
         }
         </style>
@@ -470,10 +470,10 @@ if not is_admin_mode:
             
             with cols[i % 3]:
                 # 환자 정보와 삭제 버튼을 가로로 정렬하기 위해 내부 컬럼 사용
-                col1, col2 = st.columns([0.8, 0.2])
-                with col1:
+                info_col, btn_col = st.columns([0.8, 0.2])
+                with info_col:
                     st.write(patient_info)
-                with col2:
+                with btn_col:
                     if st.button("삭제", key=f"delete_btn_{key}"):
                         patients_ref_for_user.child(key).delete()
                         st.rerun()
