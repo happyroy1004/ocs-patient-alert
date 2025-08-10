@@ -438,7 +438,7 @@ if not is_admin_mode:
     patients_ref_for_user = db.reference(f"patients/{firebase_key}")
     existing_patient_data = patients_ref_for_user.get()
 
-    # --- CSS를 이용한 반응형 레이아웃 추가 ---
+    # --- CSS를 이용한 반응형 레이아웃 추가 (수정됨) ---
     st.markdown("""
     <style>
     .patient-list-container {
@@ -456,7 +456,7 @@ if not is_admin_mode:
         border-radius: 0.5rem;
         flex-grow: 1;
         min-width: 250px;
-        margin-bottom: 0.5rem; /* 항목 간 세로 간격 추가 */
+        margin-bottom: 0.5rem;
     }
     .patient-info {
         flex-grow: 1;
@@ -466,23 +466,11 @@ if not is_admin_mode:
         padding-right: 10px;
     }
 
-    /* 1단 레이아웃 (기본값) */
-    .patient-item {
-        width: 100%;
-    }
-
-    /* 2단 레이아웃 (440px 이상) */
-    @media (min-width: 440px) {
+    /* 260px 이상부터 3단 레이아웃 적용 */
+    @media (min-width: 260px) {
         .patient-list-container {
             justify-content: space-between;
         }
-        .patient-item {
-            width: 48%;
-        }
-    }
-
-    /* 3단 레이아웃 (620px 이상) */
-    @media (min-width: 620px) {
         .patient-item {
             width: 32%;
         }
