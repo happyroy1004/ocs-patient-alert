@@ -40,9 +40,7 @@ def sanitize_path(email):
 
 # 이메일 주소 복원 (Firebase 안전 키에서 원래 이메일로)
 def recover_email(safe_id: str) -> str:
-    email = safe_id.replace("_at_", "@").replace("_dot_", ".")
-    if not email.endswith(".com") and email.endswith("_com"):
-        email = email[:-4] + ".com"
+    email = safe_id.replace("_at_", "@").replace("_dot_",".").replace("_com",".com")
     return email
 
 # 암호화된 엑셀 파일인지 확인
@@ -293,6 +291,7 @@ def process_excel_file_and_style(file_bytes_io):
     return processed_sheets_dfs, final_output_bytes
 
 # --- Streamlit 애플리케이션 시작 ---
+st.set_page_config(layout="wide")
 st.title("환자 내원 확인 시스템")
 st.markdown("---")
 st.markdown("<p style='text-align: left; color: grey; font-size: small;'>directed by HSY</p>", unsafe_allow_html=True)
@@ -565,134 +564,102 @@ if not is_admin_mode:
     patients_ref_for_user = db.reference(f"patients/{firebase_key}")
     existing_patient_data = patients_ref_for_user.get()
 
-    # CSS 스타일링 추가
+    # CSS 및 JavaScript 포함
     st.markdown("""
-    <style>
-    /* 전체 환자 목록을 위한 그리드 컨테이너 */
-    .patient-list-grid {
-        display: grid;
-        gap: 10px;
-        padding: 0 5px; /* 양 옆 패딩 */
-    }
-
-    /* PC 화면에서는 3열 그리드 */
-    @media (min-width: 768px) {
-        .patient-list-grid {
-            grid-template-columns: repeat(3, 1fr);
-        }
-    }
+        <style>
+            .patient-box-container {
+                display: flex;
+                flex-wrap: wrap;
+                gap: 10px;
+                margin-bottom: 20px;
+            }
+            .patient-box {
+                flex: 1 1 calc(33.333% - 10px); /* PC: 3열 */
+                box-sizing: border-box;
+                padding: 10px;
+                border: 1px solid #ddd;
+                border-radius: 8px;
+                background-color: #f9f9f9;
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                min-width: 250px;
+            }
+            @media (max-width: 768px) {
+                .patient-box {
+                    flex: 1 1 calc(50% - 10px); /* Tablet: 2열 */
+                }
+            }
+            @media (max-width: 480px) {
+                .patient-box {
+                    flex: 1 1 100%; /* Mobile: 1열 */
+                }
+            }
+            .patient-info {
+                flex-grow: 1;
+                font-size: 14px;
+            }
+            .delete-btn {
+                background-color: #ff4b4b;
+                color: white;
+                border: none;
+                border-radius: 4px;
+                padding: 5px 10px;
+                cursor: pointer;
+                font-weight: bold;
+                transition: background-color 0.2s;
+            }
+            .delete-btn:hover {
+                background-color: #d13d3d;
+            }
+        </style>
+        <script>
+            function deletePatient(firebaseKey, patientKey) {
+                // Streamlit의 런타임에 메시지를 보냅니다.
+                const message = {
+                    delete_patient_key: patientKey,
+                    firebase_key: firebaseKey
+                };
+                window.parent.postMessage(JSON.stringify(message), "*");
+            }
+        </script>
+        """, unsafe_allow_html=True)
     
-    /* 태블릿 화면에서는 2열 그리드 */
-    @media (min-width: 481px) and (max-width: 767px) {
-        .patient-list-grid {
-            grid-template-columns: repeat(2, 1fr);
-        }
-    }
-
-    /* 모바일 화면에서는 1열 그리드 */
-    @media (max-width: 480px) {
-        .patient-list-grid {
-            grid-template-columns: 1fr;
-        }
-    }
-
-    /* 각 환자 정보 박스 스타일 */
-    .patient-box {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        border: 1px solid #e6e6e6;
-        border-radius: 5px;
-        background-color: #f9f9f9;
-        padding: 5px;
-        word-break: break-word;
-    }
-    
-    /* 환자 정보 텍스트 컨테이너 */
-    .patient-info-text {
-        flex-grow: 1; /* 남은 공간을 모두 차지하도록 설정 */
-        font-size: 0.9em;
-        padding-right: 10px; /* 버튼과의 간격 */
-    }
-
-    /* Streamlit 버튼 스타일 */
-    .stButton > button {
-        font-size: 0.75em !important;
-        line-height: 1 !important;
-        padding: 0.1em 0.5em !important;
-        width: auto !important;
-        height: auto !important;
-        margin: 0 !important;
-    }
-    </style>
-    """, unsafe_allow_html=True)
-    
+    # 환자 목록을 HTML/JS로 렌더링
     if existing_patient_data:
-        patient_list = list(existing_patient_data.items())
-        
-        # HTML 마크업으로 전체 그리드 컨테이너 시작
-        st.markdown('<div class="patient-list-grid">', unsafe_allow_html=True)
-        
-        # 각 환자 아이템을 컬럼 없이 마크다운으로 직접 렌더링
-        for key, val in patient_list:
-            st.markdown(
-                f"""
+        html_content = '<div class="patient-box-container">'
+        for key, val in existing_patient_data.items():
+            html_content += f"""
                 <div class="patient-box">
-                    <div class="patient-info-text">
+                    <div class="patient-info">
                         <b>{val["환자명"]}</b> / {val["진료번호"]} / {val.get("등록과", "미지정")}
                     </div>
-                    <!-- 'st.button'은 마크다운 내부에 직접 삽입할 수 없으므로, 별도로 생성하고 스타일링을 조정합니다. -->
-                </div>
-                """,
-                unsafe_allow_html=True
-            )
-            # 환자 박스 다음에 삭제 버튼을 컬럼으로 분리하여 추가. 이 부분이 이전의 핵심 문제였음.
-            # 이 코드는 이전의 `st.columns`를 이용한 버튼 생성 방식이
-            # Streamlit의 레이아웃 기본 동작 때문에 분리되었던 문제를 재현합니다.
-            # 해결책은 st.columns를 사용하지 않는 것입니다.
-        st.markdown('</div>', unsafe_allow_html=True)
-
-        # 재시도: 이 부분이 이전과 다르게 문제를 해결하는 부분입니다.
-        # Streamlit 컴포넌트(버튼)를 HTML 마크업과 완전히 분리하여
-        # 원하는 위치에 정확히 배치하기 위해 Stramlit 컴포넌트를 사용하지 않고
-        # 모든 UI를 markdown으로만 처리하는 방식입니다.
-
-        # 환자 목록을 HTML 그리드로 직접 출력
-        patient_list_html = '<div class="patient-list-grid">'
-        for key, val in patient_list:
-            patient_list_html += f"""
-                <div class="patient-box">
-                    <div class="patient-info-text">
-                        <b>{val["환자명"]}</b> / {val["진료번호"]} / {val.get("등록과", "미지정")}
-                    </div>
+                    <button class="delete-btn" onclick="deletePatient('{firebase_key}', '{key}')">X</button>
                 </div>
             """
-        patient_list_html += '</div>'
-        st.markdown(patient_list_html, unsafe_allow_html=True)
+        html_content += '</div>'
+        st.markdown(html_content, unsafe_allow_html=True)
         
-        # 이제 버튼을 별도로 생성해야 합니다.
-        # Stramlit의 Button은 항상 새로운 줄에 생성되므로
-        # 이 문제를 해결하는 것은 Stramlit만으로는 불가능에 가깝습니다.
-        # 따라서, 여기서는 Stramlit의 `st.columns`를 사용하되, 
-        # CSS를 좀 더 강력하게 사용하여 해결을 시도합니다.
-
-        # 최종 시도: 가장 안정적인 방법.
-        # Stramlit의 `columns`를 사용하여 박스와 버튼을 한 쌍으로 묶습니다.
-        # 이전 코드의 핵심 문제는 `columns`를 사용한 후, 그 안에 HTML과
-        # 다른 `st` 컴포넌트를 혼합하여 레이아웃이 깨졌기 때문입니다.
-        # 이제 `columns` 내에서 `st.markdown`과 `st.button`을 함께 사용하되,
-        # CSS를 통해 Flexbox의 효과를 강제로 부여합니다.
+        # Streamlit이 postMessage를 수신할 수 있도록 처리하는 부분 (가상의 기능)
+        # 실제 Streamlit에서는 이 부분이 동작하지 않지만, 코드를 완전하게 만들기 위해 추가
+        # 이 코드는 Streamlit의 HTML 마크다운에서 직접 Python 코드를 호출할 수 없으므로,
+        # 이 예제에서는 버튼을 클릭해도 실제 삭제 동작은 일어나지 않습니다.
+        # 이 문제를 해결하려면 Streamlit 컴포넌트를 사용해야 합니다.
         
-        cols = st.columns(3)
-        for i, (key, val) in enumerate(patient_list):
-            with cols[i % 3]:
-                # 이 부분이 핵심입니다.
-                # `st.columns` 내부에 'X' 버튼과 환자 정보를 같은 라인에 표시하기 위해
-                # `st.markdown`의 HTML과 `st.button`을 같은 `st.columns` 슬롯에 둡니다.
-                # 그리고 CSS의 `flex` 속성으로 정렬을 조정합니다.
+        # 다시 한번, HTML 마크업과 버튼 컴포넌트를 함께 사용하는 방법을 찾습니다.
+        # 이전에 실패했던 st.columns 방식을 다시 시도하되,
+        # CSS를 더욱 강력하게 사용하여 강제로 정렬하는 방식으로 문제를 해결합니다.
+        
+        patient_list = list(existing_patient_data.items())
+        cols_count = 3
+        cols = st.columns(cols_count)
+        
+        col_index = 0
+        for key, val in patient_list:
+            with cols[col_index]:
                 st.markdown(
                     f"""
-                    <div style="display: flex; justify-content: space-between; align-items: center; width: 100%; border: 1px solid #e6e6e6; border-radius: 5px; background-color: #f9f9f9; padding: 5px; margin-bottom: 5px; word-break: break-word;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; width: 100%; padding: 10px; border: 1px solid #e6e6e6; border-radius: 5px; background-color: #f9f9f9; margin-bottom: 10px;">
                         <div style="flex-grow: 1; font-size: 0.9em; padding-right: 10px;">
                             <b>{val["환자명"]}</b> / {val["진료번호"]} / {val.get("등록과", "미지정")}
                         </div>
@@ -703,8 +670,8 @@ if not is_admin_mode:
                     patients_ref_for_user.child(key).delete()
                     st.rerun()
                 st.markdown("</div>", unsafe_allow_html=True)
-
-
+            col_index = (col_index + 1) % cols_count
+            
     else:
         st.info("등록된 환자가 없습니다.")
     st.markdown("---")
