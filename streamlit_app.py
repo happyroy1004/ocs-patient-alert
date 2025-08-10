@@ -435,55 +435,27 @@ if not is_admin_mode:
     patients_ref_for_user = db.reference(f"patients/{firebase_key}")
     existing_patient_data = patients_ref_for_user.get()
 
-    # 삭제 버튼 스타일 정의
     st.markdown("""
-        <style>
-        .patient-entry {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            margin-bottom: 0.5rem;
-            flex-wrap: nowrap;
-        }
-        .patient-info {
-            flex-grow: 1;
-            margin-right: 1rem;
-            word-break: break-all;
-        }
-        .delete-button-container {
-            flex-shrink: 0;
-            width: 25px;
-            height: 25px;
-        }
-        .stButton>button {
-            background-color: #e6e6e6;
-            color: #000000;
-            border: none;
-            padding: 0;
-            border-radius: 0.3rem;
-            cursor: pointer;
-            font-size: 0.5rem;
-            width: 25px;
-            height: 25px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            white-space: nowrap;
-        }
-        .stButton>button:hover {
-            background-color: #cccccc;
-        }
-        /* 이메일 주소 변경 버튼은 스타일 변경에서 제외 */
-        div[data-testid="stVerticalBlock"] > div:nth-child(2) > div:nth-child(3) > div > button {
-             font-size: 1rem;
-             width: auto;
-             height: auto;
-             padding: 0.5rem 1rem;
-             border: 1px solid rgba(49, 51, 63, 0.2);
-             background-color: rgb(255, 255, 255);
-             color: rgb(49, 51, 63);
-        }
-        </style>
+    <style>
+    div.stButton > button {
+        background-color: #e6e6e6;
+        color: #000000;
+        border: none;
+        padding: 0;
+        border-radius: 0.3rem;
+        cursor: pointer;
+        font-size: 0.45rem; /* 폰트 크기 더 줄임 */
+        width: 25px; /* 너비 더 줄임 */
+        height: 25px; /* 높이 더 줄임 */
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        white-space: nowrap;
+    }
+    div.stButton > button:hover {
+        background-color: #cccccc;
+    }
+    </style>
     """, unsafe_allow_html=True)
     
     if existing_patient_data:
@@ -499,19 +471,13 @@ if not is_admin_mode:
                     patient_info = f"{val['환자명']} / {val['진료번호']} / {val.get('등록과', '미지정')}"
                     
                     with cols[j]:
-                        # HTML과 CSS를 이용한 flexbox로 가로 정렬
-                        st.markdown(
-                            f"""
-                            <div class="patient-entry">
-                                <div class="patient-info">{patient_info}</div>
-                                <div class="delete-button-container">
-                            """, 
-                            unsafe_allow_html=True
-                        )
-                        if st.button("삭제", key=f"delete_btn_{key}"):
-                            patients_ref_for_user.child(key).delete()
-                            st.rerun()
-                        st.markdown("</div></div>", unsafe_allow_html=True)
+                        info_col, btn_col = st.columns([0.8, 0.2])
+                        with info_col:
+                            st.write(patient_info)
+                        with btn_col:
+                            if st.button("삭제", key=f"delete_btn_{key}"):
+                                patients_ref_for_user.child(key).delete()
+                                st.rerun()
     else:
         st.info("등록된 환자가 없습니다.")
     st.markdown("---")
