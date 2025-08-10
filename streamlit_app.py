@@ -441,19 +441,26 @@ if not is_admin_mode:
     # CSS 스타일링 추가
     st.markdown("""
     <style>
-    /* 버튼 폰트 크기 및 여백 조절 */
-    div.stButton > button {
+    /* 삭제 버튼 (X)의 크기 및 스타일 */
+    .delete-button > button {
         font-size: 0.75em !important;
         line-height: 1 !important;
         padding: 0.1em 0.5em !important;
-        width: 100%; /* 버튼이 컬럼의 전체 너비를 차지하도록 설정 */
-        max-width: 40px; /* 버튼의 최대 너비를 40px로 제한 */
+        width: 100%;
+        max-width: 40px;
         height: 100%;
         margin: 0;
     }
     
+    /* 환자 목록 그리드 컨테이너 */
+    .patient-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+        gap: 15px;
+    }
+    
     /* 각 환자 정보를 담는 박스 스타일 */
-    .patient-box {
+    .patient-item {
         display: flex;
         align-items: center;
         justify-content: space-between;
@@ -461,7 +468,7 @@ if not is_admin_mode:
         border-radius: 5px;
         background-color: #f9f9f9;
         word-break: break-word;
-        padding: 0; /* 내부 padding 제거 */
+        padding: 0;
         max-width: 100%;
     }
     
@@ -469,18 +476,18 @@ if not is_admin_mode:
     .patient-info-text {
         flex: 1;
         font-size: 0.9em;
-        padding: 10px; /* 텍스트에만 패딩 적용 */
+        padding: 10px;
     }
     
-    /* Streamlit 컬럼이 모바일에서 1단으로 바뀌는 문제 해결 */
+    /* 화면 너비에 따라 컬럼 수 조절 */
     @media (min-width: 650px) {
-        .st-emotion-cache-13k6jc6 {
+        .patient-grid {
             grid-template-columns: repeat(3, 1fr) !important;
         }
     }
     
     @media (max-width: 649px) {
-        .st-emotion-cache-13k6jc6 {
+        .patient-grid {
             grid-template-columns: repeat(2, 1fr) !important;
         }
     }
@@ -488,28 +495,55 @@ if not is_admin_mode:
     """, unsafe_allow_html=True)
     
     if existing_patient_data:
+        st.markdown('<div class="patient-grid">', unsafe_allow_html=True)
         patient_list = list(existing_patient_data.items())
 
-        # st.columns를 사용하여 PC 3단, 모바일 2단 레이아웃을 구현
+        for key, val in patient_list:
+            
+            # HTML 구조를 직접 생성하여 CSS 클래스 적용
+            patient_html = f"""
+            <div class="patient-item">
+                <div class="patient-info-text"><b>{val["환자명"]}</b> / {val["진료번호"]} / {val.get("등록과", "미지정")}</div>
+                <div class="delete-button">
+                    <button class="delete-btn-specific" onclick="window.parent.postMessage({{
+                        streamlit: {{
+                            command: 'SPECIAL_COMMAND_DELETE_PATIENT',
+                            key: '{key}'
+                        }}
+                    }}, '*')" >X</button>
+                </div>
+            </div>
+            """
+            
+            # 버튼을 Streamlit으로 직접 렌더링
+            # 버튼 클릭 시 Streamlit rerun이 일어나도록 버튼을 따로 렌더링
+            col_text, col_btn = st.columns([0.8, 0.2])
+            with col_text:
+                st.markdown(
+                    f'<div class="patient-item"><div class="patient-info-text"><b>{val["환자명"]}</b> / {val["진료번호"]} / {val.get("등록과", "미지정")}</div></div>',
+                    unsafe_allow_html=True
+                )
+            with col_btn:
+                 if st.button("X", key=f"delete_button_{key}"):
+                    patients_ref_for_user.child(key).delete()
+                    st.rerun()
+
+        # st.columns를 사용한 레이아웃 유지 (이 부분이 기존 문제의 원인일 수 있습니다. HTML 직접 생성이 더 확실)
         cols = st.columns(3)
         num_cols = 3
-
+        
         for i, (key, val) in enumerate(patient_list):
             current_col = cols[i % num_cols]
-            
             with current_col:
-                # 하나의 박스 안에 텍스트와 버튼을 배치
                 with st.container():
                     col_text, col_btn = st.columns([0.8, 0.2])
-                    
                     with col_text:
                         st.markdown(
                             f'<div class="patient-box"><div class="patient-info-text"><b>{val["환자명"]}</b> / {val["진료번호"]} / {val.get("등록과", "미지정")}</div></div>',
                             unsafe_allow_html=True
                         )
-                    
                     with col_btn:
-                        # 삭제 버튼
+                        # 삭제 버튼에 클래스 추가
                         if st.button("X", key=f"delete_button_{key}"):
                             patients_ref_for_user.child(key).delete()
                             st.rerun()
