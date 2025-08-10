@@ -230,7 +230,7 @@ def process_excel_file_and_style(file_bytes_io):
         while values and (values[0] is None or all((v is None or str(v).strip() == "") for v in values[0])):
             values.pop(0)
         if len(values) < 2:
-            st.warning(f"시트 '{sheet_name_raw}'에 유효한 데이터가 충분하지 않습니다. 건너킵니다.")
+            st.warning(f"시트 '{sheet_name_raw}'에 유효한 데이터가 충분하지 않습니다. 건너깁니다.")
             continue
 
         df = pd.DataFrame(values)
@@ -454,8 +454,9 @@ if not is_admin_mode:
         background-color: #f9f9f9;
         margin-bottom: 10px;
         padding: 5px; /* 컨테이너 내부 여백 추가 */
+        max-width: 100%; /* 박스 크기 제한 */
     }
-
+    
     /* 환자 정보 텍스트 스타일 */
     .patient-info-text {
         flex: 1;
@@ -463,32 +464,41 @@ if not is_admin_mode:
         word-break: break-all;
     }
     
-    /* Streamlit 버튼 스타일링 (X 버튼에만 적용) */
-    .st-emotion-cache-1r4qj8w .stButton > button {
+    /* '이메일 주소 변경' 버튼은 기존 스타일 유지 */
+    div.stButton:not(.patient-delete-btn) > button {
+        /* 기본 Streamlit 스타일 유지 */
+    }
+
+    /* 환자 삭제 버튼 (X)에만 적용될 스타일 */
+    .patient-delete-btn .stButton > button {
         font-size: 0.75em;
         line-height: 1;
         padding: 0.1em 0.5em;
         height: 100%;
         margin: 0;
-        max-width: 40px;
+        max-width: 40px; /* X 버튼 박스 크기 제한 */
     }
-
-    /* Streamlit 컬럼이 모바일에서 1단으로 바뀌는 문제 해결 */
+    
+    /* Streamlit 컬럼 반응형 레이아웃 */
     @media (min-width: 768px) {
-        .st-emotion-cache-1r4qj8w > div {
+        .st-emotion-cache-1r4qj8w {
+            display: grid;
             grid-template-columns: repeat(3, 1fr) !important;
             gap: 10px;
         }
     }
     @media (max-width: 767px) {
-        .st-emotion-cache-1r4qj8w > div {
+        .st-emotion-cache-1r4qj8w {
+            display: grid;
             grid-template-columns: repeat(2, 1fr) !important;
             gap: 10px;
         }
     }
     @media (max-width: 500px) {
-        .st-emotion-cache-1r4qj8w > div {
+        .st-emotion-cache-1r4qj8w {
+            display: grid;
             grid-template-columns: repeat(1, 1fr) !important;
+            gap: 10px;
         }
     }
     </style>
@@ -497,15 +507,13 @@ if not is_admin_mode:
     if existing_patient_data:
         patient_list = list(existing_patient_data.items())
         
-        # 컬럼 수를 동적으로 결정하는 부분은 CSS로 처리
-        st.markdown(
-            f'<div class="st-emotion-cache-1r4qj8w" style="display: grid; gap: 10px;">',
-            unsafe_allow_html=True
-        )
+        cols = st.columns(3)
+        num_cols = 3
 
         for i, (key, val) in enumerate(patient_list):
-            # 각 환자 항목을 하나의 컨테이너로 묶음
-            with st.container():
+            current_col = cols[i % num_cols]
+            
+            with current_col:
                 # `st.columns`를 사용하여 정보와 버튼을 분리
                 info_col, btn_col = st.columns([0.8, 0.2])
                 with info_col:
@@ -518,11 +526,11 @@ if not is_admin_mode:
                         unsafe_allow_html=True
                     )
                 with btn_col:
+                    st.markdown('<div class="patient-delete-btn">', unsafe_allow_html=True)
                     if st.button("X", key=f"delete_button_{key}"):
                         patients_ref_for_user.child(key).delete()
                         st.rerun()
-
-        st.markdown('</div>', unsafe_allow_html=True)
+                    st.markdown('</div>', unsafe_allow_html=True)
 
     else:
         st.info("등록된 환자가 없습니다.")
