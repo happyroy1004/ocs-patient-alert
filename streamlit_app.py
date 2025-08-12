@@ -225,7 +225,7 @@ def process_excel_file_and_style(file_bytes_io):
                 break
 
         if not sheet_key:
-            st.warning(f"시트 '{sheet_name_raw}'을(를) 인식할 수 없습니다. 건너킵니다.")
+            st.warning(f"시트 '{sheet_name_raw}'을(를) 인식할 수 없습니다. 건너뜁니다.")
             continue
 
         ws = wb_raw[sheet_name_raw]
@@ -571,13 +571,13 @@ if is_admin_input:
             user_list_for_dropdown = [f"{user_info.get('name', '이름 없음')} ({user_info.get('email', '이메일 없음')})" 
                                       for user_info in all_users_meta.values()]
             
-            selected_users_for_mail = st.multiselect("단체 메일 보낼 사용자 선택", user_list_for_dropdown, key="mail_multiselect")
+            selected_users_for_mail = st.multiselect("개별 메일 보낼 사용자 선택", user_list_for_dropdown, key="mail_multiselect")
             
             if selected_users_for_mail:
                 st.markdown("---")
-                st.subheader("단체 메일 전송")
+                st.subheader("개별 메일 전송")
                 custom_message = st.text_area("보낼 메일 내용", height=200)
-                if st.button("단체 메일 보내기"):
+                if st.button("개별 메일 보내기"):
                     if custom_message:
                         sender = st.secrets["gmail"]["sender"]
                         sender_pw = st.secrets["gmail"]["app_password"]
