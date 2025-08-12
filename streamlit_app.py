@@ -331,6 +331,8 @@ if 'logged_in_as_admin' not in st.session_state:
     st.session_state.logged_in_as_admin = False
 if 'admin_password_correct' not in st.session_state:
     st.session_state.admin_password_correct = False
+if 'select_all_users' not in st.session_state:
+    st.session_state.select_all_users = False
 
 users_ref = db.reference("users")
 
@@ -568,7 +570,14 @@ if is_admin_input:
         user_list_for_dropdown = [f"{user_info.get('name', '이름 없음')} ({user_info.get('email', '이메일 없음')})" 
                                     for user_info in (all_users_meta.values() if all_users_meta else [])]
         
-        selected_users_for_mail = st.multiselect("보낼 사용자 선택", user_list_for_dropdown, key="mail_multiselect")
+        # '모든 사용자 선택' 체크박스 추가
+        select_all_users_button = st.button("모든 사용자 선택/해제", key="select_all_btn")
+        if select_all_users_button:
+            st.session_state.select_all_users = not st.session_state.select_all_users
+
+        default_selection = user_list_for_dropdown if st.session_state.select_all_users else []
+
+        selected_users_for_mail = st.multiselect("보낼 사용자 선택", user_list_for_dropdown, default=default_selection, key="mail_multiselect")
         
         custom_message = st.text_area("보낼 메일 내용", height=200)
         if st.button("개별 메일 보내기"): # 버튼 이름 변경
@@ -613,9 +622,7 @@ if is_admin_input:
                 st.rerun()
             else:
                 st.warning("삭제할 사용자를 선택해주세요.")
-    # 이 else 블록을 제거하여 비밀번호가 맞지 않아도 '등록된 사용자가 없습니다' 메시지가 나오지 않게 합니다.
-    # else:
-    #     st.info("등록된 사용자가 없습니다.")
+    
 
 
 # --- 일반 사용자 모드 ---
