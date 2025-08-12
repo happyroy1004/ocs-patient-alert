@@ -316,14 +316,11 @@ st.markdown("""
 st.markdown("---")
 st.markdown("<p style='text-align: left; color: grey; font-size: small;'>directed by HSY</p>", unsafe_allow_html=True)
 
-# 세션 상태 초기화
-if "clear_state" not in st.session_state:
-    st.session_state.clear_state = True
-    
 # 페이지 로드 시 세션 상태 초기화 (제목 클릭 시)
-if st.experimental_get_query_params().get("clear") == ["true"]:
+# st.query_params를 사용하여 URL 쿼리 매개변수 확인 및 설정
+if st.query_params.get("clear") == "true":
     st.session_state.clear()
-    st.experimental_set_query_params(clear=["false"])
+    st.query_params["clear"] = "false"
     st.rerun()
 
 # --- 세션 상태 초기화 ---
@@ -345,6 +342,21 @@ if 'select_all_users' not in st.session_state:
     st.session_state.select_all_users = False
 
 users_ref = db.reference("users")
+
+# --- 사용 설명서 PDF 다운로드 버튼 추가 ---
+pdf_file_path = "manual.pdf"
+pdf_display_name = "사용 설명서"
+
+if os.path.exists(pdf_file_path):
+    with open(pdf_file_path, "rb") as pdf_file:
+        st.download_button(
+            label=f"{pdf_display_name} 다운로드",
+            data=pdf_file,
+            file_name=pdf_file_path,
+            mime="application/pdf"
+        )
+else:
+    st.warning(f"⚠️ {pdf_display_name} 파일을 찾을 수 없습니다. (경로: {pdf_file_path})")
 
 # 사용자 이름 입력 필드
 user_name = st.text_input("사용자 이름을 입력하세요 (예시: 홍길동)")
@@ -616,7 +628,7 @@ if is_admin_input:
                 st.warning("메일 내용을 입력해주세요.")
         
         st.markdown("---")
-        st.subheader("🗑️ 사용자 삭제")
+        st.subheader("사용자 삭제")
         users_to_delete = st.multiselect("삭제할 사용자 선택", user_list_for_dropdown, key="delete_user_multiselect")
         if st.button("선택한 사용자 삭제"):
             if users_to_delete:
