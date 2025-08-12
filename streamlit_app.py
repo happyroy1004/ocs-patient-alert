@@ -286,7 +286,6 @@ def process_excel_file_and_style(file_bytes_io):
                     cell = row[idx]
                     text = str(cell.value).strip().lower()
                     
-                    # 'debonding'이 포함되지 않고, 'bonding' 또는 '본딩'이 포함된 경우에만 굵게 처리
                     if ('bonding' in text or '본딩' in text) and 'debonding' not in text:
                         cell.font = Font(bold=True)
 
@@ -417,8 +416,8 @@ if is_admin_input:
     st.session_state.current_user_name = "admin"
     
     # 엑셀 업로드 섹션 - 비밀번호 없이도 접근 가능
-    st.subheader("💻 Excel File 처리 💻")
-    uploaded_file = st.file_uploader("Excel 파일을 업로드하세요", type=["xlsx", "xlsm"])
+    st.subheader("💻 Excel File Processor")
+    uploaded_file = st.file_uploader("암호화된 Excel 파일을 업로드하세요", type=["xlsx", "xlsm"])
     
     # 엑셀 업로드 로직
     if uploaded_file:
@@ -573,35 +572,37 @@ if is_admin_input:
             user_list_for_dropdown = [f"{user_info.get('name', '이름 없음')} ({user_info.get('email', '이메일 없음')})" 
                                       for user_info in all_users_meta.values()]
             
-            selected_users_for_mail = st.multiselect("단체 메일 보낼 사용자 선택", user_list_for_dropdown, key="mail_multiselect")
+            selected_users_for_mail = st.multiselect("개별 메일 보낼 사용자 선택", user_list_for_dropdown, key="mail_multiselect")
             
-            if selected_users_for_mail:
-                st.markdown("---")
-                st.subheader("단체 메일 전송")
-                custom_message = st.text_area("보낼 메일 내용", height=200)
-                if st.button("단체 메일 보내기"):
-                    if custom_message:
-                        sender = st.secrets["gmail"]["sender"]
-                        sender_pw = st.secrets["gmail"]["app_password"]
-                        
-                        email_list = []
+            # 여기서부터 조건문 삭제
+            st.markdown("---")
+            st.subheader("개별 메일 전송")
+            custom_message = st.text_area("보낼 메일 내용", height=200)
+            if st.button("단체 메일 보내기"):
+                if custom_message:
+                    sender = st.secrets["gmail"]["sender"]
+                    sender_pw = st.secrets["gmail"]["app_password"]
+                    
+                    email_list = []
+                    # 사용자가 선택되었을 때만 이메일 리스트 생성
+                    if selected_users_for_mail:
                         for user_str in selected_users_for_mail:
                             match = re.search(r'\((.*?)\)', user_str)
                             if match:
                                 email_list.append(match.group(1))
-                                
-                        if email_list:
-                            with st.spinner("메일 전송 중..."):
-                                for email in email_list:
-                                    result = send_email(email, pd.DataFrame(), sender, sender_pw, custom_message=custom_message)
-                                    if result is True:
-                                        st.success(f"{email}로 메일 전송 완료!")
-                                    else:
-                                        st.error(f"{email}로 메일 전송 실패: {result}")
-                        else:
-                            st.error("선택된 사용자의 이메일 주소를 찾을 수 없습니다.")
+                    
+                    if email_list:
+                        with st.spinner("메일 전송 중..."):
+                            for email in email_list:
+                                result = send_email(email, pd.DataFrame(), sender, sender_pw, custom_message=custom_message)
+                                if result is True:
+                                    st.success(f"{email}로 메일 전송 완료!")
+                                else:
+                                    st.error(f"{email}로 메일 전송 실패: {result}")
                     else:
-                        st.warning("메일 내용을 입력해주세요.")
+                        st.warning("메일 내용을 입력했으나, 선택된 사용자가 없습니다. 전송이 진행되지 않았습니다.")
+                else:
+                    st.warning("메일 내용을 입력해주세요.")
             
             st.markdown("---")
             st.subheader("사용자 삭제")
