@@ -423,13 +423,10 @@ if is_admin_input:
     if uploaded_file:
         uploaded_file.seek(0)
         
-        password = None
-        is_file_encrypted = is_encrypted_excel(uploaded_file)
-        if is_file_encrypted:
-            password = st.text_input("엑셀 파일 비밀번호 입력", type="password")
-            if not password:
-                st.info("암호화된 파일입니다. 비밀번호를 입력해주세요.")
-                st.stop()
+        password = st.text_input("엑셀 파일 비밀번호 입력", type="password") if is_encrypted_excel(uploaded_file) else None
+        if is_encrypted_excel(uploaded_file) and not password:
+            st.info("암호화된 파일입니다. 비밀번호를 입력해주세요.")
+            st.stop()
         
         try:
             file_name = uploaded_file.name
@@ -565,64 +562,60 @@ if is_admin_input:
     # 비밀번호가 맞았을 때만 추가 기능 표시
     if st.session_state.admin_password_correct:
         st.markdown("---")
-        st.subheader("📦 사용자 관리")
+        st.subheader("📦 개별 메일 발송") # 제목 변경
         
         all_users_meta = users_ref.get()
-        if all_users_meta:
-            user_list_for_dropdown = [f"{user_info.get('name', '이름 없음')} ({user_info.get('email', '이메일 없음')})" 
-                                      for user_info in all_users_meta.values()]
-            
-            selected_users_for_mail = st.multiselect("개별 메일 보낼 사용자 선택", user_list_for_dropdown, key="mail_multiselect")
-            
-            # 여기서부터 조건문 삭제
-            st.markdown("---")
-            st.subheader("개별 메일 전송")
-            custom_message = st.text_area("보낼 메일 내용", height=200)
-            if st.button("단체 메일 보내기"):
-                if custom_message:
-                    sender = st.secrets["gmail"]["sender"]
-                    sender_pw = st.secrets["gmail"]["app_password"]
-                    
-                    email_list = []
-                    # 사용자가 선택되었을 때만 이메일 리스트 생성
-                    if selected_users_for_mail:
-                        for user_str in selected_users_for_mail:
-                            match = re.search(r'\((.*?)\)', user_str)
-                            if match:
-                                email_list.append(match.group(1))
-                    
-                    if email_list:
-                        with st.spinner("메일 전송 중..."):
-                            for email in email_list:
-                                result = send_email(email, pd.DataFrame(), sender, sender_pw, custom_message=custom_message)
-                                if result is True:
-                                    st.success(f"{email}로 메일 전송 완료!")
-                                else:
-                                    st.error(f"{email}로 메일 전송 실패: {result}")
-                    else:
-                        st.warning("메일 내용을 입력했으나, 선택된 사용자가 없습니다. 전송이 진행되지 않았습니다.")
-                else:
-                    st.warning("메일 내용을 입력해주세요.")
-            
-            st.markdown("---")
-            st.subheader("사용자 삭제")
-            users_to_delete = st.multiselect("삭제할 사용자 선택", user_list_for_dropdown, key="delete_user_multiselect")
-            if st.button("선택한 사용자 삭제"):
-                if users_to_delete:
-                    for user_to_del_str in users_to_delete:
-                        match = re.search(r'\((.*?)\)', user_to_del_str)
+        user_list_for_dropdown = [f"{user_info.get('name', '이름 없음')} ({user_info.get('email', '이메일 없음')})" 
+                                    for user_info in (all_users_meta.values() if all_users_meta else [])]
+        
+        selected_users_for_mail = st.multiselect("보낼 사용자 선택", user_list_for_dropdown, key="mail_multiselect")
+        
+        # 여기서부터 조건문 없이 항상 표시
+        custom_message = st.text_area("보낼 메일 내용", height=200)
+        if st.button("개별 메일 보내기"): # 버튼 이름 변경
+            if custom_message:
+                sender = st.secrets["gmail"]["sender"]
+                sender_pw = st.secrets["gmail"]["app_password"]
+                
+                email_list = []
+                if selected_users_for_mail:
+                    for user_str in selected_users_for_mail:
+                        match = re.search(r'\((.*?)\)', user_str)
                         if match:
-                            email_to_del = match.group(1)
-                            safe_key_to_del = sanitize_path(email_to_del)
-                            
-                            db.reference(f"users/{safe_key_to_del}").delete()
-                            db.reference(f"patients/{safe_key_to_del}").delete()
-                            st.success(f"사용자 {user_to_del_str} 삭제 완료.")
-                    st.rerun()
+                            email_list.append(match.group(1))
+                
+                if email_list:
+                    with st.spinner("메일 전송 중..."):
+                        for email in email_list:
+                            result = send_email(email, pd.DataFrame(), sender, sender_pw, custom_message=custom_message)
+                            if result is True:
+                                st.success(f"{email}로 메일 전송 완료!")
+                            else:
+                                st.error(f"{email}로 메일 전송 실패: {result}")
                 else:
-                    st.warning("삭제할 사용자를 선택해주세요.")
-        else:
-            st.info("등록된 사용자가 없습니다.")
+                    st.warning("메일 내용을 입력했으나, 선택된 사용자가 없습니다. 전송이 진행되지 않았습니다.")
+            else:
+                st.warning("메일 내용을 입력해주세요.")
+        
+        st.markdown("---")
+        st.subheader("사용자 삭제")
+        users_to_delete = st.multiselect("삭제할 사용자 선택", user_list_for_dropdown, key="delete_user_multiselect")
+        if st.button("선택한 사용자 삭제"):
+            if users_to_delete:
+                for user_to_del_str in users_to_delete:
+                    match = re.search(r'\((.*?)\)', user_to_del_str)
+                    if match:
+                        email_to_del = match.group(1)
+                        safe_key_to_del = sanitize_path(email_to_del)
+                        
+                        db.reference(f"users/{safe_key_to_del}").delete()
+                        db.reference(f"patients/{safe_key_to_del}").delete()
+                        st.success(f"사용자 {user_to_del_str} 삭제 완료.")
+                st.rerun()
+            else:
+                st.warning("삭제할 사용자를 선택해주세요.")
+    else:
+        st.info("등록된 사용자가 없습니다.")
 
 
 # --- 일반 사용자 모드 ---
