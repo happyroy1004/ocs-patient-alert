@@ -305,9 +305,6 @@ st.markdown("""
         text-decoration: none;
         color: inherit;
     }
-    .title-link:hover {
-        color: #007BFF; /* 마우스 오버 시 색상 변경 */
-    }
     </style>
     <h1>
         <a href="." class="title-link">환자 내원 확인 시스템</a>
@@ -628,7 +625,7 @@ if is_admin_input:
                 st.warning("메일 내용을 입력해주세요.")
         
         st.markdown("---")
-        st.subheader("사용자 삭제")
+        st.subheader("🗑️ 사용자 삭제")
         users_to_delete = st.multiselect("삭제할 사용자 선택", user_list_for_dropdown, key="delete_user_multiselect")
         if st.button("선택한 사용자 삭제"):
             if users_to_delete:
