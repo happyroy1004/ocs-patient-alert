@@ -286,6 +286,7 @@ def process_excel_file_and_style(file_bytes_io):
                     cell = row[idx]
                     text = str(cell.value).strip().lower()
                     
+                    # 'debonding'이 포함되지 않고, 'bonding' 또는 '본딩'이 포함된 경우에만 굵게 처리
                     if ('bonding' in text or '본딩' in text) and 'debonding' not in text:
                         cell.font = Font(bold=True)
 
@@ -416,8 +417,8 @@ if is_admin_input:
     st.session_state.current_user_name = "admin"
     
     # 엑셀 업로드 섹션 - 비밀번호 없이도 접근 가능
-    st.subheader("💻 Excel File Processor")
-    uploaded_file = st.file_uploader("암호화된 Excel 파일을 업로드하세요", type=["xlsx", "xlsm"])
+    st.subheader("💻 Excel File 처리 💻")
+    uploaded_file = st.file_uploader("Excel 파일을 업로드하세요", type=["xlsx", "xlsm"])
     
     # 엑셀 업로드 로직
     if uploaded_file:
