@@ -297,24 +297,34 @@ def process_excel_file_and_style(file_bytes_io):
 
 # --- Streamlit 애플리케이션 시작 ---
 st.set_page_config(layout="wide")
-st.title("환자 내원 확인 시스템")
+
+# 제목에 링크 추가 및 초기화 로직
+st.markdown("""
+    <style>
+    .title-link {
+        text-decoration: none;
+        color: inherit;
+    }
+    .title-link:hover {
+        color: #007BFF; /* 마우스 오버 시 색상 변경 */
+    }
+    </style>
+    <h1>
+        <a href="." class="title-link">환자 내원 확인 시스템</a>
+    </h1>
+""", unsafe_allow_html=True)
 st.markdown("---")
 st.markdown("<p style='text-align: left; color: grey; font-size: small;'>directed by HSY</p>", unsafe_allow_html=True)
 
-# --- 사용 설명서 PDF 다운로드 버튼 추가 ---
-pdf_file_path = "manual.pdf"
-pdf_display_name = "사용 설명서"
-
-if os.path.exists(pdf_file_path):
-    with open(pdf_file_path, "rb") as pdf_file:
-        st.download_button(
-            label=f"{pdf_display_name} 다운로드",
-            data=pdf_file,
-            file_name=pdf_file_path,
-            mime="application/pdf"
-        )
-else:
-    st.warning(f"⚠️ {pdf_display_name} 파일을 찾을 수 없습니다. (경로: {pdf_file_path})")
+# 세션 상태 초기화
+if "clear_state" not in st.session_state:
+    st.session_state.clear_state = True
+    
+# 페이지 로드 시 세션 상태 초기화 (제목 클릭 시)
+if st.experimental_get_query_params().get("clear") == ["true"]:
+    st.session_state.clear()
+    st.experimental_set_query_params(clear=["false"])
+    st.rerun()
 
 # --- 세션 상태 초기화 ---
 if 'email_change_mode' not in st.session_state:
