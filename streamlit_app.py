@@ -413,91 +413,16 @@ if is_admin_input:
     st.session_state.logged_in_as_admin = True
     st.session_state.found_user_email = "admin"
     st.session_state.current_user_name = "admin"
-    admin_password = st.text_input("비밀번호를 입력하세요", type="password")
-    if admin_password == "1234":
-        st.session_state.admin_password_correct = True
-    elif admin_password and admin_password != "1234":
-        st.error("비밀번호가 틀렸습니다.")
-        st.session_state.admin_password_correct = False
     
-    # 비밀번호 입력 여부와 상관없이 엑셀 업로드 버튼 표시
+    # 엑셀 업로드 섹션 - 비밀번호 없이도 접근 가능
+    st.subheader("💻 Excel File Processor")
     uploaded_file = st.file_uploader("암호화된 Excel 파일을 업로드하세요", type=["xlsx", "xlsm"])
-    # admin 비밀번호가 맞았을 때만 관리자 기능 표시
-    if st.session_state.admin_password_correct:
-        st.subheader("🛠️ 관리자 도구")
-        
-        # Firebase에서 모든 사용자 데이터 가져오기
-        all_users_meta = users_ref.get()
-        if all_users_meta:
-            user_list_for_dropdown = [f"{user_info.get('name', '이름 없음')} ({user_info.get('email', '이메일 없음')})" 
-                                      for user_info in all_users_meta.values()]
-            
-            selected_users = st.multiselect("단체 메일 보낼 사용자 선택", user_list_for_dropdown)
-            
-            # 사용자 삭제 기능
-            users_to_delete = st.multiselect("삭제할 사용자 선택", user_list_for_dropdown, key="delete_user_multiselect")
-            if st.button("선택한 사용자 삭제"):
-                if users_to_delete:
-                    for user_to_del_str in users_to_delete:
-                        match = re.search(r'\((.*?)\)', user_to_del_str)
-                        if match:
-                            email_to_del = match.group(1)
-                            safe_key_to_del = sanitize_path(email_to_del)
-                            
-                            # users 노드와 patients 노드에서 해당 사용자 정보 삭제
-                            db.reference(f"users/{safe_key_to_del}").delete()
-                            db.reference(f"patients/{safe_key_to_del}").delete()
-                            st.success(f"사용자 {user_to_del_str} 삭제 완료.")
-                    st.rerun()
-                else:
-                    st.warning("삭제할 사용자를 선택해주세요.")
-
-            if selected_users:
-                st.markdown("---")
-                st.subheader("단체 메일 전송")
-                custom_message = st.text_area("보낼 메일 내용", height=200)
-                if st.button("단체 메일 보내기"):
-                    if custom_message:
-                        sender = st.secrets["gmail"]["sender"]
-                        sender_pw = st.secrets["gmail"]["app_password"]
-                        
-                        email_list = []
-                        for user_str in selected_users:
-                            match = re.search(r'\((.*?)\)', user_str)
-                            if match:
-                                email_list.append(match.group(1))
-                                
-                        if email_list:
-                            with st.spinner("메일 전송 중..."):
-                                for email in email_list:
-                                    result = send_email(email, pd.DataFrame(), sender, sender_pw, custom_message=custom_message)
-                                    if result is True:
-                                        st.success(f"{email}로 메일 전송 완료!")
-                                    else:
-                                        st.error(f"{email}로 메일 전송 실패: {result}")
-                        else:
-                            st.error("선택된 사용자의 이메일 주소를 찾을 수 없습니다.")
-                    else:
-                        st.warning("메일 내용을 입력해주세요.")
-        else:
-            st.info("등록된 사용자가 없습니다.")
-
-
-# --- 사용자 또는 admin (엑셀 업로드) 로직 시작 ---
-# user_name이 비어있거나, admin 모드이지만 비밀번호가 틀린 경우 앱 기능 정지
-if (not user_name and not st.session_state.logged_in_as_admin) or \
-   (is_admin_input and not st.session_state.admin_password_correct):
-    st.stop()
-
-
-# --- 관리자 모드 (Admin인 경우) ---
-if is_admin_input:
-    # 엑셀 업로드 로직은 비밀번호 입력 전에도 보이도록 상단에 배치
+    
+    # 엑셀 업로드 로직
     if uploaded_file:
         uploaded_file.seek(0)
         
         password = None
-        # 파일이 암호화되어 있으면 비밀번호 입력칸을 동적으로 표시
         is_file_encrypted = is_encrypted_excel(uploaded_file)
         if is_file_encrypted:
             password = st.text_input("엑셀 파일 비밀번호 입력", type="password")
@@ -616,6 +541,85 @@ if is_admin_input:
             st.error(f"파일 처리 실패: {ve}")
         except Exception as e:
             st.error(f"예상치 못한 오류 발생: {e}")
+
+    # 관리자 비밀번호 입력 섹션 - 별도 분리
+    st.markdown("---")
+    st.subheader("🛠️ Administer password")
+    admin_password_input = st.text_input("관리자 비밀번호를 입력하세요", type="password", key="admin_password")
+
+    # secrets.toml에서 비밀번호 불러오기
+    try:
+        secret_admin_password = st.secrets["admin"]["password"]
+    except KeyError:
+        secret_admin_password = None
+        st.error("⚠️ secrets.toml 파일에 'admin.password' 설정이 없습니다. 개발자에게 문의하세요.")
+    
+    if admin_password_input and admin_password_input == secret_admin_password:
+        st.session_state.admin_password_correct = True
+        st.success("관리자 권한이 활성화되었습니다.")
+    elif admin_password_input and admin_password_input != secret_admin_password:
+        st.error("비밀번호가 틀렸습니다.")
+        st.session_state.admin_password_correct = False
+    
+    # 비밀번호가 맞았을 때만 추가 기능 표시
+    if st.session_state.admin_password_correct:
+        st.markdown("---")
+        st.subheader("📦 사용자 관리")
+        
+        all_users_meta = users_ref.get()
+        if all_users_meta:
+            user_list_for_dropdown = [f"{user_info.get('name', '이름 없음')} ({user_info.get('email', '이메일 없음')})" 
+                                      for user_info in all_users_meta.values()]
+            
+            selected_users_for_mail = st.multiselect("단체 메일 보낼 사용자 선택", user_list_for_dropdown, key="mail_multiselect")
+            
+            if selected_users_for_mail:
+                st.markdown("---")
+                st.subheader("단체 메일 전송")
+                custom_message = st.text_area("보낼 메일 내용", height=200)
+                if st.button("단체 메일 보내기"):
+                    if custom_message:
+                        sender = st.secrets["gmail"]["sender"]
+                        sender_pw = st.secrets["gmail"]["app_password"]
+                        
+                        email_list = []
+                        for user_str in selected_users_for_mail:
+                            match = re.search(r'\((.*?)\)', user_str)
+                            if match:
+                                email_list.append(match.group(1))
+                                
+                        if email_list:
+                            with st.spinner("메일 전송 중..."):
+                                for email in email_list:
+                                    result = send_email(email, pd.DataFrame(), sender, sender_pw, custom_message=custom_message)
+                                    if result is True:
+                                        st.success(f"{email}로 메일 전송 완료!")
+                                    else:
+                                        st.error(f"{email}로 메일 전송 실패: {result}")
+                        else:
+                            st.error("선택된 사용자의 이메일 주소를 찾을 수 없습니다.")
+                    else:
+                        st.warning("메일 내용을 입력해주세요.")
+            
+            st.markdown("---")
+            st.subheader("사용자 삭제")
+            users_to_delete = st.multiselect("삭제할 사용자 선택", user_list_for_dropdown, key="delete_user_multiselect")
+            if st.button("선택한 사용자 삭제"):
+                if users_to_delete:
+                    for user_to_del_str in users_to_delete:
+                        match = re.search(r'\((.*?)\)', user_to_del_str)
+                        if match:
+                            email_to_del = match.group(1)
+                            safe_key_to_del = sanitize_path(email_to_del)
+                            
+                            db.reference(f"users/{safe_key_to_del}").delete()
+                            db.reference(f"patients/{safe_key_to_del}").delete()
+                            st.success(f"사용자 {user_to_del_str} 삭제 완료.")
+                    st.rerun()
+                else:
+                    st.warning("삭제할 사용자를 선택해주세요.")
+        else:
+            st.info("등록된 사용자가 없습니다.")
 
 
 # --- 일반 사용자 모드 ---
