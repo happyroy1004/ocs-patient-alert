@@ -583,7 +583,7 @@ if is_admin_input:
     # 비밀번호가 맞았을 때만 추가 기능 표시
     if st.session_state.admin_password_correct:
         st.markdown("---")
-        st.subheader("📦 개별 메일 발송") # 제목 변경
+        st.subheader("📦 메일 발송") # 제목 변경
         
         all_users_meta = users_ref.get()
         user_list_for_dropdown = [f"{user_info.get('name', '이름 없음')} ({user_info.get('email', '이메일 없음')})" 
@@ -599,7 +599,7 @@ if is_admin_input:
         selected_users_for_mail = st.multiselect("보낼 사용자 선택", user_list_for_dropdown, default=default_selection, key="mail_multiselect")
         
         custom_message = st.text_area("보낼 메일 내용", height=200)
-        if st.button("개별 메일 보내기"): # 버튼 이름 변경
+        if st.button("메일 보내기"): # 버튼 이름 변경
             if custom_message:
                 sender = st.secrets["gmail"]["sender"]
                 sender_pw = st.secrets["gmail"]["app_password"]
