@@ -316,14 +316,14 @@ st.markdown("""
 st.markdown("---")
 st.markdown("<p style='text-align: left; color: grey; font-size: small;'>directed by HSY</p>", unsafe_allow_html=True)
 
-# 페이지 로드 시 세션 상태 초기화 (제목 클릭 시)
-# st.query_params를 사용하여 URL 쿼리 매개변수 확인 및 설정
-if st.query_params.get("clear") == "true":
+
+# --- 세션 상태 초기화 ---
+# URL 쿼리 매개변수에 'clear'가 있을 경우 초기화
+if "clear" in st.query_params and st.query_params["clear"] == "true":
     st.session_state.clear()
     st.query_params["clear"] = "false"
     st.rerun()
 
-# --- 세션 상태 초기화 ---
 if 'email_change_mode' not in st.session_state:
     st.session_state.email_change_mode = False
 if 'user_id_input_value' not in st.session_state:
