@@ -570,7 +570,6 @@ if is_admin_input:
         
         selected_users_for_mail = st.multiselect("보낼 사용자 선택", user_list_for_dropdown, key="mail_multiselect")
         
-        # 여기서부터 조건문 없이 항상 표시
         custom_message = st.text_area("보낼 메일 내용", height=200)
         if st.button("개별 메일 보내기"): # 버튼 이름 변경
             if custom_message:
@@ -614,8 +613,9 @@ if is_admin_input:
                 st.rerun()
             else:
                 st.warning("삭제할 사용자를 선택해주세요.")
-    else:
-        st.info("등록된 사용자가 없습니다.")
+    # 이 else 블록을 제거하여 비밀번호가 맞지 않아도 '등록된 사용자가 없습니다' 메시지가 나오지 않게 합니다.
+    # else:
+    #     st.info("등록된 사용자가 없습니다.")
 
 
 # --- 일반 사용자 모드 ---
