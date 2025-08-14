@@ -46,6 +46,8 @@ try:
     client_id = st.secrets["google_calendar"]["client_id"]
     client_secret = st.secrets["google_calendar"]["client_secret"]
     redirect_uri = st.secrets["google_calendar"]["redirect_uri"]
+    # 중요: 이 redirect_uri는 Google Cloud Platform 콘솔에 등록된 값과 정확히 일치해야 합니다.
+    # 예: "http://localhost:8501" 또는 "https://your-streamlit-app-url.com"
 except KeyError:
     st.error("`secrets.toml` 파일에 Google Calendar 설정이 누락되었습니다. 파일을 확인해 주세요.")
     st.stop()
@@ -390,8 +392,8 @@ def process_excel_file_and_style(file_bytes_io):
         for row_idx, row in enumerate(ws.iter_rows(min_row=2, max_row=ws.max_row), start=2):
             if row[0].value == "<교수님>":
                 for cell in row:
-                    if cell.value:
-                        cell.font = Font(bold=True)
+                if cell.value:
+                    cell.font = Font(bold=True)
 
             if sheet_name.strip() == "교정" and '진료내역' in header:
                 idx = header['진료내역'] - 1
@@ -432,6 +434,7 @@ query_params = st.query_params
 auth_code = query_params.get("code")
 
 if auth_code:
+    # Google Cloud Platform 콘솔에 등록된 redirect_uri가 여기에 사용됩니다.
     flow = InstalledAppFlow.from_client_config(
         {
             "installed": {
@@ -783,7 +786,7 @@ if is_admin_input:
     
     if st.session_state.admin_password_correct:
         st.markdown("---")
-        st.subheader("📦 메일 및 캘린더 기능")
+        st.subheader("� 메일 및 캘린더 기능")
         
         # 캘린더 연동 상태를 보여주는 부분 추가
         if st.session_state.credentials and st.session_state.credentials.valid:
@@ -950,3 +953,4 @@ else:
                 patients_ref_for_user.push().set({"환자명": name, "진료번호": pid, "등록과": selected_department})
                 st.success(f"{name} ({pid}) [{selected_department}] 환자 등록 완료")
                 st.rerun()
+�
