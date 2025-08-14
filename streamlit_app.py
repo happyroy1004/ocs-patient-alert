@@ -256,14 +256,20 @@ def create_calendar_event(service, patient_name, pid, department, reservation_da
     # 예약 날짜와 시간을 사용하여 이벤트 시작/종료 시간 설정
     if reservation_date_str and reservation_time_str:
         try:
-            # Note: The format of '예약일' and '예약시간' columns needs to be confirmed.
-            # Assuming 'YYYY-MM-DD' and 'HH:MM'
+            # reservation_time_str이 '11:00'과 같은 형식인지 확인하고, 필요한 경우 :00을 추가합니다.
+            if len(reservation_time_str.split(':')) == 1:
+                # '11'과 같은 형식이면 '11:00'으로 변환
+                reservation_time_str = f"{reservation_time_str}:00"
+            
+            # reservation_date_str과 reservation_time_str을 결합합니다.
             date_time_str = f"{reservation_date_str} {reservation_time_str}"
+
+            # 결합된 문자열을 파싱합니다.
             event_start = datetime.datetime.strptime(date_time_str, "%Y-%m-%d %H:%M").astimezone(seoul_tz)
             event_end = event_start + datetime.timedelta(minutes=30)
-        except ValueError:
+        except ValueError as e:
             # 날짜 형식 파싱 실패 시 현재 시간 사용
-            st.warning(f"Failed to parse date/time for '{patient_name}'. Using current time.")
+            st.warning(f"Failed to parse date/time for '{patient_name}'. Error: {e}. Using current time.")
             event_start = datetime.datetime.now(seoul_tz)
             event_end = event_start + datetime.timedelta(minutes=30)
     else:
@@ -293,7 +299,7 @@ def create_calendar_event(service, patient_name, pid, department, reservation_da
         st.warning("구글 캘린더 인증 권한을 다시 확인해주세요.")
     except Exception as e:
         st.error(f"알 수 없는 오류 발생: {e}")
-
+        
 #4. Excel Processing Constants and Functions
 # --- 엑셀 처리 관련 상수 및 함수 ---
 sheet_keyword_to_department_map = {
