@@ -1,3 +1,5 @@
+# 1. Imports, Validation Functions, and Firebase Initialization
+
 import streamlit as st
 import pandas as pd
 import firebase_admin
@@ -51,6 +53,9 @@ def sanitize_path(email):
 def recover_email(safe_id: str) -> str:
     email = safe_id.replace("_at_", "@").replace("_dot_", ".").replace("_com", ".com")
     return email
+
+
+# 2. Excel and Email Processing Functions
 # 암호화된 엑셀 파일인지 확인
 def is_encrypted_excel(file):
     try:
@@ -134,6 +139,10 @@ def send_email(receiver, rows, sender, password, date_str=None, custom_message=N
         return True
     except Exception as e:
         return str(e)
+
+
+#3. Google Calendar API Functions
+
 # --- Google Calendar API 관련 함수 (수정) ---
 
 # 사용할 스코프 정의. 캘린더 이벤트 생성 권한
@@ -190,30 +199,39 @@ def get_google_calendar_service(user_id_safe):
         st.session_state.pop(f"google_creds_{user_id_safe}", None)
         return None
 
-def create_calendar_event(service, patient_name, pid, department):
+def create_calendar_event(service, patient_name, pid, department, event_date, event_time):
     """
     Google Calendar에 이벤트를 생성합니다.
+    Args:
+        service (googleapiclient.discovery.Resource): Google Calendar 서비스 객체.
+        patient_name (str): 환자 이름.
+        pid (str): 진료번호.
+        department (str): 등록 과.
+        event_date (str): 'YYYY.MM.DD' 형식의 예약 날짜.
+        event_time (str): 'HH:MM' 형식의 예약 시간.
     """
-    # 현재 시간으로 이벤트 시작 및 종료 시간 설정
-    now = datetime.datetime.now(datetime.timezone.utc).astimezone(datetime.timezone(datetime.timedelta(hours=9)))
-    event_start_time = now.isoformat()
-    event_end_time = (now + datetime.timedelta(hours=1)).isoformat()
-    
-    event = {
-        'summary': f'환자 등록: {patient_name} ({department})',
-        'location': f'진료번호: {pid}',
-        'description': f'환자명: {patient_name}\n진료번호: {pid}\n등록 과: {department}',
-        'start': {
-            'dateTime': event_start_time,
-            'timeZone': 'Asia/Seoul',
-        },
-        'end': {
-            'dateTime': event_end_time,
-            'timeZone': 'Asia/Seoul',
-        },
-    }
-    
     try:
+        # 'yyyy.mm.dd hh:mm' 형식의 문자열을 datetime 객체로 변환
+        start_datetime_str = f"{event_date} {event_time}"
+        start_datetime = datetime.datetime.strptime(start_datetime_str, "%Y.%m.%d %H:%M")
+        
+        # 시작 시간에서 30분 후를 종료 시간으로 설정
+        end_datetime = start_datetime + datetime.timedelta(minutes=30)
+        
+        event = {
+            'summary': f'환자 등록: {patient_name} ({department})',
+            'location': f'진료번호: {pid}',
+            'description': f'환자명: {patient_name}\n진료번호: {pid}\n등록 과: {department}',
+            'start': {
+                'dateTime': start_datetime.isoformat(),
+                'timeZone': 'Asia/Seoul',
+            },
+            'end': {
+                'dateTime': end_datetime.isoformat(),
+                'timeZone': 'Asia/Seoul',
+            },
+        }
+        
         event = service.events().insert(calendarId='primary', body=event).execute()
         st.success(f"'{patient_name}' 환자 등록 일정이 캘린더에 추가되었습니다.")
     except HttpError as error:
@@ -221,6 +239,10 @@ def create_calendar_event(service, patient_name, pid, department):
         st.warning("구글 캘린더 인증 권한을 다시 확인해주세요.")
     except Exception as e:
         st.error(f"알 수 없는 오류 발생: {e}")
+
+
+#4. Excel Processing Constants and Functions
+
 # --- 엑셀 처리 관련 상수 및 함수 ---
 sheet_keyword_to_department_map = {
     '치과보철과': '보철', '보철과': '보철', '보철': '보철',
@@ -384,6 +406,8 @@ def process_excel_file_and_style(file_bytes_io):
     final_output_bytes.seek(0)
 
     return processed_sheets_dfs, final_output_bytes
+
+#5. Streamlit App Start and Session State
 # --- Streamlit 애플리케이션 시작 ---
 st.set_page_config(layout="wide")
 
@@ -430,6 +454,8 @@ if 'google_creds' not in st.session_state:
     st.session_state['google_creds'] = {}
 
 users_ref = db.reference("users")
+
+#6. User and Admin Login and User Management
 # --- 사용 설명서 PDF 다운로드 버튼 추가 ---
 pdf_file_path = "manual.pdf"
 pdf_display_name = "사용 설명서"
@@ -519,6 +545,9 @@ if st.session_state.email_change_mode:
             st.rerun()
         else:
             st.error("올바른 이메일 주소 형식이 아닙니다.")
+
+
+#7. Admin Mode Functionality
 # --- Admin 모드 로그인 처리 ---
 if is_admin_input:
     st.session_state.logged_in_as_admin = True
@@ -782,6 +811,9 @@ if is_admin_input:
                 st.rerun()
             else:
                 st.warning("삭제할 사용자를 선택해주세요.")
+
+
+#8. Regular User Mode
 # --- 일반 사용자 모드 ---
 else:
     user_id_final = st.session_state.user_id_input_value if st.session_state.email_change_mode or not st.session_state.found_user_email else st.session_state.found_user_email
