@@ -231,7 +231,7 @@ with st.sidebar:
     
 # --- 메인 페이지 ---
 
-# 파일 업로드
+st.header("엑셀 파일 업로드 및 스케줄 등록")
 uploaded_file = st.file_uploader("암호화된 엑셀 파일(.xlsx) 업로드", type="xlsx")
 
 if uploaded_file:
@@ -321,3 +321,7 @@ if uploaded_file:
                         st.markdown(f"[{st.session_state['authorization_url']}]({st.session_state['authorization_url']})")
                     else:
                         st.warning("로그인 URL을 생성할 수 없습니다. 페이지를 새로고침 해주세요.")
+        except Exception as e:
+            st.error(f"엑셀 파일 처리 중 오류가 발생했습니다: {e}")
+            st.warning("비밀번호가 올바른지, 또는 파일이 손상되지 않았는지 확인해주세요.")
+
