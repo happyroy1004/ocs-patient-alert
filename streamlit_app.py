@@ -705,13 +705,20 @@ if st.session_state.current_user_name and st.session_state.current_user_name.low
     uploaded_file = st.file_uploader("암호화된 Excel 파일을 업로드하세요", type=["xlsx", "xlsm"])
 
     if uploaded_file:
-        uploaded_file.seek(0)
+        # 파일 내용을 메모리 버퍼(BytesIO)로 변환하여 안정적으로 처리
+        file_content = uploaded_file.getvalue()
+        file_stream = io.BytesIO(file_content)
 
-        password = st.text_input("엑셀 파일 비밀번호 입력", type="password") if is_encrypted_excel(uploaded_file) else None
-        if is_encrypted_excel(uploaded_file) and not password:
+        # is_encrypted_excel 함수가 file_stream을 사용하도록 수정
+        password = st.text_input("엑셀 파일 비밀번호 입력", type="password") if is_encrypted_excel(file_stream) else None
+        
+        # is_encrypted_excel을 한 번 더 호출해야 하므로, file_stream을 다시 seek(0)하여 처음으로 되돌립니다.
+        file_stream.seek(0)
+        
+        if is_encrypted_excel(file_stream) and not password:
             st.info("암호화된 파일입니다. 비밀번호를 입력해주세요.")
             st.stop()
-
+        
         try:
             file_name = uploaded_file.name
 
@@ -727,8 +734,8 @@ if st.session_state.current_user_name and st.session_state.current_user_name.low
                 st.warning("엑셀 파일 이름에서 예약 날짜를 추출할 수 없습니다. 캘린더 일정은 현재 날짜로 설정됩니다.")
                 reservation_date_excel = datetime.datetime.now().strftime("%Y-%m-%d")
 
-
-            xl_object, raw_file_io = load_excel(uploaded_file, password)
+            # load_excel 함수가 file_stream을 사용하도록 수정
+            xl_object, raw_file_io = load_excel(file_stream, password)
             excel_data_dfs, styled_excel_bytes = process_excel_file_and_style(raw_file_io)
 
             if excel_data_dfs is None or styled_excel_bytes is None:
@@ -760,7 +767,7 @@ if st.session_state.current_user_name and st.session_state.current_user_name.low
             st.session_state.processed_excel_data_dfs = filtered_excel_data_dfs
             st.session_state.processed_styled_bytes = styled_excel_bytes
 
-            # --- 수정된 코드: 처리된 데이터를 Firebase에 저장 (파일명 정보 포함) ---
+            # --- 처리된 데이터를 Firebase에 저장 (파일명 정보 포함) ---
             st.info("기존 OCS 분석 데이터를 삭제하고 새로운 파일로 덮어쓰는 중...")
             processed_data_ref = db.reference("processed_data/ocs_analysis")
             data_to_save = {
@@ -1002,8 +1009,6 @@ if st.session_state.current_user_name and st.session_state.current_user_name.low
                 st.rerun()
             else:
                 st.warning("삭제할 사용자를 선택해주세요.")
-
-
 
 # --- #8. Regular User Mode ---
 else:
