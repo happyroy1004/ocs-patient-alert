@@ -57,18 +57,30 @@ def get_google_calendar_service():
     creds = st.session_state.get("credentials")
     
     if not creds or not creds.valid:
+        print("DEBUG: No valid credentials found.")
         if creds and creds.expired and creds.refresh_token:
+            print("DEBUG: Credentials expired, attempting to refresh.")
             try:
                 creds.refresh(Request())
+                print("DEBUG: Credentials successfully refreshed.")
             except Exception as e:
+                print(f"DEBUG: Failed to refresh token: {e}")
                 st.error(f"토큰 갱신 실패: {e}")
                 st.session_state.credentials = None
                 return None
         else:
+            print("DEBUG: No credentials or credentials are invalid.")
             return None
     
-    service = build('calendar', 'v3', credentials=creds)
-    return service
+    print("DEBUG: Valid credentials found. Building calendar service.")
+    try:
+        service = build('calendar', 'v3', credentials=creds)
+        return service
+    except Exception as e:
+        print(f"DEBUG: Failed to build calendar service: {e}")
+        st.error(f"캘린더 서비스 빌드 실패: {e}")
+        return None
+
 
 def get_authorization_url():
     """
@@ -87,6 +99,7 @@ def get_authorization_url():
         SCOPES
     )
     auth_url, _ = flow.authorization_url(prompt='consent')
+    print(f"DEBUG: Authorization URL generated: {auth_url}")
     return auth_url
 
 def add_event_to_google_calendar(service, summary, start_time, end_time):
@@ -106,9 +119,12 @@ def add_event_to_google_calendar(service, summary, start_time, end_time):
     }
     
     try:
+        print(f"DEBUG: Attempting to add event with summary '{summary}' from {start_time} to {end_time}")
         event = service.events().insert(calendarId='primary', body=event).execute()
         st.success(f"캘린더에 일정을 추가했습니다: {event.get('htmlLink')}")
+        print(f"DEBUG: Event successfully added. Link: {event.get('htmlLink')}")
     except Exception as e:
+        print(f"DEBUG: Failed to add event: {e}")
         st.error(f"일정 추가 실패: {e}")
 
 
@@ -430,6 +446,7 @@ if auth_code:
         flow.fetch_token(code=auth_code[0])
         creds = flow.credentials
         st.session_state.credentials = creds
+        # URL에서 코드 제거
         st.query_params.clear()
         st.success("Google 캘린더 권한이 성공적으로 허용되었습니다!")
     except Exception as e:
@@ -714,7 +731,13 @@ if is_admin_input:
     
     if st.session_state.admin_password_correct:
         st.markdown("---")
-        st.subheader("📦 메일 및 캘린더 기능")
+        st.subheader("� 메일 및 캘린더 기능")
+        
+        # 캘린더 연동 상태를 보여주는 부분 추가
+        if st.session_state.credentials and st.session_state.credentials.valid:
+            st.markdown("✅ **Google 캘린더에 성공적으로 연결되었습니다.**")
+        else:
+            st.markdown("⚠️ **Google 캘린더 연결이 필요합니다.**")
         
         col1, col2 = st.columns(2)
         with col1:
@@ -875,3 +898,4 @@ else:
                 patients_ref_for_user.push().set({"환자명": name, "진료번호": pid, "등록과": selected_department})
                 st.success(f"{name} ({pid}) [{selected_department}] 환자 등록 완료")
                 st.rerun()
+�
