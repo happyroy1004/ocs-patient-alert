@@ -689,7 +689,10 @@ if st.session_state.email_change_mode:
             st.error("올바른 이메일 주소 형식이 아닙니다.")
 
 # --- #7. Admin Mode Functionality ---
-if st.session_state.current_user_name.lower() == "admin":
+# '사용자 이름'과 '이메일' 입력을 하나의 입력으로 통일
+user_input = st.text_input("아이디 및 이메일을 입력하세요 (관리자는 'admin' 입력)", key="unified_login_input").lower()
+
+if user_input == "admin":
     st.session_state.logged_in_as_admin = True
     st.session_state.found_user_email = "admin"
     st.header("관리자 기능")
@@ -965,20 +968,27 @@ if st.session_state.current_user_name.lower() == "admin":
 # --- #8. Regular User Mode ---
 else:
     st.session_state.logged_in_as_admin = False
-    st.session_state.found_user_email = st.text_input("이메일을 입력하세요", key="user_email_input", value=st.session_state.found_user_email)
     
-    if st.session_state.current_user_name and st.session_state.found_user_email:
-        user_id_final = st.session_state.found_user_email
-        user_name = st.session_state.current_user_name
-        
+    # 이메일 유효성 검사 (아주 기본적인 형태)
+    if "@" in user_input and "." in user_input:
+        st.session_state.found_user_email = user_input
+        user_id_final = user_input
+        # 이름은 이메일 앞부분에서 추출하거나, Firebase에서 가져옴
+        user_name_default = user_input.split('@')[0]
+        st.session_state.current_user_name = user_name_default
+
         firebase_key = sanitize_path(user_id_final)
         
+        # 사용자 정보 업데이트 및 환영 메시지
         current_user_meta_data = users_ref.child(firebase_key).get()
-        if not current_user_meta_data or current_user_meta_data.get("name") != user_name or current_user_meta_data.get("email") != user_id_final:
-            users_ref.child(firebase_key).update({"name": user_name, "email": user_id_final})
-            st.success(f"사용자 정보가 업데이트되었습니다: {user_name} ({user_id_final})")
+        if not current_user_meta_data or current_user_meta_data.get("email") != user_id_final:
+            users_ref.child(firebase_key).update({"name": user_name_default, "email": user_id_final})
+            st.success(f"사용자 정보가 업데이트되었습니다: {user_name_default} ({user_id_final})")
         else:
-            st.success(f"로그인 성공: {user_name}님, 환영합니다!")
+            # 기존 사용자의 이름이 있는 경우 해당 이름을 사용
+            user_name_from_db = current_user_meta_data.get("name", user_name_default)
+            st.session_state.current_user_name = user_name_from_db
+            st.success(f"로그인 성공: {user_name_from_db}님, 환영합니다!")
             
         st.session_state.current_firebase_key = firebase_key
         
@@ -997,7 +1007,7 @@ else:
                 pass
             
             st.markdown("---")
-            st.subheader(f"{user_name}님의 등록 환자 목록")
+            st.subheader(f"{st.session_state.current_user_name}님의 등록 환자 목록")
             
             patients_ref_for_user = db.reference(f"patients/{firebase_key}")
             existing_patient_data = patients_ref_for_user.get()
@@ -1065,7 +1075,5 @@ else:
             else:
                 st.info("OCS 파일은 관리자 모드에서 업로드해야 사용할 수 있습니다.")
 
-    elif not st.session_state.current_user_name:
-        st.info("사용자 이름을 입력해주세요.")
     else:
-        st.info("이메일 주소를 입력해주세요.")
+        st.info("아이디 및 이메일 주소를 입력해주세요.")
