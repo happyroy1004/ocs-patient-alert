@@ -715,6 +715,7 @@ if st.session_state.current_user_name and st.session_state.current_user_name.low
         try:
             file_name = uploaded_file.name
 
+            # OCS 파일 매칭용 예약 날짜 (파일명에서 추출)
             date_match = re.search(r'_(\d{2})(\d{2})', file_name)
             reservation_date_excel = None
             if date_match:
@@ -726,6 +727,7 @@ if st.session_state.current_user_name and st.session_state.current_user_name.low
                 st.warning("엑셀 파일 이름에서 예약 날짜를 추출할 수 없습니다. 캘린더 일정은 현재 날짜로 설정됩니다.")
                 reservation_date_excel = datetime.datetime.now().strftime("%Y-%m-%d")
 
+
             xl_object, raw_file_io = load_excel(uploaded_file, password)
             excel_data_dfs, styled_excel_bytes = process_excel_file_and_style(raw_file_io)
 
@@ -733,14 +735,38 @@ if st.session_state.current_user_name and st.session_state.current_user_name.low
                 st.warning("엑셀 파일 처리 중 문제가 발생했거나 처리할 데이터가 없습니다.")
                 st.stop()
 
-            st.session_state.processed_excel_data_dfs = excel_data_dfs
+            # --- 교수님 진료 제외 필터링 로직 추가 ---
+            filtered_excel_data_dfs = {}
+            for sheet_name, df in excel_data_dfs.items():
+                department = sheet_keyword_to_department_map.get(sheet_name.strip().lower(), None)
+                if department and department in professors_dict:
+                    professors_in_dept = professors_dict[department]
+                    # '진료의사', '의사명', '담당의' 컬럼 중 하나에 교수님 이름이 있는지 확인
+                    doctor_col = None
+                    for col in ['진료의사', '의사명', '담당의']:
+                        if col in df.columns:
+                            doctor_col = col
+                            break
+                    
+                    if doctor_col:
+                        # 교수님 목록에 포함되지 않는 행만 선택
+                        filtered_df = df[~df[doctor_col].isin(professors_in_dept)]
+                        filtered_excel_data_dfs[sheet_name] = filtered_df
+                    else:
+                        filtered_excel_data_dfs[sheet_name] = df
+                else:
+                    filtered_excel_data_dfs[sheet_name] = df
+            
+            st.session_state.processed_excel_data_dfs = filtered_excel_data_dfs
             st.session_state.processed_styled_bytes = styled_excel_bytes
 
-            # --- 수정된 코드: 처리된 데이터를 Firebase에 저장 (덮어쓰기) ---
+            # --- 수정된 코드: 처리된 데이터를 Firebase에 저장 (파일명 정보 포함) ---
             st.info("기존 OCS 분석 데이터를 삭제하고 새로운 파일로 덮어쓰는 중...")
             processed_data_ref = db.reference("processed_data/ocs_analysis")
-            # set() 함수를 사용하여 기존 데이터를 완전히 대체합니다.
-            data_to_save = {sheet_name: df.to_dict('records') for sheet_name, df in excel_data_dfs.items()}
+            data_to_save = {
+                "file_name": file_name,  # 파일명 정보 추가
+                "sheets": {sheet_name: df.to_dict('records') for sheet_name, df in filtered_excel_data_dfs.items()}
+            }
             processed_data_ref.set(data_to_save)
             st.success("엑셀 분석 데이터가 Firebase에 성공적으로 저장되었습니다.")
             # -----------------------------------------------
@@ -782,8 +808,8 @@ if st.session_state.current_user_name and st.session_state.current_user_name.low
                             })
 
                     matched_rows_for_user = []
-
-                    for sheet_name_excel_raw, df_sheet in excel_data_dfs.items():
+                    # 필터링된 데이터에서 매칭을 진행
+                    for sheet_name_excel_raw, df_sheet in filtered_excel_data_dfs.items():
                         excel_sheet_name_lower = sheet_name_excel_raw.strip().lower()
 
                         excel_sheet_department = None
@@ -978,6 +1004,7 @@ if st.session_state.current_user_name and st.session_state.current_user_name.low
                 st.warning("삭제할 사용자를 선택해주세요.")
 
 
+
 # --- #8. Regular User Mode ---
 else:
     st.session_state.logged_in_as_admin = False
@@ -997,7 +1024,8 @@ else:
             
         st.session_state.current_firebase_key = firebase_key
         
-        tab1, tab2, tab3 = st.tabs(["환자 등록/조회", "OCS 현황 분석", "사용자별 환자 조회"])
+        # --- 수정된 코드: tab3 제거 ---
+        tab1, tab2 = st.tabs(["환자 등록/조회", "OCS 현황 분석"])
 
         with tab1:
             st.subheader("Google Calendar 연동")
@@ -1067,27 +1095,23 @@ else:
                         st.rerun()
         
         with tab2:
-            st.header("OCS 현황 분석")
-            # --- 수정된 코드: Firebase에서 데이터 불러오기 ---
             processed_data_ref = db.reference("processed_data/ocs_analysis")
             firebase_data = processed_data_ref.get()
 
-            if firebase_data:
-                st.info("Firebase에서 OCS 분석 데이터를 불러왔습니다.")
+            if firebase_data and "sheets" in firebase_data:
+                raw_file_name = firebase_data.get("file_name", "미지정 파일")
                 
-                # 딕셔너리 데이터를 DataFrame으로 변환
-                loaded_excel_data_dfs = {sheet_name: pd.DataFrame(records) for sheet_name, records in firebase_data.items()}
+                # 확장자 제거
+                title_file_name = os.path.splitext(raw_file_name)[0]
+                
+                # 탭 내부에 제목으로 표시
+                st.header(f"🗓️ {title_file_name} 분석결과")
+                
+                loaded_excel_data_dfs = {sheet_name: pd.DataFrame(records) for sheet_name, records in firebase_data["sheets"].items()}
                 
                 analyze_ocs_data_for_tabs(loaded_excel_data_dfs, professors_dict)
             else:
                 st.info("OCS 현황 분석 기능은 관리자 모드에서 파일을 업로드해야 활성화됩니다.")
-
-        with tab3:
-            st.header("나의 환자 OCS 파일 매칭 조회")
-            if 'processed_excel_data_dfs' in st.session_state and st.session_state.processed_excel_data_dfs:
-                st.info("이 기능은 개발 중입니다.")
-            else:
-                st.info("OCS 파일은 관리자 모드에서 업로드해야 사용할 수 있습니다.")
 
     else:
         st.info("로그인 정보가 없습니다. 사용자 이름을 입력해주세요.")
