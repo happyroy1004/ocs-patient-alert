@@ -64,17 +64,31 @@ def get_google_calendar_credentials():
         creds.refresh(Request())
     elif not creds:
         try:
+            # secrets.toml 파일에서 Google Calendar API 설정을 가져옵니다.
+            google_calendar_secrets = st.secrets["google calendar"]
+            
+            # Google API 인증 정보의 형식을 web 애플리케이션에 맞게 수정합니다.
+            client_config = {
+                "web": {
+                    "client_id": google_calendar_secrets.get("client_id"),
+                    "client_secret": google_calendar_secrets.get("client_secret"),
+                    "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+                    "token_uri": "https://oauth2.googleapis.com/token",
+                    "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
+                    "redirect_uris": [google_calendar_secrets.get("redirect_uri")]
+                }
+            }
+
             flow = InstalledAppFlow.from_client_config(
-                st.secrets["google"]["client_secret"],
-                SCOPES,
-                redirect_uri=st.secrets["google"]["redirect_uri"]
+                client_config,
+                scopes=SCOPES
             )
             authorization_url, _ = flow.authorization_url(prompt='consent')
             st.session_state['authorization_url'] = authorization_url
             st.warning("Google 계정 로그인 필요! 아래 링크를 클릭하여 로그인해주세요.")
             st.markdown(f"[{st.session_state['authorization_url']}]({st.session_state['authorization_url']})")
         except KeyError as e:
-            st.error(f"Google Calendar API 설정 오류: secrets.toml 파일에 'client_secret' 또는 'redirect_uri'가 누락되었습니다. {e}")
+            st.error(f"Google Calendar API 설정 오류: secrets.toml 파일에 '[google calendar]' 섹션이 없거나 형식이 잘못되었습니다. {e}")
             return None
 
     if 'code' in st.session_state and not creds:
