@@ -688,45 +688,16 @@ if st.session_state.email_change_mode:
         else:
             st.error("올바른 이메일 주소 형식이 아닙니다.")
 
-# st.session_state 변수 초기화 (코드 상단에 위치)
-if 'logged_in_as_admin' not in st.session_state:
-    st.session_state.logged_in_as_admin = False
-if 'found_user_email' not in st.session_state:
-    st.session_state.found_user_email = ""
-if 'current_user_name' not in st.session_state:
-    st.session_state.current_user_name = ""
-if 'processed_excel_data_dfs' not in st.session_state:
-    st.session_state.processed_excel_data_dfs = None
-if 'processed_styled_bytes' not in st.session_state:
-    st.session_state.processed_styled_bytes = None
-if 'admin_password_correct' not in st.session_state:
-    st.session_state.admin_password_correct = False
-if 'select_all_users' not in st.session_state:
-    st.session_state.select_all_users = False
-if 'user_id_input_value' not in st.session_state:
-    st.session_state.user_id_input_value = ""
-if 'email_change_mode' not in st.session_state:
-    st.session_state.email_change_mode = False
-if 'current_firebase_key' not in st.session_state:
-    st.session_state.current_firebase_key = ""
-if 'google_calendar_service' not in st.session_state:
-    st.session_state.google_calendar_service = None
-
-# --- 관리자/일반 사용자 모드 진입 분기 ---
-is_admin_input = st.text_input("이메일을 입력하세요 (관리자는 'admin' 입력)", key="admin_email_input").lower() == "admin"
-
-if is_admin_input:
-    # #7. Admin Mode Functionality
+# --- #7. Admin Mode Functionality ---
+if st.session_state.current_user_name.lower() == "admin":
     st.session_state.logged_in_as_admin = True
     st.session_state.found_user_email = "admin"
-    st.session_state.current_user_name = "admin"
     st.header("관리자 기능")
 
     # 엑셀 업로드 섹션
     st.subheader("💻 Excel File Processor")
     uploaded_file = st.file_uploader("암호화된 Excel 파일을 업로드하세요", type=["xlsx", "xlsm"])
-    
-    # 엑셀 업로드 로직
+
     if uploaded_file:
         uploaded_file.seek(0)
         
@@ -738,7 +709,6 @@ if is_admin_input:
         try:
             file_name = uploaded_file.name
             
-            # --- 엑셀 파일 이름에서 예약 날짜 정보 추출 (수정) ---
             date_match = re.search(r'_(\d{2})(\d{2})', file_name)
             reservation_date_excel = None
             if date_match:
@@ -916,7 +886,7 @@ if is_admin_input:
             st.error(f"예상치 못한 오류 발생: {e}")
 
     st.markdown("---")
-    st.subheader("🛠️ Administer password")
+    st.subheader("🛠️ 최고 관리자 권한")
     admin_password_input = st.text_input("관리자 비밀번호를 입력하세요", type="password", key="admin_password")
 
     try:
@@ -927,7 +897,7 @@ if is_admin_input:
     
     if admin_password_input and admin_password_input == secret_admin_password:
         st.session_state.admin_password_correct = True
-        st.success("관리자 권한이 활성화되었습니다.")
+        st.success("최고 관리자 권한이 활성화되었습니다.")
     elif admin_password_input and admin_password_input != secret_admin_password:
         st.error("비밀번호가 틀렸습니다.")
         st.session_state.admin_password_correct = False
@@ -991,33 +961,27 @@ if is_admin_input:
                 st.rerun()
             else:
                 st.warning("삭제할 사용자를 선택해주세요.")
-else:
-    # #8. Regular User Mode
-    # 이메일과 이름을 입력받는 폼
-    with st.form("user_login_form"):
-        st.session_state.found_user_email = st.text_input("내원 알람 노티를 받을 이메일 주소를 입력해주세요", value=st.session_state.found_user_email, key="user_email_input")
-        st.session_state.current_user_name = st.text_input("사용자 이름을 입력해주세요", key="user_name_input")
-        login_submitted = st.form_submit_button("로그인")
 
-    if login_submitted:
+# --- #8. Regular User Mode ---
+else:
+    st.session_state.logged_in_as_admin = False
+    st.session_state.found_user_email = st.text_input("이메일을 입력하세요", key="user_email_input", value=st.session_state.found_user_email)
+    
+    if st.session_state.current_user_name and st.session_state.found_user_email:
         user_id_final = st.session_state.found_user_email
         user_name = st.session_state.current_user_name
         
-        if not user_name or not user_id_final:
-            st.warning("이메일 주소와 사용자 이름을 모두 입력해주세요.")
-            st.stop()
-        
         firebase_key = sanitize_path(user_id_final)
         
-        # 사용자 정보 업데이트
         current_user_meta_data = users_ref.child(firebase_key).get()
         if not current_user_meta_data or current_user_meta_data.get("name") != user_name or current_user_meta_data.get("email") != user_id_final:
             users_ref.child(firebase_key).update({"name": user_name, "email": user_id_final})
             st.success(f"사용자 정보가 업데이트되었습니다: {user_name} ({user_id_final})")
+        else:
+            st.success(f"로그인 성공: {user_name}님, 환영합니다!")
             
         st.session_state.current_firebase_key = firebase_key
         
-        # 탭 UI 생성 (일반 사용자 모드에서만)
         tab1, tab2, tab3 = st.tabs(["환자 등록/조회", "OCS 현황 분석", "사용자별 환자 조회"])
 
         with tab1:
@@ -1087,7 +1051,6 @@ else:
 
                         st.rerun()
         
-        # OCS 현황 분석 탭
         with tab2:
             st.header("OCS 현황 분석")
             if 'processed_excel_data_dfs' in st.session_state and st.session_state.processed_excel_data_dfs:
@@ -1095,11 +1058,14 @@ else:
             else:
                 st.info("OCS 현황 분석 기능은 관리자 모드에서 파일을 업로드해야 활성화됩니다.")
 
-        # 사용자별 환자 조회 탭 (본인 환자만 조회)
         with tab3:
             st.header("나의 환자 OCS 파일 매칭 조회")
             if 'processed_excel_data_dfs' in st.session_state and st.session_state.processed_excel_data_dfs:
-                # 여기에 현재 로그인한 사용자의 환자 데이터를 OCS 파일과 매칭하는 로직을 구현합니다.
                 st.info("이 기능은 개발 중입니다.")
             else:
-                st.info("OCS 현황 분석 기능은 관리자 모드에서 파일을 업로드해야 활성화됩니다.")
+                st.info("OCS 파일은 관리자 모드에서 업로드해야 사용할 수 있습니다.")
+
+    elif not st.session_state.current_user_name:
+        st.info("사용자 이름을 입력해주세요.")
+    else:
+        st.info("이메일 주소를 입력해주세요.")
