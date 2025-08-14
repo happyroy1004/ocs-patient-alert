@@ -247,13 +247,17 @@ def get_google_calendar_service(user_id_safe):
         db.reference(f"users/{user_id_safe}/google_creds").delete()
         return None
 
-def create_calendar_event(service, patient_name, pid, department):
+def create_calendar_event(service, patient_name, pid, department, reservation_date_str=None, reservation_time_str=None):
     """
-    Google Calendar에 이벤트를 생성합니다.
+    Google Calendar에 이벤트를 생성합니다. 예약 날짜와 시간을 기반으로 30분 일정을 만듭니다.
     """
+    seoul_tz = datetime.timezone(datetime.timedelta(hours=9))
+    
     # 예약 날짜와 시간을 사용하여 이벤트 시작/종료 시간 설정
     if reservation_date_str and reservation_time_str:
         try:
+            # Note: The format of '예약일' and '예약시간' columns needs to be confirmed.
+            # Assuming 'YYYY-MM-DD' and 'HH:MM'
             date_time_str = f"{reservation_date_str} {reservation_time_str}"
             event_start = datetime.datetime.strptime(date_time_str, "%Y-%m-%d %H:%M").astimezone(seoul_tz)
             event_end = event_start + datetime.timedelta(minutes=30)
@@ -267,24 +271,23 @@ def create_calendar_event(service, patient_name, pid, department):
         event_start = datetime.datetime.now(seoul_tz)
         event_end = event_start + datetime.timedelta(minutes=30)
     
-    
     event = {
-        'summary': f'환자 등록: {patient_name} ({department})',
+        'summary': f'환자 내원: {patient_name} ({department})',
         'location': f'진료번호: {pid}',
         'description': f'환자명: {patient_name}\n진료번호: {pid}\n등록 과: {department}',
         'start': {
-            'dateTime': event_start_time,
+            'dateTime': event_start.isoformat(),
             'timeZone': 'Asia/Seoul',
         },
         'end': {
-            'dateTime': event_end_time,
+            'dateTime': event_end.isoformat(),
             'timeZone': 'Asia/Seoul',
         },
     }
     
     try:
         event = service.events().insert(calendarId='primary', body=event).execute()
-        st.success(f"'{patient_name}' 환자 등록 일정이 캘린더에 추가되었습니다.")
+        st.success(f"'{patient_name}' 환자 내원 일정이 캘린더에 추가되었습니다.")
     except HttpError as error:
         st.error(f"캘린더 이벤트 생성 중 오류 발생: {error}")
         st.warning("구글 캘린더 인증 권한을 다시 확인해주세요.")
@@ -732,7 +735,8 @@ if is_admin_input:
                                     service = build('calendar', 'v3', credentials=creds)
                                     if not df_matched.empty:
                                         for _, row in df_matched.iterrows():
-                                            create_calendar_event(service, row['환자명'], row['진료번호'], row.get('시트', ''), reservation_date_str=row.get('예약일'), reservation_time_str=row.get('예약시간'))
+                                            create_calendar_event(service, row['환자명'], row['진료번호'], row.get('시트', ''), 
+                                                reservation_date_str=row.get('예약일'), reservation_time_str=row.get('예약시간'))
                                     st.success(f"**{user_name}**님의 캘린더에 일정을 추가했습니다.")
                                 except Exception as e:
                                     st.error(f"**{user_name}**님의 캘린더 일정 추가 실패: {e}")
@@ -949,6 +953,9 @@ else:
                 st.success(f"{name} ({pid}) [{selected_department}] 환자 등록 완료")
                 
                 if st.session_state.google_calendar_service:
+                     # Manual registration does not have reservation date/time.
+                     # The function will use the current time as a fallback.
                     create_calendar_event(st.session_state.google_calendar_service, name, pid, selected_department)
+                # ... (rest of the block) ...
 
                 st.rerun()
