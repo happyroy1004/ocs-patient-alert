@@ -21,6 +21,7 @@ from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 import pickle # 인증 토큰 저장을 위해 사용
+import base64 # 쿼리 파라미터 인코딩/디코딩을 위해 사용
 
 # --- 이메일 유효성 검사 함수 ---
 def is_valid_email(email):
@@ -139,41 +140,68 @@ def send_email(receiver, rows, sender, password, date_str=None, custom_message=N
     except Exception as e:
         return str(e)
 
-# --- Google Calendar API 관련 함수 ---
+# --- Google Calendar API 관련 함수 (수정) ---
 
-# SCOPES = ["https://www.googleapis.com/auth/calendar"]
-# NOTE: 이 코드는 secrets.toml에 client_secrets.json 내용이 있어야 동작합니다.
-# NOTE: Streamlit 환경에서는 token.json 파일 저장이 어려우므로, 실제 배포 시에는 별도의 파일 시스템 또는 DB에 저장해야 합니다.
+# 사용할 스코프 정의. 캘린더 이벤트 생성 권한
+SCOPES = ["https://www.googleapis.com/auth/calendar.events"]
 
-def get_google_calendar_service(user_email):
-    """사용자별로 Google Calendar 서비스 객체를 반환합니다."""
-    creds = None
-    # NOTE: Streamlit 환경에서는 세션 상태를 활용하여 토큰을 저장하는 방식이 더 적합할 수 있습니다.
-    # 예시: st.session_state.get(f'google_token_{user_email}')
-    # 여기서는 pickle 파일을 사용하는 방식을 개념적으로만 보여줍니다.
-    token_file = f'token_{sanitize_path(user_email)}.pickle'
-    
-    if os.path.exists(token_file):
-        with open(token_file, 'rb') as token:
-            creds = pickle.load(token)
-    
-    if not creds or not creds.valid:
-        if creds and creds.expired and creds.refresh_token:
-            creds.refresh(Request())
+# Streamlit session state에 저장할 키
+GOOGLE_TOKEN_KEY = "google_creds"
+
+def get_google_calendar_service(user_id_safe):
+    """
+    사용자별로 Google Calendar 서비스 객체를 반환하거나 인증 URL을 표시합니다.
+    Streamlit 세션 상태를 활용하여 인증 정보를 관리합니다.
+    """
+    creds = st.session_state.get(f"{GOOGLE_TOKEN_KEY}_{user_id_safe}")
+
+    if not creds:
+        # secrets.toml에서 클라이언트 설정 불러오기
+        client_config = {
+            "web": {
+                "client_id": st.secrets["googlecalendar"]["client_id"],
+                "client_secret": st.secrets["googlecalendar"]["client_secret"],
+                "redirect_uris": [st.secrets["googlecalendar"]["redirect_uri"]],
+                "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+                "token_uri": "https://oauth2.googleapis.com/token",
+                "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs"
+            }
+        }
+        
+        # 인증 플로우 생성
+        flow = InstalledAppFlow.from_client_config(client_config, SCOPES, redirect_uri=st.secrets["googlecalendar"]["redirect_uri"])
+        
+        # URL 쿼리 파라미터에서 인증 코드를 확인
+        auth_code = st.query_params.get("code")
+        
+        if auth_code:
+            # 인증 코드를 사용하여 토큰을 교환
+            flow.fetch_token(code=auth_code)
+            creds = flow.credentials
+            st.session_state[f"{GOOGLE_TOKEN_KEY}_{user_id_safe}"] = creds
+            st.success("Google Calendar 인증이 완료되었습니다.")
+            # URL에서 쿼리 파라미터 제거
+            st.experimental_set_query_params() 
+            st.rerun() # 앱을 다시 실행하여 인증 성공 상태로 전환
+
         else:
-            # NOTE: 실제 환경에서는 Streamlit 앱 외부에서 이 인증 URL을 생성하고 사용자에게 보여줘야 합니다.
-            # 예시: flow = InstalledAppFlow.from_client_secrets_file('client_secrets.json', SCOPES)
-            # st.markdown(f"[Google 계정으로 로그인](https://accounts.google.com/o/oauth2/auth?...)")
-            # 인증 후 redirect URL로 받은 코드를 처리하는 로직 필요
-            # 이 코드는 로컬 개발 환경에서만 동작하는 예시입니다.
-            st.info("Google Calendar 연동을 위해 인증이 필요합니다.")
+            # 인증 URL 생성
+            auth_url, _ = flow.authorization_url(prompt='consent')
+            st.warning("Google Calendar 연동을 위해 인증이 필요합니다.")
+            st.markdown(f"[이 링크를 클릭하여 Google Calendar에 접근 권한을 부여하세요]({auth_url})")
             return None
+
+    if creds.expired and creds.refresh_token:
+        # 토큰 만료 시 재발급
+        creds.refresh(Request())
+        st.session_state[f"{GOOGLE_TOKEN_KEY}_{user_id_safe}"] = creds
 
     try:
         service = build('calendar', 'v3', credentials=creds)
         return service
     except HttpError as error:
-        st.error(f'An error occurred: {error}')
+        st.error(f'Google Calendar 서비스 생성 실패: {error}')
+        st.session_state.pop(f"{GOOGLE_TOKEN_KEY}_{user_id_safe}", None)
         return None
 
 def create_calendar_event(service, event_info):
@@ -506,6 +534,7 @@ if is_admin_input:
         
         try:
             file_name = uploaded_file.name
+            # 파일 이름에서 날짜 정보 추출 (예: '2024')
             date_match = re.search(r'(\d{4})', file_name)
             extracted_date = date_match.group(1) if date_match else None
 
@@ -582,7 +611,7 @@ if is_admin_input:
                                     
                     if matched_rows_for_user:
                         combined_matched_df = pd.DataFrame(matched_rows_for_user)
-                        matched_users.append({"email": user_email, "name": user_display_name, "data": combined_matched_df})
+                        matched_users.append({"email": user_email, "name": user_display_name, "data": combined_matched_df, "safe_key": uid_safe})
 
             if matched_users:
                 st.success(f"{len(matched_users)}명의 사용자와 일치하는 환자 발견됨.")
@@ -607,10 +636,10 @@ if is_admin_input:
                 with calendar_col:
                     # 관리자용 구글 캘린더 일정 추가 버튼
                     if st.button("Google Calendar 일정 추가"):
-                        # NOTE: 관리자 계정의 Google Calendar 서비스 객체를 가져오는 로직이 필요합니다.
-                        # 여기서는 임시로 None을 사용합니다.
-                        # admin_service = get_google_calendar_service("admin@example.com")
-                        admin_service = None # 실제 구현 시 위 함수를 사용하여 인증
+                        # 관리자 계정의 Google Calendar 서비스 객체를 가져오는 로직 (예시)
+                        # 여기서는 관리자 전용 key를 만들고 그걸 이용해 인증했다고 가정
+                        admin_safe_key = sanitize_path("admin@example.com") 
+                        admin_service = get_google_calendar_service(admin_safe_key)
                         
                         if admin_service:
                             for user_match_info in matched_users:
@@ -769,16 +798,11 @@ else: # is_admin_input이 False일 때
 
     st.subheader(f"{user_name}님의 등록 환자 목록")
     
-    # 일반 사용자용 구글 캘린더 권한 부여 버튼 추가
+    # 일반 사용자용 구글 캘린더 권한 부여 버튼 추가 (수정)
     if st.button("Google Calendar 권한 부여"):
-        # NOTE: 이 버튼 클릭 시 Google OAuth 2.0 인증 절차를 시작해야 합니다.
-        # 실제 구현에서는 redirect URL을 통해 인증 코드를 받아와 토큰을 생성해야 합니다.
-        st.warning("Google Calendar 연동을 위한 인증 절차를 시작합니다. (실제 환경에서는 별도 인증 창이 열립니다.)")
-        # 예시:
-        # flow = InstalledAppFlow.from_client_secrets_file('client_secrets.json', SCOPES)
-        # auth_url, _ = flow.authorization_url(prompt='consent')
-        # st.markdown(f"[이 링크를 클릭하여 Google Calendar에 접근 권한을 부여하세요]({auth_url})")
-
+        # 버튼 클릭 시 인증 로직 실행
+        get_google_calendar_service(firebase_key)
+        
     existing_patient_data = patients_ref_for_user.get()
 
     if existing_patient_data:
