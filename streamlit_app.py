@@ -14,8 +14,6 @@ import json
 import os
 import time
 import datetime
-
-# --- Google Calendar API 관련 import 및 설정 ---
 from google_auth_oauthlib.flow import InstalledAppFlow
 from google.oauth2.credentials import Credentials
 from google.auth.transport.requests import Request
@@ -85,13 +83,20 @@ def send_email(receiver, rows, sender, password, date_str=None, custom_message=N
         if custom_message:
             msg['Subject'] = "단체 메일 알림"
             body = custom_message
+            msg.attach(MIMEText(body, 'html'))
         else:
             subject_prefix = ""
             if date_str:
                 subject_prefix = f"{date_str}일에 내원하는 "
             msg['Subject'] = f"{subject_prefix}등록 환자 내원 알림"
             
-            html_table = rows.to_html(index=False, escape=False)
+            # HTML 변환 전에 DataFrame에 '시트' 컬럼이 있으면 제거
+            if '시트' in rows.columns:
+                rows_for_html = rows.drop(columns=['시트'])
+            else:
+                rows_for_html = rows
+
+            html_table = rows_for_html.to_html(index=False, escape=False)
             
             style = """
             <style>
@@ -126,8 +131,7 @@ def send_email(receiver, rows, sender, password, date_str=None, custom_message=N
             </style>
             """
             body = f"다음 토탈 환자가 내일 내원예정입니다:<br><br><div class='table-container'>{style}{html_table}</div>"
-            
-        msg.attach(MIMEText(body, 'html'))
+            msg.attach(MIMEText(body, 'html'))
         
         server = smtplib.SMTP('smtp.gmail.com', 587)
         server.starttls()
@@ -164,10 +168,12 @@ professors_dict = {
 
 # 엑셀 시트 데이터 처리 (교수님/비교수님, 시간/의사별 정렬)
 def process_sheet_v8(df, professors_list, sheet_key):
-    df = df.drop(columns=['예약일시'], errors='ignore')
-    if '예약의사' not in df.columns or '예약시간' not in df.columns:
-        st.error(f"시트 처리 오류: '예약의사' 또는 '예약시간' 컬럼이 DataFrame에 없습니다.")
-        return pd.DataFrame(columns=['진료번호', '예약시간', '환자명', '예약의사', '진료내역'])
+    # 필요한 컬럼이 존재하는지 확인
+    required_cols = ['진료번호', '예약시간', '환자명', '예약의사', '진료내역']
+    for col in required_cols:
+        if col not in df.columns:
+            st.error(f"시트 처리 오류: '{col}' 컬럼이 DataFrame에 없습니다.")
+            return pd.DataFrame(columns=required_cols)
 
     df = df.sort_values(by=['예약의사', '예약시간'])
     professors = df[df['예약의사'].isin(professors_list)]
@@ -179,35 +185,39 @@ def process_sheet_v8(df, professors_list, sheet_key):
         non_professors = non_professors.sort_values(by=['예약의사', '예약시간'])
 
     final_rows = []
-    current_time = None
-    current_doctor = None
-
-    for _, row in non_professors.iterrows():
-        if sheet_key != '보철':
-            if current_time != row['예약시간']:
-                if current_time is not None:
+    
+    # 비교수님 데이터 처리
+    current_time_or_doctor = None
+    if non_professors.empty:
+        pass  # 비교수님 데이터가 없으면 아무것도 하지 않음
+    elif sheet_key != '보철':
+        for _, row in non_professors.iterrows():
+            if current_time_or_doctor != row['예약시간']:
+                if current_time_or_doctor is not None:
                     final_rows.append(pd.Series([" "] * len(df.columns), index=df.columns))
-                current_time = row['예약시간']
-        else:
-            if current_doctor != row['예약의사']:
-                if current_doctor is not None:
+                current_time_or_doctor = row['예약시간']
+            final_rows.append(row)
+    else: # 보철과일 경우
+        for _, row in non_professors.iterrows():
+            if current_time_or_doctor != row['예약의사']:
+                if current_time_or_doctor is not None:
                     final_rows.append(pd.Series([" "] * len(df.columns), index=df.columns))
-                current_doctor = row['예약의사']
-        final_rows.append(row)
+                current_time_or_doctor = row['예약의사']
+            final_rows.append(row)
 
-    final_rows.append(pd.Series([" "] * len(df.columns), index=df.columns))
-    final_rows.append(pd.Series(["<교수님>"] + [" "] * (len(df.columns) - 1), index=df.columns))
-
-    current_professor = None
-    for _, row in professors.iterrows():
-        if current_professor != row['예약의사']:
-            if current_professor is not None:
-                final_rows.append(pd.Series([" "] * len(df.columns), index=df.columns))
-            current_professor = row['예약의사']
-        final_rows.append(row)
+    # 교수님 데이터 처리
+    if not professors.empty:
+        final_rows.append(pd.Series([" "] * len(df.columns), index=df.columns))
+        final_rows.append(pd.Series(["<교수님>"] + [" "] * (len(df.columns) - 1), index=df.columns))
+        current_professor = None
+        for _, row in professors.iterrows():
+            if current_professor != row['예약의사']:
+                if current_professor is not None:
+                    final_rows.append(pd.Series([" "] * len(df.columns), index=df.columns))
+                current_professor = row['예약의사']
+            final_rows.append(row)
 
     final_df = pd.DataFrame(final_rows, columns=df.columns)
-    required_cols = ['진료번호', '예약시간', '환자명', '예약의사', '진료내역']
     final_df = final_df[[col for col in required_cols if col in final_df.columns]]
     return final_df
 
@@ -257,6 +267,10 @@ def process_excel_file_and_style(file_bytes_io):
         professors_list = professors_dict.get(sheet_key, [])
         try:
             processed_df = process_sheet_v8(df, professors_list, sheet_key)
+            # 필터링된 데이터가 없는 경우 다음 시트로 넘어감
+            if processed_df.empty:
+                st.info(f"시트 '{sheet_name_raw}'에 처리할 데이터가 없습니다.")
+                continue
             processed_sheets_dfs[sheet_name_raw] = processed_df
         except KeyError as e:
             st.error(f"시트 '{sheet_name_raw}' 처리 중 컬럼 오류: {e}. 이 시트는 건너깁니다.")
@@ -314,7 +328,8 @@ st.markdown("""
     }
     </style>
     <h1>
-        <a href="." class="title-link">환자 내원 확인 시스템</a>
+        <a href="."
+        class="title-link">환자 내원 확인 시스템</a>
     </h1>
 """, unsafe_allow_html=True)
 st.markdown("---")
@@ -325,7 +340,7 @@ st.markdown("<p style='text-align: left; color: grey; font-size: small;'>directe
 # URL 쿼리 매개변수에 'clear'가 있을 경우 초기화
 if "clear" in st.query_params and st.query_params["clear"] == "true":
     st.session_state.clear()
-    st.query_params["clear"] = "false"
+    del st.query_params["clear"]
     st.rerun()
 
 if 'email_change_mode' not in st.session_state:
@@ -369,7 +384,7 @@ else:
     st.warning(f"⚠️ {pdf_display_name} 파일을 찾을 수 없습니다. (경로: {pdf_file_path})")
 
 # 사용자 이름 입력 필드
-user_name = st.text_input("사용자 이름을 입력하세요 (예시: 홍길동)")
+user_name = st.text_input("사용자 이름을 입력하세요 (예시: 홍길동)", key="user_name_input")
 
 # Admin 계정 확인 로직
 is_admin_input = (user_name.strip().lower() == "admin")
@@ -405,11 +420,11 @@ if user_name and not is_admin_input and not st.session_state.email_change_mode:
 # 이메일 입력 필드
 if not is_admin_input:
     if st.session_state.email_change_mode or not st.session_state.found_user_email:
-        user_id_input = st.text_input("아이디를 입력하세요 (예시: example@gmail.com)", value=st.session_state.user_id_input_value)
+        user_id_input = st.text_input("아이디를 입력하세요 (예시: example@gmail.com)", value=st.session_state.user_id_input_value, key="user_id_input")
         if user_id_input != st.session_state.user_id_input_value:
             st.session_state.user_id_input_value = user_id_input
     else:
-        st.text_input("아이디 (등록된 이메일)", value=st.session_state.found_user_email, disabled=True)
+        st.text_input("아이디 (등록된 이메일)", value=st.session_state.found_user_email, disabled=True, key="user_id_display")
         if st.button("이메일 주소 변경"):
             st.session_state.email_change_mode = True
             st.rerun()
@@ -460,9 +475,8 @@ def get_google_calendar_service():
                 st.session_state.credentials = None
                 return None
         else:
-            return None  # 인증 정보가 없으면 None 반환
+            return None
     
-    # 인증 정보가 유효하면 서비스 객체 생성
     service = build('calendar', 'v3', credentials=creds)
     return service
 
@@ -514,7 +528,7 @@ if is_admin_input:
     st.session_state.logged_in_as_admin = True
     st.session_state.found_user_email = "admin"
     st.session_state.current_user_name = "admin"
-    st.session_state.admin_mode = True # 세션 상태 업데이트
+    st.session_state.admin_mode = True
     
     # 엑셀 업로드 섹션 - 비밀번호 없이도 접근 가능
     st.subheader("💻 Excel File Processor")
@@ -524,7 +538,9 @@ if is_admin_input:
     if uploaded_file:
         uploaded_file.seek(0)
         
-        password = st.text_input("엑셀 파일 비밀번호 입력", type="password") if is_encrypted_excel(uploaded_file) else None
+        password = st.text_input("엑셀 파일 비밀번호 입력", type="password", key="excel_password_input") if is_encrypted_excel(uploaded_file) else None
+        
+        # 암호화 파일인 경우, 비밀번호가 입력될 때까지 대기
         if is_encrypted_excel(uploaded_file) and not password:
             st.info("암호화된 파일입니다. 비밀번호를 입력해주세요.")
             st.stop()
@@ -592,19 +608,23 @@ if is_admin_input:
                             continue
                             
                         for _, excel_row in df_sheet.iterrows():
-                            excel_patient_name = excel_row["환자명"].strip()
-                            excel_patient_pid = excel_row["진료번호"].strip().zfill(8)
+                            # NaN 값 처리
+                            excel_patient_name = str(excel_row.get("환자명", "")).strip()
+                            excel_patient_pid = str(excel_row.get("진료번호", "")).strip().zfill(8)
+
+                            if not excel_patient_name or not excel_patient_pid:
+                                continue # 유효하지 않은 행은 건너뜀
                             
                             for registered_patient in registered_patients_data:
                                 if (registered_patient["환자명"] == excel_patient_name and
-                                        registered_patient["진료번호"] == excel_patient_pid and
-                                        registered_patient["등록과"] == excel_sheet_department):
+                                    registered_patient["진료번호"] == excel_patient_pid and
+                                    registered_patient["등록과"] == excel_sheet_department):
                                     
                                     matched_row_copy = excel_row.copy()
                                     matched_row_copy["시트"] = sheet_name_excel_raw
                                     matched_rows_for_user.append(matched_row_copy)
                                     break
-                                    
+                                        
                     if matched_rows_for_user:
                         combined_matched_df = pd.DataFrame(matched_rows_for_user)
                         matched_users.append({"email": user_email, "name": user_display_name, "data": combined_matched_df})
@@ -646,7 +666,6 @@ if is_admin_input:
     st.subheader("🛠️ Administer password")
     admin_password_input = st.text_input("관리자 비밀번호를 입력하세요", type="password", key="admin_password")
 
-    # secrets.toml에서 비밀번호 불러오기
     try:
         secret_admin_password = st.secrets["admin"]["password"]
     except KeyError:
@@ -660,10 +679,9 @@ if is_admin_input:
         st.error("비밀번호가 틀렸습니다.")
         st.session_state.admin_password_correct = False
     
-    # 비밀번호가 맞았을 때만 추가 기능 표시
     if st.session_state.admin_password_correct:
         st.markdown("---")
-        st.subheader("📦 메일 및 캘린더 기능") # 제목 변경
+        st.subheader("📦 메일 및 캘린더 기능")
         
         col1, col2 = st.columns(2)
         with col1:
@@ -671,27 +689,26 @@ if is_admin_input:
             user_list_for_dropdown = [f"{user_info.get('name', '이름 없음')} ({user_info.get('email', '이메일 없음')})" 
                                         for user_info in (all_users_meta.values() if all_users_meta else [])]
             
-            # '모든 사용자 선택' 체크박스 추가
-            select_all_users_button = st.button("모든 사용자 선택/해제", key="select_all_btn")
-            if select_all_users_button:
+            if st.button("모든 사용자 선택/해제", key="select_all_btn"):
                 st.session_state.select_all_users = not st.session_state.select_all_users
+                # 버튼을 누른 후 멀티셀렉트의 기본값을 업데이트하고 다시 그리기 위해 rerun
+                st.rerun()
 
             default_selection = user_list_for_dropdown if st.session_state.select_all_users else []
 
             selected_users_for_mail = st.multiselect("메일 보낼 사용자 선택", user_list_for_dropdown, default=default_selection, key="mail_multiselect")
             
-            custom_message = st.text_area("보낼 메일 내용", height=200)
-            if st.button("선택된 사용자에게 메일 보내기"): # 버튼 이름 변경
-                if custom_message:
+            custom_message = st.text_area("보낼 메일 내용", height=200, key="mail_content")
+            if st.button("선택된 사용자에게 메일 보내기"):
+                if custom_message and selected_users_for_mail:
                     sender = st.secrets["gmail"]["sender"]
                     sender_pw = st.secrets["gmail"]["app_password"]
                     
                     email_list = []
-                    if selected_users_for_mail:
-                        for user_str in selected_users_for_mail:
-                            match = re.search(r'\((.*?)\)', user_str)
-                            if match:
-                                email_list.append(match.group(1))
+                    for user_str in selected_users_for_mail:
+                        match = re.search(r'\((.*?)\)', user_str)
+                        if match:
+                            email_list.append(match.group(1))
                     
                     if email_list:
                         with st.spinner("메일 전송 중..."):
@@ -702,9 +719,9 @@ if is_admin_input:
                                 else:
                                     st.error(f"{email}로 메일 전송 실패: {result}")
                     else:
-                        st.warning("메일 내용을 입력했으나, 선택된 사용자가 없습니다. 전송이 진행되지 않았습니다.")
+                        st.warning("선택된 사용자가 없습니다. 전송이 진행되지 않았습니다.")
                 else:
-                    st.warning("메일 내용을 입력해주세요.")
+                    st.warning("메일 내용을 입력하고 사용자를 선택해주세요.")
         
         with col2:
             st.subheader("Google 캘린더에 일정 추가")
@@ -713,8 +730,6 @@ if is_admin_input:
                 
                 if service:
                     st.info("권한이 확인되었습니다. 캘린더에 일정을 추가합니다.")
-                    # 여기에 캘린더에 추가할 실제 로직을 작성하세요.
-                    # 예시:
                     event_summary = "환자 진료 예약 (테스트)"
                     event_start = datetime.datetime.now(datetime.timezone.utc)
                     event_end = event_start + datetime.timedelta(hours=1)
@@ -745,7 +760,7 @@ if is_admin_input:
     
 
 # --- 일반 사용자 모드 ---
-else: # is_admin_input이 False일 때
+else:
     # 최종적으로 사용할 Firebase 키
     user_id_final = st.session_state.user_id_input_value if st.session_state.email_change_mode or not st.session_state.found_user_email else st.session_state.found_user_email
     firebase_key = sanitize_path(user_id_final) if user_id_final else ""
@@ -762,7 +777,6 @@ else: # is_admin_input이 False일 때
         if not current_user_meta_data or current_user_meta_data.get("name") != user_name or current_user_meta_data.get("email") != user_id_final:
             users_ref.child(firebase_key).update({"name": user_name, "email": user_id_final})
             st.success(f"사용자 정보가 업데이트되었습니다: {user_name} ({user_id_final})")
-            # 세션 상태 업데이트 (새로운 등록 또는 정보 변경 시)
             st.session_state.current_firebase_key = firebase_key
             st.session_state.current_user_name = user_name
             st.session_state.found_user_email = user_id_final
