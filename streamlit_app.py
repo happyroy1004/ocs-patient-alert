@@ -247,15 +247,14 @@ def get_google_calendar_service(user_id_safe):
         db.reference(f"users/{user_id_safe}/google_creds").delete()
         return None
 
-def create_calendar_event(service, patient_name, pid, department, reservation_date_str, reservation_time_str):
+def create_calendar_event(service, patient_name, pid, department, reservation_date_str, reservation_time_str, doctor_name):
     """
-    Google Calendar에 이벤트를 생성합니다. 예약 날짜와 시간을 기반으로 30분 일정을 만듭니다.
+    Google Calendar에 이벤트를 생성합니다. 예약 날짜와 시간을 기반으로 30분 일정을 만들고 의사 이름을 추가합니다.
     """
     seoul_tz = datetime.timezone(datetime.timedelta(hours=9))
-    
+
     # 예약 날짜와 시간을 사용하여 이벤트 시작/종료 시간 설정
     try:
-        # 예약 날짜와 시간을 조합하여 날짜/시간 문자열 생성
         date_time_str = f"{reservation_date_str} {reservation_time_str}"
         
         # Naive datetime 객체 생성 후 한국 시간대(KST)로 로컬라이즈
@@ -269,8 +268,11 @@ def create_calendar_event(service, patient_name, pid, department, reservation_da
         event_start = datetime.datetime.now(seoul_tz)
         event_end = event_start + datetime.timedelta(minutes=30)
     
+    # 캘린더 이벤트 요약(summary)을 새로운 형식으로 변경
+    summary_text = f'내원예정: {patient_name} ({department}, {doctor_name})' if doctor_name else f'내원예정: {patient_name} ({department})'
+
     event = {
-        'summary': f'환자 내원: {patient_name} ({department})',
+        'summary': summary_text,
         'location': f'진료번호: {pid}',
         'description': f'환자명: {patient_name}\n진료번호: {pid}\n등록 과: {department}',
         'start': {
@@ -291,7 +293,7 @@ def create_calendar_event(service, patient_name, pid, department, reservation_da
         st.warning("구글 캘린더 인증 권한을 다시 확인해주세요.")
     except Exception as e:
         st.error(f"알 수 없는 오류 발생: {e}")
-        
+
 #4. Excel Processing Constants and Functions
 # --- 엑셀 처리 관련 상수 및 함수 ---
 sheet_keyword_to_department_map = {
@@ -743,9 +745,11 @@ if is_admin_input:
                                     service = build('calendar', 'v3', credentials=creds)
                                     if not df_matched.empty:
                                         for _, row in df_matched.iterrows():
-                                            # create_calendar_event 호출 시 날짜와 시간 인자 전달 (수정)
+                                            # create_calendar_event 호출 시 날짜, 시간, 의사 이름 인자 전달 (수정)
+                                            # 엑셀 파일에 '진료의사' 컬럼이 있다고 가정합니다.
+                                            doctor_name = row.get('진료의사', '')
                                             create_calendar_event(service, row['환자명'], row['진료번호'], row.get('시트', ''), 
-                                                reservation_date_str=reservation_date_excel, reservation_time_str=row.get('예약시간'))
+                                                reservation_date_str=reservation_date_excel, reservation_time_str=row.get('예약시간'), doctor_name=doctor_name)
                                     st.success(f"**{user_name}**님의 캘린더에 일정을 추가했습니다.")
                                 except Exception as e:
                                     st.error(f"**{user_name}**님의 캘린더 일정 추가 실패: {e}")
@@ -872,7 +876,7 @@ if is_admin_input:
                 st.rerun()
             else:
                 st.warning("삭제할 사용자를 선택해주세요.")
-
+                
 #8. Regular User Mode
 # --- 일반 사용자 모드 ---
 else:
