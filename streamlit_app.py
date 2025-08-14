@@ -1,5 +1,3 @@
-# -*- coding: utf-8 -*-
-
 import streamlit as st
 import pandas as pd
 import firebase_admin
@@ -733,7 +731,7 @@ if is_admin_input:
     
     if st.session_state.admin_password_correct:
         st.markdown("---")
-        st.subheader("� 메일 및 캘린더 기능")
+        st.subheader("📦 메일 및 캘린더 기능")
         
         # 캘린더 연동 상태를 보여주는 부분 추가
         if st.session_state.credentials and st.session_state.credentials.valid:
@@ -900,4 +898,3 @@ else:
                 patients_ref_for_user.push().set({"환자명": name, "진료번호": pid, "등록과": selected_department})
                 st.success(f"{name} ({pid}) [{selected_department}] 환자 등록 완료")
                 st.rerun()
-�
