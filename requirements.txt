@@ -1,5 +1,8 @@
 streamlit
 pandas
-openpyxl
 firebase-admin
+openpyxl
 msoffcrypto-tool
+google-api-python-client
+google-auth-oauthlib
+google-auth-httplib2
