@@ -301,44 +301,76 @@ def process_excel_file_and_style(file_bytes_io):
 SCOPES = ['https://www.googleapis.com/auth/calendar.events']
 
 def get_google_calendar_service():
-    """구글 캘린더 API 서비스 객체를 반환"""
+    """
+    구글 캘린더 API 서비스 객체를 반환.
+    로컬 환경에서는 `client_secret.json`을,
+    배포 환경에서는 `st.secrets`를 사용합니다.
+    """
     creds = None
+    token_path = 'token.json'
     
-    # Streamlit secrets에서 클라이언트 정보 가져오기
-    client_config = {
-        "web": {
-            "client_id": st.secrets["google_calendar"]["client_id"],
-            "client_secret": st.secrets["google_calendar"]["client_secret"],
-            "auth_uri": "https://accounts.google.com/o/oauth2/auth",
-            "token_uri": "https://oauth2.googleapis.com/token",
-            "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs"
-        }
-    }
-
-    # Streamlit 세션 상태에 토큰을 저장하여 재사용
-    token_info = st.session_state.get('google_calendar_token', None)
-
-    if token_info:
-        creds = Credentials.from_authorized_user_info(token_info, SCOPES)
+    client_config = None
+    is_local_run = not os.getenv("STREAMLIT_SERVER_USER_AGENT")
     
-    if not creds or not creds.valid:
-        if creds and creds.expired and creds.refresh_token:
-            creds.refresh(Request())
-        else:
-            flow = InstalledAppFlow.from_client_config(
-                client_config, SCOPES, redirect_uri=st.secrets.get("google_calendar", {}).get("redirect_uri", "http://localhost:8501")
-            )
-            auth_url, _ = flow.authorization_url(prompt='consent')
-            st.markdown(f"[Google 계정 연동하기]({auth_url})")
-
-            # Streamlit Cloud에서 토큰을 얻기 위한 추가 로직
-            # 이 코드는 로컬 테스트 및 단순 배포 환경을 위한 간소화된 버전이며,
-            # 실제 운영 환경에서는 Streamlit의 OAuth 인증 가이드를 따르는 것이 안전합니다.
-            st.warning("Streamlit Cloud 배포 시에는 인증 로직을 Streamlit의 OAuth 가이드에 맞게 수정해야 합니다.")
-            st.stop()
+    if is_local_run and os.path.exists('client_secret.json'):
+        # 로컬 환경: client_secret.json 파일 사용
+        if os.path.exists(token_path):
+            creds = Credentials.from_authorized_user_file(token_path, SCOPES)
         
-        st.session_state['google_calendar_token'] = json.loads(creds.to_json())
+        if not creds or not creds.valid:
+            if creds and creds.expired and creds.refresh_token:
+                creds.refresh(Request())
+            else:
+                flow = InstalledAppFlow.from_client_secrets_file('client_secret.json', SCOPES)
+                creds = flow.run_local_server(port=0)
 
+            with open(token_path, 'w') as token:
+                token.write(creds.to_json())
+    else:
+        # 배포 환경: st.secrets 사용
+        client_config = {
+            "web": {
+                "client_id": st.secrets["google_calendar"]["client_id"],
+                "client_secret": st.secrets["google_calendar"]["client_secret"],
+                "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+                "token_uri": "https://oauth2.googleapis.com/token",
+                "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs"
+            }
+        }
+        
+        token_info = st.session_state.get('google_calendar_token', None)
+        
+        if token_info:
+            creds = Credentials.from_authorized_user_info(token_info, SCOPES)
+            
+        if not creds or not creds.valid:
+            if creds and creds.expired and creds.refresh_token:
+                creds.refresh(Request())
+            else:
+                flow = InstalledAppFlow.from_client_config(
+                    client_config, 
+                    SCOPES, 
+                    redirect_uri=st.secrets["google_calendar"]["redirect_uri"]
+                )
+                auth_url, _ = flow.authorization_url(prompt='consent')
+                st.markdown(f"**[Google 계정 연동하기]({auth_url})**")
+                st.info("위 링크를 클릭하여 Google 계정에 로그인하고 권한을 허용한 후, 페이지 상단의 URL에서 'code='로 시작하는 부분을 복사하여 아래에 붙여넣어주세요.")
+                
+                auth_code = st.text_input("인증 코드 붙여넣기", type="password")
+                
+                if auth_code:
+                    try:
+                        flow.fetch_token(code=auth_code)
+                        creds = flow.credentials
+                        st.session_state['google_calendar_token'] = json.loads(creds.to_json())
+                        st.success("Google 계정 연동에 성공했습니다! 다시 시도해주세요.")
+                        st.experimental_rerun()
+                    except Exception as e:
+                        st.error(f"토큰을 가져오는 데 실패했습니다: {e}")
+                        st.stop()
+                else:
+                    st.stop()
+    
     return build('calendar', 'v3', credentials=creds)
 
 def create_calendar_event(service, receiver_email, rows, date_str):
@@ -356,7 +388,6 @@ def create_calendar_event(service, receiver_email, rows, date_str):
         summary = f"{row['환자명']} ({row['진료번호']})"
         description = f"진료내역: {row['진료내역']}\n예약의사: {row['예약의사']}\n시트: {row['시트']}"
         
-        # 예약시간이 10:00과 같은 형태라면, 종료시간을 1시간 후로 가정
         try:
             start_time = datetime.datetime.strptime(f"{date_str} {row['예약시간']}", "%Y%m%d %H:%M")
             end_time = start_time + datetime.timedelta(hours=1)
@@ -382,7 +413,6 @@ def create_calendar_event(service, receiver_email, rows, date_str):
         }
         event_list.append(event)
     
-    # 캘린더에 이벤트 삽입
     created_events = []
     for event in event_list:
         try:
@@ -394,13 +424,11 @@ def create_calendar_event(service, receiver_email, rows, date_str):
     
     return created_events
 
-
 # --- Streamlit 애플리케이션 시작 ---
 st.title("환자 내원 확인 시스템")
 st.markdown("---")
 st.markdown("<p style='text-align: left; color: grey; font-size: small;'>directed by HSY</p>", unsafe_allow_html=True)
 
-# --- 사용 설명서 PDF 다운로드 버튼 추가 ---
 pdf_file_path = "manual.pdf"
 pdf_display_name = "사용 설명서"
 
@@ -418,7 +446,6 @@ else:
 # 사용자 입력 필드
 user_name = st.text_input("사용자 이름을 입력하세요 (예시: 홍길동)")
 
-# 세션 상태에 이메일 변경 모드 및 사용자 정보 저장
 if 'email_change_mode' not in st.session_state:
     st.session_state.email_change_mode = False
 if 'user_id_input_value' not in st.session_state:
@@ -432,10 +459,8 @@ if 'current_user_name' not in st.session_state:
 
 users_ref = db.reference("users")
 
-# Admin 계정 확인 로직
 is_admin_mode = (user_name.strip().lower() == "admin")
 
-# user_name이 입력되었을 때 기존 사용자 검색
 if user_name and not is_admin_mode and not st.session_state.email_change_mode:
     all_users_meta = users_ref.get()
     matched_users_by_name = []
@@ -463,86 +488,70 @@ if user_name and not is_admin_mode and not st.session_state.email_change_mode:
         st.session_state.current_firebase_key = ""
         st.session_state.current_user_name = ""
 
-# 이메일 입력 필드
 if st.session_state.email_change_mode or not st.session_state.found_user_email or is_admin_mode:
     user_id_input = st.text_input("아이디를 입력하세요 (예시: example@gmail.com)", value=st.session_state.user_id_input_value)
-    if user_id_input != st.session_state.user_id_input_value: # 사용자가 직접 값을 변경했을 때 세션 업데이트
+    if user_id_input != st.session_state.user_id_input_value:
         st.session_state.user_id_input_value = user_id_input
 else:
-    # 기존 사용자이고 이메일 변경 모드가 아닐 때, 이메일은 표시만 함
     st.text_input("아이디 (등록된 이메일)", value=st.session_state.found_user_email, disabled=True)
     if st.button("이메일 주소 변경"):
         st.session_state.email_change_mode = True
-        st.rerun() # 이메일 변경 모드로 전환 후 새로고침하여 입력 필드 활성화
+        st.rerun()
 
-# 이메일 변경 모드일 때 변경 완료 버튼 표시
 if st.session_state.email_change_mode:
     if st.button("이메일 주소 변경 완료"):
         if is_valid_email(st.session_state.user_id_input_value):
             st.session_state.email_change_mode = False
-            # 이메일 변경 로직 실행
             old_firebase_key = st.session_state.current_firebase_key
             new_email = st.session_state.user_id_input_value
             new_firebase_key = sanitize_path(new_email)
 
             if old_firebase_key and old_firebase_key != new_firebase_key:
-                # 1. 새로운 이메일로 users 메타 정보 업데이트 (없으면 새로 생성)
                 users_ref.child(new_firebase_key).update({"name": st.session_state.current_user_name, "email": new_email})
-                # 2. patients 노드에서 기존 이메일의 환자 데이터를 새로운 이메일로 이동
                 old_patient_data = db.reference(f"patients/{old_firebase_key}").get()
                 if old_patient_data:
                     db.reference(f"patients/{new_firebase_key}").set(old_patient_data)
                     db.reference(f"patients/{old_firebase_key}").delete()
-                # 3. 기존 users 메타 정보 삭제
                 users_ref.child(old_firebase_key).delete()
 
                 st.session_state.current_firebase_key = new_firebase_key
                 st.session_state.found_user_email = new_email
                 st.success(f"이메일 주소가 **{new_email}**로 성공적으로 변경되었습니다.")
-            elif not old_firebase_key: # 이름만 입력해서 기존 사용자를 찾지 못한 경우
+            elif not old_firebase_key:
                 st.session_state.current_firebase_key = new_firebase_key
                 st.session_state.found_user_email = new_email
                 st.success(f"새로운 사용자 정보가 등록되었습니다: {st.session_state.current_user_name} ({new_email})")
-            else: # 변경 사항 없음
+            else:
                 st.success("이메일 주소 변경사항이 없습니다.")
             st.rerun()
         else:
             st.error("올바른 이메일 주소 형식이 아닙니다.")
             
-# user_name과 (입력된 또는 찾아진) user_id가 모두 있을 때만 앱 기능 활성화
 user_id_final = st.session_state.user_id_input_value if st.session_state.email_change_mode or not st.session_state.found_user_email else st.session_state.found_user_email
 
 if not user_name or (not user_id_final and not is_admin_mode):
     st.info("내원 알람 노티를 받을 이메일 주소와 사용자 이름을 입력해주세요.")
     st.stop()
 
-# 최종적으로 사용할 Firebase 키
 firebase_key = sanitize_path(user_id_final) if user_id_final else ""
 
-# Admin 모드가 아닐 경우에만 해당 사용자의 환자 정보 참조
 if not is_admin_mode:
     patients_ref_for_user = db.reference(f"patients/{firebase_key}")
 
-    # 사용자 정보 (이름, 이메일) Firebase 'users' 노드에 저장 또는 업데이트
-    # Admin 계정일 때는 이 과정 건너뛰기
-    # 그리고 이메일 변경 모드가 아닐 때 (또는 새로 등록하는 경우)만 업데이트
     if not st.session_state.email_change_mode:
         current_user_meta_data = users_ref.child(firebase_key).get()
         if not current_user_meta_data or current_user_meta_data.get("name") != user_name or current_user_meta_data.get("email") != user_id_final:
             users_ref.child(firebase_key).update({"name": user_name, "email": user_id_final})
             st.success(f"사용자 정보가 업데이트되었습니다: {user_name} ({user_id_final})")
-            # 세션 상태 업데이트 (새로운 등록 또는 정보 변경 시)
             st.session_state.current_firebase_key = firebase_key
             st.session_state.current_user_name = user_name
             st.session_state.found_user_email = user_id_final
 
-# --- 사용자 모드 (Admin이 아닌 경우) ---
 if not is_admin_mode:
     st.subheader(f"{user_name}님의 등록 환자 목록")
     patients_ref_for_user = db.reference(f"patients/{firebase_key}")
     existing_patient_data = patients_ref_for_user.get()
 
-    # --- CSS를 이용한 반응형 레이아웃 추가 (수정됨) ---
     st.markdown("""
     <style>
     .patient-list-container {
@@ -561,7 +570,7 @@ if not is_admin_mode:
         flex-grow: 1;
         min-width: 250px;
         margin-bottom: 0.5rem;
-        word-break: break-all; /* 긴 텍스트 줄바꿈 */
+        word-break: break-all;
     }
     .patient-info {
         flex-grow: 1;
@@ -571,32 +580,30 @@ if not is_admin_mode:
         padding-right: 10px;
     }
     .small-delete-button {
-        background-color: #e6e6e6; /* 더 어두운 회색으로 변경 */
+        background-color: #e6e6e6;
         color: #000000;
         border: none;
-        padding: 0.2rem 0.5rem; /* 버튼 패딩 조정 */
+        padding: 0.2rem 0.5rem;
         border-radius: 0.3rem;
         cursor: pointer;
-        font-size: 0.75rem; /* 폰트 크기 조정 */
-        width: auto; /* 너비를 내용에 맞게 조정 */
-        flex-shrink: 0; /* 버튼이 줄어들지 않도록 함 */
+        font-size: 0.75rem;
+        width: auto;
+        flex-shrink: 0;
     }
     .small-delete-button:hover {
-        background-color: #cccccc; /* 호버 시 색상 변경 */
+        background-color: #cccccc;
     }
 
-    /* 260px 이상부터 3단 레이아웃 적용 */
     @media (min-width: 260px) {
         .patient-list-container {
             justify-content: space-between;
         }
         .patient-item {
-            width: 32%; /* 화면 너비의 약 33% */
+            width: 32%;
         }
     }
     </style>
     """, unsafe_allow_html=True)
-    # --- CSS 끝 ---
 
     if existing_patient_data:
         st.markdown('<div class="patient-list-container">', unsafe_allow_html=True)
@@ -606,7 +613,6 @@ if not is_admin_mode:
             with info_col:
                 st.markdown(f'<div class="patient-info">{val["환자명"]} / {val["진료번호"]} / {val.get("등록과", "미지정")}</div>', unsafe_allow_html=True)
             with btn_col:
-                # HTML을 사용하여 버튼을 직접 구성하고 CSS 클래스를 적용
                 st.markdown(
                     f"""
                     <form action="" method="post" style="display:inline-block; margin:0; padding:0;">
@@ -617,8 +623,8 @@ if not is_admin_mode:
                     unsafe_allow_html=True
                 )
             st.markdown('</div>', unsafe_allow_html=True)
+        st.markdown('</div>', unsafe_allow_html=True)
         
-        # 삭제 버튼 클릭 처리
         if "delete_key" in st.query_params:
             key_to_delete = st.query_params["delete_key"]
             patients_ref_for_user.child(key_to_delete).delete()
@@ -648,7 +654,6 @@ if not is_admin_mode:
                 st.success(f"{name} ({pid}) [{selected_department}] 환자 등록 완료")
                 st.rerun()
 
-# --- 관리자 모드 (Admin인 경우) ---
 else:
     st.subheader("💻 관리자 모드 💻")
     uploaded_file = st.file_uploader("암호화된 Excel 파일을 업로드하세요", type=["xlsx", "xlsm"])
@@ -755,14 +760,12 @@ else:
                         real_email = user_match_info['email']
                         df_matched = user_match_info['data']
                         
-                        # 이메일 전송
                         result_email = send_email(real_email, df_matched, sender, sender_pw, date_str=extracted_date)
                         if result_email is True:
                             st.success(f"**{user_match_info['name']}** ({real_email}) 이메일 전송 완료")
                         else:
                             st.error(f"**{user_match_info['name']}** ({real_email}) 이메일 전송 실패: {result_email}")
 
-                        # 캘린더 이벤트 생성
                         try:
                             calendar_service = get_google_calendar_service()
                             event_links = create_calendar_event(calendar_service, real_email, df_matched, date_str=extracted_date)
