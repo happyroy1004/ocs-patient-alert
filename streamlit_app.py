@@ -39,6 +39,79 @@ if not firebase_admin._apps:
         st.info("secrets.toml 파일의 Firebase 설정(FIREBASE_SERVICE_ACCOUNT_JSON 또는 database_url)을 [firebase] 섹션 아래에 올바르게 작성했는지 확인해주세요.")
         st.stop()
 
+# --- Google Calendar API 관련 설정 및 함수 ---
+try:
+    client_id = st.secrets["google_calendar"]["client_id"]
+    client_secret = st.secrets["google_calendar"]["client_secret"]
+    redirect_uri = st.secrets["google_calendar"]["redirect_uri"]
+except KeyError:
+    st.error("`secrets.toml` 파일에 Google Calendar 설정이 누락되었습니다. 파일을 확인해 주세요.")
+    st.stop()
+
+SCOPES = ['https://www.googleapis.com/auth/calendar.events']
+
+def get_google_calendar_service():
+    """
+    세션에 저장된 인증 정보를 사용하여 Google Calendar 서비스 객체를 반환합니다.
+    """
+    creds = st.session_state.get("credentials")
+    
+    if not creds or not creds.valid:
+        if creds and creds.expired and creds.refresh_token:
+            try:
+                creds.refresh(Request())
+            except Exception as e:
+                st.error(f"토큰 갱신 실패: {e}")
+                st.session_state.credentials = None
+                return None
+        else:
+            return None
+    
+    service = build('calendar', 'v3', credentials=creds)
+    return service
+
+def get_authorization_url():
+    """
+    Google 인증 URL을 생성하여 반환합니다.
+    """
+    flow = InstalledAppFlow.from_client_config(
+        {
+            "installed": {
+                "client_id": client_id,
+                "client_secret": client_secret,
+                "redirect_uris": [redirect_uri],
+                "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+                "token_uri": "https://oauth2.googleapis.com/token",
+            }
+        },
+        SCOPES
+    )
+    auth_url, _ = flow.authorization_url(prompt='consent')
+    return auth_url
+
+def add_event_to_google_calendar(service, summary, start_time, end_time):
+    """
+    Google 캘린더에 일정을 추가하는 함수
+    """
+    event = {
+        'summary': summary,
+        'start': {
+            'dateTime': start_time.isoformat(),
+            'timeZone': 'Asia/Seoul',
+        },
+        'end': {
+            'dateTime': end_time.isoformat(),
+            'timeZone': 'Asia/Seoul',
+        },
+    }
+    
+    try:
+        event = service.events().insert(calendarId='primary', body=event).execute()
+        st.success(f"캘린더에 일정을 추가했습니다: {event.get('htmlLink')}")
+    except Exception as e:
+        st.error(f"일정 추가 실패: {e}")
+
+
 # Firebase-safe 경로 변환 (이메일을 Firebase 키로 사용하기 위해)
 def sanitize_path(email):
     return email.replace(".", "_dot_").replace("@", "_at_")
@@ -335,7 +408,33 @@ st.markdown("""
 st.markdown("---")
 st.markdown("<p style='text-align: left; color: grey; font-size: small;'>directed by HSY</p>", unsafe_allow_html=True)
 
+# URL에서 인증 코드 확인 후 토큰 교환
+query_params = st.query_params
+auth_code = query_params.get("code")
 
+if auth_code:
+    flow = InstalledAppFlow.from_client_config(
+        {
+            "installed": {
+                "client_id": client_id,
+                "client_secret": client_secret,
+                "redirect_uris": [redirect_uri],
+                "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+                "token_uri": "https://oauth2.googleapis.com/token",
+            }
+        },
+        SCOPES
+    )
+    
+    try:
+        flow.fetch_token(code=auth_code[0])
+        creds = flow.credentials
+        st.session_state.credentials = creds
+        st.query_params.clear()
+        st.success("Google 캘린더 권한이 성공적으로 허용되었습니다!")
+    except Exception as e:
+        st.error(f"인증 실패: {e}")
+        
 # --- 세션 상태 초기화 ---
 # URL 쿼리 매개변수에 'clear'가 있을 경우 초기화
 if "clear" in st.query_params and st.query_params["clear"] == "true":
@@ -359,7 +458,6 @@ if 'admin_password_correct' not in st.session_state:
     st.session_state.admin_password_correct = False
 if 'select_all_users' not in st.session_state:
     st.session_state.select_all_users = False
-# Google Calendar 관련 세션 상태 추가
 if 'credentials' not in st.session_state:
     st.session_state.credentials = None
 if 'admin_mode' not in st.session_state:
@@ -457,71 +555,6 @@ if st.session_state.email_change_mode:
             st.rerun()
         else:
             st.error("올바른 이메일 주소 형식이 아닙니다.")
-
-# --- Google Calendar API 관련 함수 ---
-# Google Calendar API 인증 및 토큰 관리 함수
-def get_google_calendar_service():
-    """
-    세션에 저장된 인증 정보를 사용하여 Google Calendar 서비스 객체를 반환합니다.
-    """
-    creds = st.session_state.get("credentials")
-    
-    if not creds or not creds.valid:
-        if creds and creds.expired and creds.refresh_token:
-            try:
-                creds.refresh(Request())
-            except Exception as e:
-                st.error(f"토큰 갱신 실패: {e}")
-                st.session_state.credentials = None
-                return None
-        else:
-            return None
-    
-    service = build('calendar', 'v3', credentials=creds)
-    return service
-
-# Google Calendar 인증 URL 생성 함수
-def get_authorization_url():
-    """
-    Google 인증 URL을 생성하여 반환합니다.
-    """
-    flow = InstalledAppFlow.from_client_config(
-        {
-            "installed": {
-                "client_id": st.secrets["google_calendar"]["client_id"],
-                "client_secret": st.secrets["google_calendar"]["client_secret"],
-                "redirect_uris": [st.secrets["google_calendar"]["redirect_uri"]],
-                "auth_uri": "https://accounts.google.com/o/oauth2/auth",
-                "token_uri": "https://oauth2.googleapis.com/token",
-            }
-        },
-        ['https://www.googleapis.com/auth/calendar.events']
-    )
-    auth_url, _ = flow.authorization_url(prompt='consent')
-    return auth_url
-
-# Google 캘린더에 이벤트 추가 함수
-def add_event_to_google_calendar(service, summary, start_time, end_time):
-    """
-    Google 캘린더에 일정을 추가하는 함수
-    """
-    event = {
-        'summary': summary,
-        'start': {
-            'dateTime': start_time.isoformat(),
-            'timeZone': 'Asia/Seoul',
-        },
-        'end': {
-            'dateTime': end_time.isoformat(),
-            'timeZone': 'Asia/Seoul',
-        },
-    }
-    
-    try:
-        event = service.events().insert(calendarId='primary', body=event).execute()
-        st.success(f"캘린더에 일정을 추가했습니다: {event.get('htmlLink')}")
-    except Exception as e:
-        st.error(f"일정 추가 실패: {e}")
 
 # --- Admin 모드 로그인 처리 ---
 if is_admin_input:
@@ -725,15 +758,29 @@ if is_admin_input:
         
         with col2:
             st.subheader("Google 캘린더에 일정 추가")
+            
+            # 캘린더 연동에 필요한 입력 필드
+            event_summary_input = st.text_input("일정 제목", "환자 진료 예약")
+            event_start_date = st.date_input("시작일", datetime.date.today())
+            event_start_time = st.time_input("시작 시간", datetime.time(9, 0))
+            event_end_date = st.date_input("종료일", datetime.date.today())
+            event_end_time = st.time_input("종료 시간", datetime.time(10, 0))
+
             if st.button("캘린더에 일정 추가하기"):
                 service = get_google_calendar_service()
                 
                 if service:
-                    st.info("권한이 확인되었습니다. 캘린더에 일정을 추가합니다.")
-                    event_summary = "환자 진료 예약 (테스트)"
-                    event_start = datetime.datetime.now(datetime.timezone.utc)
-                    event_end = event_start + datetime.timedelta(hours=1)
-                    add_event_to_google_calendar(service, event_summary, event_start, event_end)
+                    try:
+                        event_start_datetime = datetime.datetime.combine(event_start_date, event_start_time)
+                        event_end_datetime = datetime.datetime.combine(event_end_date, event_end_time)
+                        
+                        if event_start_datetime >= event_end_datetime:
+                            st.error("시작 시간이 종료 시간보다 빠르거나 같을 수 없습니다.")
+                        else:
+                            with st.spinner("캘린더에 일정 추가 중..."):
+                                add_event_to_google_calendar(service, event_summary_input, event_start_datetime, event_end_datetime)
+                    except Exception as e:
+                        st.error(f"시간 설정 오류: {e}")
                 else:
                     st.warning("캘린더 권한이 없습니다. 아래 링크를 눌러 권한을 허용해 주세요.")
                     auth_url = get_authorization_url()
