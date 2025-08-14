@@ -746,8 +746,8 @@ if is_admin_input:
                                     if not df_matched.empty:
                                         for _, row in df_matched.iterrows():
                                             # create_calendar_event 호출 시 날짜, 시간, 의사 이름 인자 전달 (수정)
-                                            # 엑셀 파일에 '진료의사' 컬럼이 있다고 가정합니다.
-                                            doctor_name = row.get('진료의사', '')
+                                            # 엑셀 파일에 '예약의사' 컬럼이 있다고 가정합니다.
+                                            doctor_name = row.get('예약의사', '')
                                             create_calendar_event(service, row['환자명'], row['진료번호'], row.get('시트', ''), 
                                                 reservation_date_str=reservation_date_excel, reservation_time_str=row.get('예약시간'), doctor_name=doctor_name)
                                     st.success(f"**{user_name}**님의 캘린더에 일정을 추가했습니다.")
