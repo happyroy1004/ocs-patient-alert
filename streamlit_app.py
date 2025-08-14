@@ -65,9 +65,9 @@ def get_google_calendar_credentials():
     elif not creds:
         try:
             flow = InstalledAppFlow.from_client_config(
-                st.secrets["google calendar"]["client_secret"],
+                st.secrets["google"]["client_secret"],
                 SCOPES,
-                redirect_uri=st.secrets["google calendar"]["redirect uri"]
+                redirect_uri=st.secrets["google"]["redirect uri"]
             )
             authorization_url, _ = flow.authorization_url(prompt='consent')
             st.session_state['authorization_url'] = authorization_url
