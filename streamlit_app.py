@@ -36,7 +36,7 @@ if not firebase_admin._apps:
         })
     except Exception as e:
         st.error(f"Firebase 초기화 오류: {e}")
-        st.info("secrets.toml 파일의 Firebase 설정(FIREBASE_SERVICE_ACCOUNT_JSON 또는 database_url)을 [firebase] 섹션 아래에 올바르게 작성했는지 확인해주세요.")
+        st.info("secrets.toml 파일의 Firebase 설정을 확인해주세요.")
         st.stop()
 
 # Firebase-safe 경로 변환 (이메일을 Firebase 키로 사용하기 위해)
@@ -303,73 +303,56 @@ SCOPES = ['https://www.googleapis.com/auth/calendar.events']
 def get_google_calendar_service():
     """
     구글 캘린더 API 서비스 객체를 반환.
-    로컬 환경에서는 `client_secret.json`을,
-    배포 환경에서는 `st.secrets`를 사용합니다.
+    Streamlit Cloud 배포 환경에 최적화된 인증 로직을 사용합니다.
     """
     creds = None
-    token_path = 'token.json'
     
-    client_config = None
-    is_local_run = not os.getenv("STREAMLIT_SERVER_USER_AGENT")
-    
-    if is_local_run and os.path.exists('client_secret.json'):
-        # 로컬 환경: client_secret.json 파일 사용
-        if os.path.exists(token_path):
-            creds = Credentials.from_authorized_user_file(token_path, SCOPES)
-        
-        if not creds or not creds.valid:
-            if creds and creds.expired and creds.refresh_token:
-                creds.refresh(Request())
-            else:
-                flow = InstalledAppFlow.from_client_secrets_file('client_secret.json', SCOPES)
-                creds = flow.run_local_server(port=0)
-
-            with open(token_path, 'w') as token:
-                token.write(creds.to_json())
-    else:
-        # 배포 환경: st.secrets 사용
-        client_config = {
-            "web": {
-                "client_id": st.secrets["google_calendar"]["client_id"],
-                "client_secret": st.secrets["google_calendar"]["client_secret"],
-                "auth_uri": "https://accounts.google.com/o/oauth2/auth",
-                "token_uri": "https://oauth2.googleapis.com/token",
-                "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs"
-            }
+    # Streamlit secrets에서 클라이언트 정보 가져오기
+    client_config = {
+        "web": {
+            "client_id": st.secrets["google_calendar"]["client_id"],
+            "client_secret": st.secrets["google_calendar"]["client_secret"],
+            "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+            "token_uri": "https://oauth2.googleapis.com/token",
+            "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs"
         }
-        
-        token_info = st.session_state.get('google_calendar_token', None)
-        
-        if token_info:
-            creds = Credentials.from_authorized_user_info(token_info, SCOPES)
+    }
+    
+    # Streamlit 세션 상태에 토큰을 저장하여 재사용
+    token_info = st.session_state.get('google_calendar_token', None)
+    
+    if token_info:
+        creds = Credentials.from_authorized_user_info(token_info, SCOPES)
+    
+    if not creds or not creds.valid:
+        if creds and creds.expired and creds.refresh_token:
+            creds.refresh(Request())
+        else:
+            flow = InstalledAppFlow.from_client_config(
+                client_config, 
+                SCOPES, 
+                redirect_uri=st.secrets["google_calendar"]["redirect_uri"]
+            )
+            auth_url, _ = flow.authorization_url(prompt='consent')
             
-        if not creds or not creds.valid:
-            if creds and creds.expired and creds.refresh_token:
-                creds.refresh(Request())
-            else:
-                flow = InstalledAppFlow.from_client_config(
-                    client_config, 
-                    SCOPES, 
-                    redirect_uri=st.secrets["google_calendar"]["redirect_uri"]
-                )
-                auth_url, _ = flow.authorization_url(prompt='consent')
-                st.markdown(f"**[Google 계정 연동하기]({auth_url})**")
-                st.info("위 링크를 클릭하여 Google 계정에 로그인하고 권한을 허용한 후, 페이지 상단의 URL에서 'code='로 시작하는 부분을 복사하여 아래에 붙여넣어주세요.")
-                
-                auth_code = st.text_input("인증 코드 붙여넣기", type="password")
-                
-                if auth_code:
-                    try:
-                        flow.fetch_token(code=auth_code)
-                        creds = flow.credentials
-                        st.session_state['google_calendar_token'] = json.loads(creds.to_json())
-                        st.success("Google 계정 연동에 성공했습니다! 다시 시도해주세요.")
-                        st.experimental_rerun()
-                    except Exception as e:
-                        st.error(f"토큰을 가져오는 데 실패했습니다: {e}")
-                        st.stop()
-                else:
+            st.warning("⚠️ Google 캘린더 연동이 필요합니다.")
+            st.markdown(f"**[Google 계정 연동하기]({auth_url})**")
+            st.info("위 링크를 클릭하여 Google 계정에 로그인하고 권한을 허용하세요. 이후, 페이지 URL의 'code=' 뒤에 있는 코드를 복사하여 아래에 붙여넣어주세요.")
+            
+            auth_code = st.text_input("인증 코드 붙여넣기", type="password")
+            
+            if auth_code:
+                try:
+                    flow.fetch_token(code=auth_code)
+                    creds = flow.credentials
+                    st.session_state['google_calendar_token'] = json.loads(creds.to_json())
+                    st.success("Google 계정 연동에 성공했습니다! 페이지를 새로고침하거나 다시 시도해주세요.")
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"토큰을 가져오는 데 실패했습니다: {e}")
                     st.stop()
+            else:
+                st.stop()
     
     return build('calendar', 'v3', credentials=creds)
 
