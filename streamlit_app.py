@@ -56,63 +56,72 @@ sheet_keyword_to_department_map = None
 SCOPES = ['https://www.googleapis.com/auth/calendar.events']
 
 def get_google_calendar_credentials():
-    creds = None
-    if 'google_creds' in st.session_state:
-        creds = st.session_state['google_creds']
-
+    creds = st.session_state.get('google_creds', None)
+    
+    # 만료된 인증 정보가 있으면 갱신
     if creds and creds.expired and creds.refresh_token:
         creds.refresh(Request())
-    elif not creds:
-        try:
-            # secrets.toml 파일에서 Google Calendar API 설정을 가져옵니다.
-            # toml 파일의 키와 일치하도록 'google calendar' -> 'googlecalendar'로 수정했습니다.
-            google_calendar_secrets = st.secrets["googlecalendar"]
-            
-            # Google API 인증 정보의 형식을 web 애플리케이션에 맞게 수정합니다.
-            client_config = {
-                "web": {
-                    "client_id": google_calendar_secrets.get("client_id"),
-                    "client_secret": google_calendar_secrets.get("client_secret"),
-                    "auth_uri": "https://accounts.google.com/o/oauth2/auth",
-                    "token_uri": "https://oauth2.googleapis.com/token",
-                    "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
-                    "redirect_uris": [google_calendar_secrets.get("redirect_uri")]
-                }
-            }
+        st.session_state['google_creds'] = creds
+        return build('calendar', 'v3', credentials=creds)
 
-            flow = InstalledAppFlow.from_client_config(
-                client_config,
-                scopes=SCOPES
-            )
-            authorization_url, _ = flow.authorization_url(prompt='consent')
-            st.session_state['authorization_url'] = authorization_url
+    # 인증 정보가 없으면 인증 흐름 시작
+    if not creds:
+        # URL에서 인증 코드 확인
+        query_params = st.experimental_get_query_params()
+        if "code" in query_params:
+            code = query_params["code"][0]
+            # 세션에 저장된 flow 객체를 사용하여 토큰을 가져옴
+            if 'flow' in st.session_state:
+                flow = st.session_state['flow']
+                try:
+                    flow.fetch_token(code=code)
+                    st.session_state['google_creds'] = flow.credentials
+                    st.experimental_set_query_params()  # URL에서 코드를 제거
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"인증 토큰을 가져오는 중 오류가 발생했습니다: {e}")
+                    del st.session_state['flow']
+            else:
+                st.error("인증 흐름을 복원할 수 없습니다. 다시 시도해주세요.")
+            return None
+        
+        # flow 객체가 없으면 새로 생성
+        if 'flow' not in st.session_state:
+            try:
+                google_calendar_secrets = st.secrets["googlecalendar"]
+                client_config = {
+                    "web": {
+                        "client_id": google_calendar_secrets.get("client_id"),
+                        "client_secret": google_calendar_secrets.get("client_secret"),
+                        "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+                        "token_uri": "https://oauth2.googleapis.com/token",
+                        "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
+                        "redirect_uris": [google_calendar_secrets.get("redirect_uri")]
+                    }
+                }
+                flow = InstalledAppFlow.from_client_config(client_config, scopes=SCOPES)
+                st.session_state['flow'] = flow
+
+                authorization_url, _ = flow.authorization_url(prompt='consent')
+                st.session_state['authorization_url'] = authorization_url
+            except KeyError as e:
+                st.error(f"Google Calendar API 설정 오류: secrets.toml 파일에 '[googlecalendar]' 섹션이 없거나 형식이 잘못되었습니다. {e}")
+                return None
+        
+        if 'authorization_url' in st.session_state:
             st.warning("Google 계정 로그인 필요! 아래 링크를 클릭하여 로그인해주세요.")
             st.markdown(f"[{st.session_state['authorization_url']}]({st.session_state['authorization_url']})")
-        except KeyError as e:
-            st.error(f"Google Calendar API 설정 오류: secrets.toml 파일에 '[googlecalendar]' 섹션이 없거나 형식이 잘못되었습니다. {e}")
-            return None
-
-    if 'code' in st.session_state and not creds:
-        try:
-            flow.fetch_token(code=st.session_state['code'])
-            creds = flow.credentials
-            st.session_state['google_creds'] = creds
-            st.experimental_rerun()
-        except Exception as e:
-            st.error(f"인증 토큰을 가져오는 중 오류가 발생했습니다: {e}")
-            del st.session_state['code']
-            return None
-
-    if creds:
-        try:
-            service = build('calendar', 'v3', credentials=creds)
-            st.session_state['calendar_service'] = service
-            return service
-        except Exception as e:
-            st.error(f"Google Calendar 서비스 빌드 중 오류: {e}")
-            return None
-
-    return None
+        
+        return None
+    
+    # 인증 정보가 있으면 서비스 빌드
+    try:
+        service = build('calendar', 'v3', credentials=creds)
+        st.session_state['calendar_service'] = service
+        return service
+    except Exception as e:
+        st.error(f"Google Calendar 서비스 빌드 중 오류: {e}")
+        return None
 
 def create_google_calendar_event(service, calendar_id, event_data):
     try:
