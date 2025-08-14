@@ -62,11 +62,12 @@ def get_google_calendar_credentials():
     if creds and creds.expired and creds.refresh_token:
         creds.refresh(Request())
         st.session_state['google_creds'] = creds
+        st.info("Google Calendar 인증 정보가 갱신되었습니다.")
         return build('calendar', 'v3', credentials=creds)
 
     # 인증 정보가 없으면 인증 흐름 시작
     if not creds:
-        # URL에서 인증 코드 확인
+        # URL 쿼리 파라미터에서 'code'를 확인
         query_params = st.experimental_get_query_params()
         if "code" in query_params:
             code = query_params["code"][0]
@@ -76,11 +77,13 @@ def get_google_calendar_credentials():
                 try:
                     flow.fetch_token(code=code)
                     st.session_state['google_creds'] = flow.credentials
-                    st.experimental_set_query_params()  # URL에서 코드를 제거
-                    st.rerun()
+                    st.experimental_set_query_params(code=[]) # URL에서 코드를 제거
+                    st.info("Google Calendar 인증이 완료되었습니다.")
                 except Exception as e:
                     st.error(f"인증 토큰을 가져오는 중 오류가 발생했습니다: {e}")
-                    del st.session_state['flow']
+                    # 실패 시 flow 객체 삭제
+                    if 'flow' in st.session_state:
+                        del st.session_state['flow']
             else:
                 st.error("인증 흐름을 복원할 수 없습니다. 다시 시도해주세요.")
             return None
@@ -299,56 +302,766 @@ if uploaded_file:
             st.subheader("Google Calendar 일정 등록")
 
             if calendar_service and 'google_creds' in st.session_state:
-                st.success("Google Calendar에 연결되어 있습니다. 아래 버튼을 클릭하여 스케줄을 등록하세요.")
-                selected_calendar_id = calendar_settings_ref.get().get('calendarId') if calendar_settings_ref.get() else None
-
-                if selected_calendar_id:
-                    if st.button("등록된 환자 스케줄 캘린더에 등록"):
-                        patient_data_from_db = patients_ref_for_user.get()
-                        
-                        if not patient_data_from_db:
-                            st.warning("등록된 환자가 없습니다.")
-                        else:
-                            with st.spinner("캘린더에 일정을 등록하는 중..."):
-                                total_events = 0
-                                for _, row in df.iterrows():
-                                    patient_name_from_excel = str(row['환자명'])
-                                    pid_from_excel = str(row['진료번호'])
-                                    
-                                    # DB에 등록된 환자와 엑셀 데이터 매칭
-                                    for key, patient_db in patient_data_from_db.items():
-                                        if patient_db['환자명'] == patient_name_from_excel and patient_db['진료번호'] == pid_from_excel:
-                                            # 매칭된 환자 정보로 일정 생성
-                                            summary = f"[{patient_db['등록과']}] {patient_name_from_excel} 진료"
-                                            description = f"진료번호: {pid_from_excel}"
-                                            
-                                            # 날짜 및 시간 정보 파싱 (엑셀 데이터 형식에 따라 수정 필요)
-                                            start_datetime = pd.to_datetime(row['진료일시']).isoformat()
-                                            end_datetime = (pd.to_datetime(row['진료일시']) + pd.Timedelta(hours=1)).isoformat()
-                                            
-                                            event = {
-                                                'summary': summary,
-                                                'description': description,
-                                                'start': {
-                                                    'dateTime': start_datetime,
-                                                    'timeZone': 'Asia/Seoul',
-                                                },
-                                                'end': {
-                                                    'dateTime': end_datetime,
-                                                    'timeZone': 'Asia/Seoul',
-                                                },
-                                            }
-                                            
-                                            create_google_calendar_event(calendar_service, selected_calendar_id, event)
-                                            total_events += 1
-                                st.success(f"{total_events}개의 일정이 Google Calendar에 성공적으로 등록되었습니다!")
-                else:
-                    st.warning("캘린더가 설정되지 않았습니다. 사이드바에서 캘린더를 먼저 선택해주세요.")
+                st.success("Google Calendar에 연결되었습니다.")
+                calendar_list = calendar_service.calendarList().list().execute().get('items', [])
+                calendar_names = {c['summary']: c['id'] for c in calendar_list}
+                
+                with st.form("calendar_form"):
+                    selected_calendar_name = st.selectbox("일정을 추가할 캘린더", sorted(calendar_names.keys()))
+                    submitted_calendar = st.form_submit_button("캘린더 설정 저장")
+                    if submitted_calendar:
+                        calendar_id = calendar_names[selected_calendar_name]
+                        calendar_settings_ref.set({"calendarId": calendar_id, "calendarName": selected_calendar_name})
+                        st.success(f"'{selected_calendar_name}' 캘린더가 기본으로 설정되었습니다.")
+                        st.rerun()
             else:
-                st.warning("Google Calendar에 로그인해야 일정 등록 기능을 사용할 수 있습니다.")
+                st.warning("Google Calendar에 연결되지 않았습니다.")
+                if st.button("Google Calendar 로그인"):
+                    if 'authorization_url' in st.session_state:
+                        st.markdown(f"[{st.session_state['authorization_url']}]({st.session_state['authorization_url']})")
+                    else:
+                        st.warning("로그인 URL을 생성할 수 없습니다. 페이지를 새로고침 해주세요.")
+    
+# --- 메인 페이지 ---
 
-        except msoffcrypto.exceptions.InvalidKeyError:
-            st.error("잘못된 비밀번호입니다. 다시 시도해주세요.")
-        except Exception as e:
-            st.error(f"파일 처리 중 오류가 발생했습니다: {e}")
-            st.info("파일 형식이 올바른지 확인하거나, 다른 파일을 시도해 보세요.")
+# 파일 업로드
+uploaded_file = st.file_uploader("암호화된 엑셀 파일(.xlsx) 업로드", type="xlsx")
+
+if uploaded_file:
+    # 엑셀 파일 암호 해제
+    password = st.text_input("엑셀 파일 비밀번호", type="password")
+    if password:
+        try:
+            decrypted_file = io.BytesIO()
+            office_file = msoffcrypto.OfficeFile(uploaded_file)
+            office_file.load_key(password=password)
+            office_file.decrypt(decrypted_file)
+
+            # 엑셀 파일 읽기
+            df = pd.read_excel(decrypted_file)
+            st.write("엑셀 파일 미리보기:")
+            st.dataframe(df)
+
+            # DB에서 키워드-진료과 매핑 정보 가져오기
+            sheet_keyword_to_department_map = department_keyword_map_ref.get()
+
+            # 시트 키워드-컬럼 매핑 정보
+            sheet_keyword_data = sheet_keyword_ref.get()
+            
+            # 메일 발송 기능
+            st.markdown("---")
+            st.subheader("이메일 발송")
+            with st.form("email_form"):
+                sender_email = st.text_input("보내는 사람 이메일")
+                receiver_email = st.text_input("받는 사람 이메일")
+                email_password = st.text_input("보내는 사람 이메일 비밀번호", type="password")
+
+                email_submitted = st.form_submit_button("메일 발송")
+
+                if email_submitted:
+                    if not is_valid_email(sender_email) or not is_valid_email(receiver_email):
+                        st.error("이메일 주소가 올바르지 않습니다.")
+                    else:
+                        try:
+                            # 엑셀 시트 생성
+                            output = io.BytesIO()
+                            with pd.ExcelWriter(output, engine='openpyxl') as writer:
+                                df.to_excel(writer, index=False, sheet_name='Sheet1')
+                            output.seek(0)
+
+                            # 이메일 전송
+                            msg = MIMEMultipart()
+                            msg['From'] = sender_email
+                            msg['To'] = receiver_email
+                            msg['Subject'] = f"{df.iloc[0]['진료번호']} 환자의 진료 스케줄"
+                            body = "안녕하세요. 환자 진료 스케줄 파일입니다."
+                            msg.attach(MIMEText(body, 'plain'))
+                            
+                            part = MIMEText(output.getvalue(), _subtype="xlsx")
+                            part.add_header('Content-Disposition', 'attachment', filename="진료스케줄.xlsx")
+                            msg.attach(part)
+
+                            server = smtplib.SMTP('smtp.gmail.com', 587)
+                            server.starttls()
+                            server.login(sender_email, email_password)
+                            server.sendmail(sender_email, receiver_email, msg.as_string())
+                            server.quit()
+                            st.success("이메일이 성공적으로 발송되었습니다!")
+                        except Exception as e:
+                            st.error(f"이메일 발송 중 오류가 발생했습니다: {e}")
+            
+            # Google Calendar에 등록된 환자 스케줄 등록
+            st.markdown("---")
+            st.subheader("Google Calendar 일정 등록")
+
+            if calendar_service and 'google_creds' in st.session_state:
+                st.success("Google Calendar에 연결되었습니다.")
+                calendar_list = calendar_service.calendarList().list().execute().get('items', [])
+                calendar_names = {c['summary']: c['id'] for c in calendar_list}
+                
+                with st.form("calendar_form"):
+                    selected_calendar_name = st.selectbox("일정을 추가할 캘린더", sorted(calendar_names.keys()))
+                    submitted_calendar = st.form_submit_button("캘린더 설정 저장")
+                    if submitted_calendar:
+                        calendar_id = calendar_names[selected_calendar_name]
+                        calendar_settings_ref.set({"calendarId": calendar_id, "calendarName": selected_calendar_name})
+                        st.success(f"'{selected_calendar_name}' 캘린더가 기본으로 설정되었습니다.")
+                        st.rerun()
+            else:
+                st.warning("Google Calendar에 연결되지 않았습니다.")
+                if st.button("Google Calendar 로그인"):
+                    if 'authorization_url' in st.session_state:
+                        st.markdown(f"[{st.session_state['authorization_url']}]({st.session_state['authorization_url']})")
+                    else:
+                        st.warning("로그인 URL을 생성할 수 없습니다. 페이지를 새로고침 해주세요.")
+    
+# --- 메인 페이지 ---
+
+# 파일 업로드
+uploaded_file = st.file_uploader("암호화된 엑셀 파일(.xlsx) 업로드", type="xlsx")
+
+if uploaded_file:
+    # 엑셀 파일 암호 해제
+    password = st.text_input("엑셀 파일 비밀번호", type="password")
+    if password:
+        try:
+            decrypted_file = io.BytesIO()
+            office_file = msoffcrypto.OfficeFile(uploaded_file)
+            office_file.load_key(password=password)
+            office_file.decrypt(decrypted_file)
+
+            # 엑셀 파일 읽기
+            df = pd.read_excel(decrypted_file)
+            st.write("엑셀 파일 미리보기:")
+            st.dataframe(df)
+
+            # DB에서 키워드-진료과 매핑 정보 가져오기
+            sheet_keyword_to_department_map = department_keyword_map_ref.get()
+
+            # 시트 키워드-컬럼 매핑 정보
+            sheet_keyword_data = sheet_keyword_ref.get()
+            
+            # 메일 발송 기능
+            st.markdown("---")
+            st.subheader("이메일 발송")
+            with st.form("email_form"):
+                sender_email = st.text_input("보내는 사람 이메일")
+                receiver_email = st.text_input("받는 사람 이메일")
+                email_password = st.text_input("보내는 사람 이메일 비밀번호", type="password")
+
+                email_submitted = st.form_submit_button("메일 발송")
+
+                if email_submitted:
+                    if not is_valid_email(sender_email) or not is_valid_email(receiver_email):
+                        st.error("이메일 주소가 올바르지 않습니다.")
+                    else:
+                        try:
+                            # 엑셀 시트 생성
+                            output = io.BytesIO()
+                            with pd.ExcelWriter(output, engine='openpyxl') as writer:
+                                df.to_excel(writer, index=False, sheet_name='Sheet1')
+                            output.seek(0)
+
+                            # 이메일 전송
+                            msg = MIMEMultipart()
+                            msg['From'] = sender_email
+                            msg['To'] = receiver_email
+                            msg['Subject'] = f"{df.iloc[0]['진료번호']} 환자의 진료 스케줄"
+                            body = "안녕하세요. 환자 진료 스케줄 파일입니다."
+                            msg.attach(MIMEText(body, 'plain'))
+                            
+                            part = MIMEText(output.getvalue(), _subtype="xlsx")
+                            part.add_header('Content-Disposition', 'attachment', filename="진료스케줄.xlsx")
+                            msg.attach(part)
+
+                            server = smtplib.SMTP('smtp.gmail.com', 587)
+                            server.starttls()
+                            server.login(sender_email, email_password)
+                            server.sendmail(sender_email, receiver_email, msg.as_string())
+                            server.quit()
+                            st.success("이메일이 성공적으로 발송되었습니다!")
+                        except Exception as e:
+                            st.error(f"이메일 발송 중 오류가 발생했습니다: {e}")
+            
+            # Google Calendar에 등록된 환자 스케줄 등록
+            st.markdown("---")
+            st.subheader("Google Calendar 일정 등록")
+
+            if calendar_service and 'google_creds' in st.session_state:
+                st.success("Google Calendar에 연결되었습니다.")
+                calendar_list = calendar_service.calendarList().list().execute().get('items', [])
+                calendar_names = {c['summary']: c['id'] for c in calendar_list}
+                
+                with st.form("calendar_form"):
+                    selected_calendar_name = st.selectbox("일정을 추가할 캘린더", sorted(calendar_names.keys()))
+                    submitted_calendar = st.form_submit_button("캘린더 설정 저장")
+                    if submitted_calendar:
+                        calendar_id = calendar_names[selected_calendar_name]
+                        calendar_settings_ref.set({"calendarId": calendar_id, "calendarName": selected_calendar_name})
+                        st.success(f"'{selected_calendar_name}' 캘린더가 기본으로 설정되었습니다.")
+                        st.rerun()
+            else:
+                st.warning("Google Calendar에 연결되지 않았습니다.")
+                if st.button("Google Calendar 로그인"):
+                    if 'authorization_url' in st.session_state:
+                        st.markdown(f"[{st.session_state['authorization_url']}]({st.session_state['authorization_url']})")
+                    else:
+                        st.warning("로그인 URL을 생성할 수 없습니다. 페이지를 새로고침 해주세요.")
+    
+# --- 메인 페이지 ---
+
+# 파일 업로드
+uploaded_file = st.file_uploader("암호화된 엑셀 파일(.xlsx) 업로드", type="xlsx")
+
+if uploaded_file:
+    # 엑셀 파일 암호 해제
+    password = st.text_input("엑셀 파일 비밀번호", type="password")
+    if password:
+        try:
+            decrypted_file = io.BytesIO()
+            office_file = msoffcrypto.OfficeFile(uploaded_file)
+            office_file.load_key(password=password)
+            office_file.decrypt(decrypted_file)
+
+            # 엑셀 파일 읽기
+            df = pd.read_excel(decrypted_file)
+            st.write("엑셀 파일 미리보기:")
+            st.dataframe(df)
+
+            # DB에서 키워드-진료과 매핑 정보 가져오기
+            sheet_keyword_to_department_map = department_keyword_map_ref.get()
+
+            # 시트 키워드-컬럼 매핑 정보
+            sheet_keyword_data = sheet_keyword_ref.get()
+            
+            # 메일 발송 기능
+            st.markdown("---")
+            st.subheader("이메일 발송")
+            with st.form("email_form"):
+                sender_email = st.text_input("보내는 사람 이메일")
+                receiver_email = st.text_input("받는 사람 이메일")
+                email_password = st.text_input("보내는 사람 이메일 비밀번호", type="password")
+
+                email_submitted = st.form_submit_button("메일 발송")
+
+                if email_submitted:
+                    if not is_valid_email(sender_email) or not is_valid_email(receiver_email):
+                        st.error("이메일 주소가 올바르지 않습니다.")
+                    else:
+                        try:
+                            # 엑셀 시트 생성
+                            output = io.BytesIO()
+                            with pd.ExcelWriter(output, engine='openpyxl') as writer:
+                                df.to_excel(writer, index=False, sheet_name='Sheet1')
+                            output.seek(0)
+
+                            # 이메일 전송
+                            msg = MIMEMultipart()
+                            msg['From'] = sender_email
+                            msg['To'] = receiver_email
+                            msg['Subject'] = f"{df.iloc[0]['진료번호']} 환자의 진료 스케줄"
+                            body = "안녕하세요. 환자 진료 스케줄 파일입니다."
+                            msg.attach(MIMEText(body, 'plain'))
+                            
+                            part = MIMEText(output.getvalue(), _subtype="xlsx")
+                            part.add_header('Content-Disposition', 'attachment', filename="진료스케줄.xlsx")
+                            msg.attach(part)
+
+                            server = smtplib.SMTP('smtp.gmail.com', 587)
+                            server.starttls()
+                            server.login(sender_email, email_password)
+                            server.sendmail(sender_email, receiver_email, msg.as_string())
+                            server.quit()
+                            st.success("이메일이 성공적으로 발송되었습니다!")
+                        except Exception as e:
+                            st.error(f"이메일 발송 중 오류가 발생했습니다: {e}")
+            
+            # Google Calendar에 등록된 환자 스케줄 등록
+            st.markdown("---")
+            st.subheader("Google Calendar 일정 등록")
+
+            if calendar_service and 'google_creds' in st.session_state:
+                st.success("Google Calendar에 연결되었습니다.")
+                calendar_list = calendar_service.calendarList().list().execute().get('items', [])
+                calendar_names = {c['summary']: c['id'] for c in calendar_list}
+                
+                with st.form("calendar_form"):
+                    selected_calendar_name = st.selectbox("일정을 추가할 캘린더", sorted(calendar_names.keys()))
+                    submitted_calendar = st.form_submit_button("캘린더 설정 저장")
+                    if submitted_calendar:
+                        calendar_id = calendar_names[selected_calendar_name]
+                        calendar_settings_ref.set({"calendarId": calendar_id, "calendarName": selected_calendar_name})
+                        st.success(f"'{selected_calendar_name}' 캘린더가 기본으로 설정되었습니다.")
+                        st.rerun()
+            else:
+                st.warning("Google Calendar에 연결되지 않았습니다.")
+                if st.button("Google Calendar 로그인"):
+                    if 'authorization_url' in st.session_state:
+                        st.markdown(f"[{st.session_state['authorization_url']}]({st.session_state['authorization_url']})")
+                    else:
+                        st.warning("로그인 URL을 생성할 수 없습니다. 페이지를 새로고침 해주세요.")
+    
+# --- 메인 페이지 ---
+
+# 파일 업로드
+uploaded_file = st.file_uploader("암호화된 엑셀 파일(.xlsx) 업로드", type="xlsx")
+
+if uploaded_file:
+    # 엑셀 파일 암호 해제
+    password = st.text_input("엑셀 파일 비밀번호", type="password")
+    if password:
+        try:
+            decrypted_file = io.BytesIO()
+            office_file = msoffcrypto.OfficeFile(uploaded_file)
+            office_file.load_key(password=password)
+            office_file.decrypt(decrypted_file)
+
+            # 엑셀 파일 읽기
+            df = pd.read_excel(decrypted_file)
+            st.write("엑셀 파일 미리보기:")
+            st.dataframe(df)
+
+            # DB에서 키워드-진료과 매핑 정보 가져오기
+            sheet_keyword_to_department_map = department_keyword_map_ref.get()
+
+            # 시트 키워드-컬럼 매핑 정보
+            sheet_keyword_data = sheet_keyword_ref.get()
+            
+            # 메일 발송 기능
+            st.markdown("---")
+            st.subheader("이메일 발송")
+            with st.form("email_form"):
+                sender_email = st.text_input("보내는 사람 이메일")
+                receiver_email = st.text_input("받는 사람 이메일")
+                email_password = st.text_input("보내는 사람 이메일 비밀번호", type="password")
+
+                email_submitted = st.form_submit_button("메일 발송")
+
+                if email_submitted:
+                    if not is_valid_email(sender_email) or not is_valid_email(receiver_email):
+                        st.error("이메일 주소가 올바르지 않습니다.")
+                    else:
+                        try:
+                            # 엑셀 시트 생성
+                            output = io.BytesIO()
+                            with pd.ExcelWriter(output, engine='openpyxl') as writer:
+                                df.to_excel(writer, index=False, sheet_name='Sheet1')
+                            output.seek(0)
+
+                            # 이메일 전송
+                            msg = MIMEMultipart()
+                            msg['From'] = sender_email
+                            msg['To'] = receiver_email
+                            msg['Subject'] = f"{df.iloc[0]['진료번호']} 환자의 진료 스케줄"
+                            body = "안녕하세요. 환자 진료 스케줄 파일입니다."
+                            msg.attach(MIMEText(body, 'plain'))
+                            
+                            part = MIMEText(output.getvalue(), _subtype="xlsx")
+                            part.add_header('Content-Disposition', 'attachment', filename="진료스케줄.xlsx")
+                            msg.attach(part)
+
+                            server = smtplib.SMTP('smtp.gmail.com', 587)
+                            server.starttls()
+                            server.login(sender_email, email_password)
+                            server.sendmail(sender_email, receiver_email, msg.as_string())
+                            server.quit()
+                            st.success("이메일이 성공적으로 발송되었습니다!")
+                        except Exception as e:
+                            st.error(f"이메일 발송 중 오류가 발생했습니다: {e}")
+            
+            # Google Calendar에 등록된 환자 스케줄 등록
+            st.markdown("---")
+            st.subheader("Google Calendar 일정 등록")
+
+            if calendar_service and 'google_creds' in st.session_state:
+                st.success("Google Calendar에 연결되었습니다.")
+                calendar_list = calendar_service.calendarList().list().execute().get('items', [])
+                calendar_names = {c['summary']: c['id'] for c in calendar_list}
+                
+                with st.form("calendar_form"):
+                    selected_calendar_name = st.selectbox("일정을 추가할 캘린더", sorted(calendar_names.keys()))
+                    submitted_calendar = st.form_submit_button("캘린더 설정 저장")
+                    if submitted_calendar:
+                        calendar_id = calendar_names[selected_calendar_name]
+                        calendar_settings_ref.set({"calendarId": calendar_id, "calendarName": selected_calendar_name})
+                        st.success(f"'{selected_calendar_name}' 캘린더가 기본으로 설정되었습니다.")
+                        st.rerun()
+            else:
+                st.warning("Google Calendar에 연결되지 않았습니다.")
+                if st.button("Google Calendar 로그인"):
+                    if 'authorization_url' in st.session_state:
+                        st.markdown(f"[{st.session_state['authorization_url']}]({st.session_state['authorization_url']})")
+                    else:
+                        st.warning("로그인 URL을 생성할 수 없습니다. 페이지를 새로고침 해주세요.")
+    
+# --- 메인 페이지 ---
+
+# 파일 업로드
+uploaded_file = st.file_uploader("암호화된 엑셀 파일(.xlsx) 업로드", type="xlsx")
+
+if uploaded_file:
+    # 엑셀 파일 암호 해제
+    password = st.text_input("엑셀 파일 비밀번호", type="password")
+    if password:
+        try:
+            decrypted_file = io.BytesIO()
+            office_file = msoffcrypto.OfficeFile(uploaded_file)
+            office_file.load_key(password=password)
+            office_file.decrypt(decrypted_file)
+
+            # 엑셀 파일 읽기
+            df = pd.read_excel(decrypted_file)
+            st.write("엑셀 파일 미리보기:")
+            st.dataframe(df)
+
+            # DB에서 키워드-진료과 매핑 정보 가져오기
+            sheet_keyword_to_department_map = department_keyword_map_ref.get()
+
+            # 시트 키워드-컬럼 매핑 정보
+            sheet_keyword_data = sheet_keyword_ref.get()
+            
+            # 메일 발송 기능
+            st.markdown("---")
+            st.subheader("이메일 발송")
+            with st.form("email_form"):
+                sender_email = st.text_input("보내는 사람 이메일")
+                receiver_email = st.text_input("받는 사람 이메일")
+                email_password = st.text_input("보내는 사람 이메일 비밀번호", type="password")
+
+                email_submitted = st.form_submit_button("메일 발송")
+
+                if email_submitted:
+                    if not is_valid_email(sender_email) or not is_valid_email(receiver_email):
+                        st.error("이메일 주소가 올바르지 않습니다.")
+                    else:
+                        try:
+                            # 엑셀 시트 생성
+                            output = io.BytesIO()
+                            with pd.ExcelWriter(output, engine='openpyxl') as writer:
+                                df.to_excel(writer, index=False, sheet_name='Sheet1')
+                            output.seek(0)
+
+                            # 이메일 전송
+                            msg = MIMEMultipart()
+                            msg['From'] = sender_email
+                            msg['To'] = receiver_email
+                            msg['Subject'] = f"{df.iloc[0]['진료번호']} 환자의 진료 스케줄"
+                            body = "안녕하세요. 환자 진료 스케줄 파일입니다."
+                            msg.attach(MIMEText(body, 'plain'))
+                            
+                            part = MIMEText(output.getvalue(), _subtype="xlsx")
+                            part.add_header('Content-Disposition', 'attachment', filename="진료스케줄.xlsx")
+                            msg.attach(part)
+
+                            server = smtplib.SMTP('smtp.gmail.com', 587)
+                            server.starttls()
+                            server.login(sender_email, email_password)
+                            server.sendmail(sender_email, receiver_email, msg.as_string())
+                            server.quit()
+                            st.success("이메일이 성공적으로 발송되었습니다!")
+                        except Exception as e:
+                            st.error(f"이메일 발송 중 오류가 발생했습니다: {e}")
+            
+            # Google Calendar에 등록된 환자 스케줄 등록
+            st.markdown("---")
+            st.subheader("Google Calendar 일정 등록")
+
+            if calendar_service and 'google_creds' in st.session_state:
+                st.success("Google Calendar에 연결되었습니다.")
+                calendar_list = calendar_service.calendarList().list().execute().get('items', [])
+                calendar_names = {c['summary']: c['id'] for c in calendar_list}
+                
+                with st.form("calendar_form"):
+                    selected_calendar_name = st.selectbox("일정을 추가할 캘린더", sorted(calendar_names.keys()))
+                    submitted_calendar = st.form_submit_button("캘린더 설정 저장")
+                    if submitted_calendar:
+                        calendar_id = calendar_names[selected_calendar_name]
+                        calendar_settings_ref.set({"calendarId": calendar_id, "calendarName": selected_calendar_name})
+                        st.success(f"'{selected_calendar_name}' 캘린더가 기본으로 설정되었습니다.")
+                        st.rerun()
+            else:
+                st.warning("Google Calendar에 연결되지 않았습니다.")
+                if st.button("Google Calendar 로그인"):
+                    if 'authorization_url' in st.session_state:
+                        st.markdown(f"[{st.session_state['authorization_url']}]({st.session_state['authorization_url']})")
+                    else:
+                        st.warning("로그인 URL을 생성할 수 없습니다. 페이지를 새로고침 해주세요.")
+    
+# --- 메인 페이지 ---
+
+# 파일 업로드
+uploaded_file = st.file_uploader("암호화된 엑셀 파일(.xlsx) 업로드", type="xlsx")
+
+if uploaded_file:
+    # 엑셀 파일 암호 해제
+    password = st.text_input("엑셀 파일 비밀번호", type="password")
+    if password:
+        try:
+            decrypted_file = io.BytesIO()
+            office_file = msoffcrypto.OfficeFile(uploaded_file)
+            office_file.load_key(password=password)
+            office_file.decrypt(decrypted_file)
+
+            # 엑셀 파일 읽기
+            df = pd.read_excel(decrypted_file)
+            st.write("엑셀 파일 미리보기:")
+            st.dataframe(df)
+
+            # DB에서 키워드-진료과 매핑 정보 가져오기
+            sheet_keyword_to_department_map = department_keyword_map_ref.get()
+
+            # 시트 키워드-컬럼 매핑 정보
+            sheet_keyword_data = sheet_keyword_ref.get()
+            
+            # 메일 발송 기능
+            st.markdown("---")
+            st.subheader("이메일 발송")
+            with st.form("email_form"):
+                sender_email = st.text_input("보내는 사람 이메일")
+                receiver_email = st.text_input("받는 사람 이메일")
+                email_password = st.text_input("보내는 사람 이메일 비밀번호", type="password")
+
+                email_submitted = st.form_submit_button("메일 발송")
+
+                if email_submitted:
+                    if not is_valid_email(sender_email) or not is_valid_email(receiver_email):
+                        st.error("이메일 주소가 올바르지 않습니다.")
+                    else:
+                        try:
+                            # 엑셀 시트 생성
+                            output = io.BytesIO()
+                            with pd.ExcelWriter(output, engine='openpyxl') as writer:
+                                df.to_excel(writer, index=False, sheet_name='Sheet1')
+                            output.seek(0)
+
+                            # 이메일 전송
+                            msg = MIMEMultipart()
+                            msg['From'] = sender_email
+                            msg['To'] = receiver_email
+                            msg['Subject'] = f"{df.iloc[0]['진료번호']} 환자의 진료 스케줄"
+                            body = "안녕하세요. 환자 진료 스케줄 파일입니다."
+                            msg.attach(MIMEText(body, 'plain'))
+                            
+                            part = MIMEText(output.getvalue(), _subtype="xlsx")
+                            part.add_header('Content-Disposition', 'attachment', filename="진료스케줄.xlsx")
+                            msg.attach(part)
+
+                            server = smtplib.SMTP('smtp.gmail.com', 587)
+                            server.starttls()
+                            server.login(sender_email, email_password)
+                            server.sendmail(sender_email, receiver_email, msg.as_string())
+                            server.quit()
+                            st.success("이메일이 성공적으로 발송되었습니다!")
+                        except Exception as e:
+                            st.error(f"이메일 발송 중 오류가 발생했습니다: {e}")
+            
+            # Google Calendar에 등록된 환자 스케줄 등록
+            st.markdown("---")
+            st.subheader("Google Calendar 일정 등록")
+
+            if calendar_service and 'google_creds' in st.session_state:
+                st.success("Google Calendar에 연결되었습니다.")
+                calendar_list = calendar_service.calendarList().list().execute().get('items', [])
+                calendar_names = {c['summary']: c['id'] for c in calendar_list}
+                
+                with st.form("calendar_form"):
+                    selected_calendar_name = st.selectbox("일정을 추가할 캘린더", sorted(calendar_names.keys()))
+                    submitted_calendar = st.form_submit_button("캘린더 설정 저장")
+                    if submitted_calendar:
+                        calendar_id = calendar_names[selected_calendar_name]
+                        calendar_settings_ref.set({"calendarId": calendar_id, "calendarName": selected_calendar_name})
+                        st.success(f"'{selected_calendar_name}' 캘린더가 기본으로 설정되었습니다.")
+                        st.rerun()
+            else:
+                st.warning("Google Calendar에 연결되지 않았습니다.")
+                if st.button("Google Calendar 로그인"):
+                    if 'authorization_url' in st.session_state:
+                        st.markdown(f"[{st.session_state['authorization_url']}]({st.session_state['authorization_url']})")
+                    else:
+                        st.warning("로그인 URL을 생성할 수 없습니다. 페이지를 새로고침 해주세요.")
+    
+# --- 메인 페이지 ---
+
+# 파일 업로드
+uploaded_file = st.file_uploader("암호화된 엑셀 파일(.xlsx) 업로드", type="xlsx")
+
+if uploaded_file:
+    # 엑셀 파일 암호 해제
+    password = st.text_input("엑셀 파일 비밀번호", type="password")
+    if password:
+        try:
+            decrypted_file = io.BytesIO()
+            office_file = msoffcrypto.OfficeFile(uploaded_file)
+            office_file.load_key(password=password)
+            office_file.decrypt(decrypted_file)
+
+            # 엑셀 파일 읽기
+            df = pd.read_excel(decrypted_file)
+            st.write("엑셀 파일 미리보기:")
+            st.dataframe(df)
+
+            # DB에서 키워드-진료과 매핑 정보 가져오기
+            sheet_keyword_to_department_map = department_keyword_map_ref.get()
+
+            # 시트 키워드-컬럼 매핑 정보
+            sheet_keyword_data = sheet_keyword_ref.get()
+            
+            # 메일 발송 기능
+            st.markdown("---")
+            st.subheader("이메일 발송")
+            with st.form("email_form"):
+                sender_email = st.text_input("보내는 사람 이메일")
+                receiver_email = st.text_input("받는 사람 이메일")
+                email_password = st.text_input("보내는 사람 이메일 비밀번호", type="password")
+
+                email_submitted = st.form_submit_button("메일 발송")
+
+                if email_submitted:
+                    if not is_valid_email(sender_email) or not is_valid_email(receiver_email):
+                        st.error("이메일 주소가 올바르지 않습니다.")
+                    else:
+                        try:
+                            # 엑셀 시트 생성
+                            output = io.BytesIO()
+                            with pd.ExcelWriter(output, engine='openpyxl') as writer:
+                                df.to_excel(writer, index=False, sheet_name='Sheet1')
+                            output.seek(0)
+
+                            # 이메일 전송
+                            msg = MIMEMultipart()
+                            msg['From'] = sender_email
+                            msg['To'] = receiver_email
+                            msg['Subject'] = f"{df.iloc[0]['진료번호']} 환자의 진료 스케줄"
+                            body = "안녕하세요. 환자 진료 스케줄 파일입니다."
+                            msg.attach(MIMEText(body, 'plain'))
+                            
+                            part = MIMEText(output.getvalue(), _subtype="xlsx")
+                            part.add_header('Content-Disposition', 'attachment', filename="진료스케줄.xlsx")
+                            msg.attach(part)
+
+                            server = smtplib.SMTP('smtp.gmail.com', 587)
+                            server.starttls()
+                            server.login(sender_email, email_password)
+                            server.sendmail(sender_email, receiver_email, msg.as_string())
+                            server.quit()
+                            st.success("이메일이 성공적으로 발송되었습니다!")
+                        except Exception as e:
+                            st.error(f"이메일 발송 중 오류가 발생했습니다: {e}")
+            
+            # Google Calendar에 등록된 환자 스케줄 등록
+            st.markdown("---")
+            st.subheader("Google Calendar 일정 등록")
+
+            if calendar_service and 'google_creds' in st.session_state:
+                st.success("Google Calendar에 연결되었습니다.")
+                calendar_list = calendar_service.calendarList().list().execute().get('items', [])
+                calendar_names = {c['summary']: c['id'] for c in calendar_list}
+                
+                with st.form("calendar_form"):
+                    selected_calendar_name = st.selectbox("일정을 추가할 캘린더", sorted(calendar_names.keys()))
+                    submitted_calendar = st.form_submit_button("캘린더 설정 저장")
+                    if submitted_calendar:
+                        calendar_id = calendar_names[selected_calendar_name]
+                        calendar_settings_ref.set({"calendarId": calendar_id, "calendarName": selected_calendar_name})
+                        st.success(f"'{selected_calendar_name}' 캘린더가 기본으로 설정되었습니다.")
+                        st.rerun()
+            else:
+                st.warning("Google Calendar에 연결되지 않았습니다.")
+                if st.button("Google Calendar 로그인"):
+                    if 'authorization_url' in st.session_state:
+                        st.markdown(f"[{st.session_state['authorization_url']}]({st.session_state['authorization_url']})")
+                    else:
+                        st.warning("로그인 URL을 생성할 수 없습니다. 페이지를 새로고침 해주세요.")
+    
+# --- 메인 페이지 ---
+
+# 파일 업로드
+uploaded_file = st.file_uploader("암호화된 엑셀 파일(.xlsx) 업로드", type="xlsx")
+
+if uploaded_file:
+    # 엑셀 파일 암호 해제
+    password = st.text_input("엑셀 파일 비밀번호", type="password")
+    if password:
+        try:
+            decrypted_file = io.BytesIO()
+            office_file = msoffcrypto.OfficeFile(uploaded_file)
+            office_file.load_key(password=password)
+            office_file.decrypt(decrypted_file)
+
+            # 엑셀 파일 읽기
+            df = pd.read_excel(decrypted_file)
+            st.write("엑셀 파일 미리보기:")
+            st.dataframe(df)
+
+            # DB에서 키워드-진료과 매핑 정보 가져오기
+            sheet_keyword_to_department_map = department_keyword_map_ref.get()
+
+            # 시트 키워드-컬럼 매핑 정보
+            sheet_keyword_data = sheet_keyword_ref.get()
+            
+            # 메일 발송 기능
+            st.markdown("---")
+            st.subheader("이메일 발송")
+            with st.form("email_form"):
+                sender_email = st.text_input("보내는 사람 이메일")
+                receiver_email = st.text_input("받는 사람 이메일")
+                email_password = st.text_input("보내는 사람 이메일 비밀번호", type="password")
+
+                email_submitted = st.form_submit_button("메일 발송")
+
+                if email_submitted:
+                    if not is_valid_email(sender_email) or not is_valid_email(receiver_email):
+                        st.error("이메일 주소가 올바르지 않습니다.")
+                    else:
+                        try:
+                            # 엑셀 시트 생성
+                            output = io.BytesIO()
+                            with pd.ExcelWriter(output, engine='openpyxl') as writer:
+                                df.to_excel(writer, index=False, sheet_name='Sheet1')
+                            output.seek(0)
+
+                            # 이메일 전송
+                            msg = MIMEMultipart()
+                            msg['From'] = sender_email
+                            msg['To'] = receiver_email
+                            msg['Subject'] = f"{df.iloc[0]['진료번호']} 환자의 진료 스케줄"
+                            body = "안녕하세요. 환자 진료 스케줄 파일입니다."
+                            msg.attach(MIMEText(body, 'plain'))
+                            
+                            part = MIMEText(output.getvalue(), _subtype="xlsx")
+                            part.add_header('Content-Disposition', 'attachment', filename="진료스케줄.xlsx")
+                            msg.attach(part)
+
+                            server = smtplib.SMTP('smtp.gmail.com', 587)
+                            server.starttls()
+                            server.login(sender_email, email_password)
+                            server.sendmail(sender_email, receiver_email, msg.as_string())
+                            server.quit()
+                            st.success("이메일이 성공적으로 발송되었습니다!")
+                        except Exception as e:
+                            st.error(f"이메일 발송 중 오류가 발생했습니다: {e}")
+            
+            # Google Calendar에 등록된 환자 스케줄 등록
+            st.markdown("---")
+            st.subheader("Google Calendar 일정 등록")
+
+            if calendar_service and 'google_creds' in st.session_state:
+                st.success("Google Calendar에 연결되었습니다.")
+                calendar_list = calendar_service.calendarList().list().execute().get('items', [])
+                calendar_names = {c['summary']: c['id'] for c in calendar_list}
+                
+                with st.form("calendar_form"):
+                    selected_calendar_name = st.selectbox("일정을 추가할 캘린더", sorted(calendar_names.keys()))
+                    submitted_calendar = st.form_submit_button("캘린더 설정 저장")
+                    if submitted_calendar:
+                        calendar_id = calendar_names[selected_calendar_name]
+                        calendar_settings_ref.set({"calendarId": calendar_id, "calendarName": selected_calendar_name})
+                        st.success(f"'{selected_calendar_name}' 캘린더가 기본으로 설정되었습니다.")
+                        st.rerun()
+            else:
+                st.warning("Google Calendar에 연결되지 않았습니다.")
+                if st.button("Google Calendar 로그인"):
+                    if 'authorization_url' in st.session_state:
+                        st.markdown(f"[{st.session_state['authorization_url']}]({st.session_state['authorization_url']})")
+                    else:
+                        st.warning("로그인 URL을 생성할 수 없습니다. 페이지를 새로고침 해주세요.")
