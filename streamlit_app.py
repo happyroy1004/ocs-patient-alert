@@ -256,12 +256,13 @@ def create_calendar_event(service, patient_name, pid, department, reservation_da
     # 예약 날짜와 시간을 사용하여 이벤트 시작/종료 시간 설정
     try:
         # 예약 날짜와 시간을 조합하여 날짜/시간 문자열 생성
-        # 예: reservation_date_str='2024-08-15', reservation_time_str='11:00'
-        # -> date_time_str='2024-08-15 11:00'
         date_time_str = f"{reservation_date_str} {reservation_time_str}"
         
-        event_start = datetime.datetime.strptime(date_time_str, "%Y-%m-%d %H:%M").astimezone(seoul_tz)
+        # Naive datetime 객체 생성 후 한국 시간대(KST)로 로컬라이즈
+        naive_start = datetime.datetime.strptime(date_time_str, "%Y-%m-%d %H:%M")
+        event_start = naive_start.replace(tzinfo=seoul_tz)
         event_end = event_start + datetime.timedelta(minutes=30)
+        
     except ValueError as e:
         # 날짜 형식 파싱 실패 시 현재 시간 사용 (예외 처리)
         st.warning(f"'{patient_name}' 환자의 날짜/시간 형식 파싱 실패: {e}. 현재 시간으로 일정을 추가합니다.")
@@ -290,7 +291,7 @@ def create_calendar_event(service, patient_name, pid, department, reservation_da
         st.warning("구글 캘린더 인증 권한을 다시 확인해주세요.")
     except Exception as e:
         st.error(f"알 수 없는 오류 발생: {e}")
-
+        
 #4. Excel Processing Constants and Functions
 # --- 엑셀 처리 관련 상수 및 함수 ---
 sheet_keyword_to_department_map = {
