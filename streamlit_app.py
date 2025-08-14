@@ -29,6 +29,7 @@ def is_valid_email(email):
 # Firebase 초기화
 if not firebase_admin._apps:
     try:
+        # Streamlit secrets에서 Firebase 설정 가져오기
         firebase_credentials_json_str = st.secrets["firebase"]["FIREBASE_SERVICE_ACCOUNT_JSON"]
         firebase_credentials_dict = json.loads(firebase_credentials_json_str)
 
@@ -38,10 +39,60 @@ if not firebase_admin._apps:
         })
     except Exception as e:
         st.error(f"Firebase 초기화 오류: {e}")
+        st.info("secrets.toml 파일의 Firebase 설정(FIREBASE_SERVICE_ACCOUNT_JSON 또는 database_url)을 [firebase] 섹션 아래에 올바르게 작성했는지 확인해주세요.")
         st.stop()
+
+# Firebase-safe 경로 변환 (이메일을 Firebase 키로 사용하기 위해)
+def sanitize_path(email):
+    return email.replace(".", "_dot_").replace("@", "_at_")
+
+# 이메일 주소 복원 (Firebase 안전 키에서 원래 이메일로)
+def recover_email(safe_id: str) -> str:
+    email = safe_id.replace("_at_", "@").replace("_dot_", ".")
+    # _com이 항상 .com으로 복원되도록 수정
+    if email.endswith("_com"):
+        email = email.replace("_com", ".com")
+    return email
+
+# --- Excel 파일 처리 관련 함수 ---
+def decrypt_and_read_excel(file, password):
+    """
+    암호화된 엑셀 파일을 복호화하여 pandas DataFrame으로 읽어옵니다.
+    """
+    try:
+        decrypted_file = io.BytesIO()
+        office_file = msoffcrypto.OfficeFile(file)
+        office_file.decrypt(decrypted_file, password=password)
+        df = pd.read_excel(decrypted_file, engine='openpyxl')
+        return df
+    except msoffcrypto.exceptions.InvalidKeyError:
+        st.error("잘못된 비밀번호입니다.")
+        return None
+    except Exception as e:
+        st.error(f"파일 처리 중 오류 발생: {e}")
+        return None
+
+def find_pid_in_dataframe(df, pid_list):
+    """
+    DataFrame에서 등록된 환자(pid) 정보를 찾아 반환합니다.
+    """
+    pid_column = '진료번호' # 엑셀 파일의 '진료번호' 컬럼
+    # 엑셀 파일에 '진료번호' 컬럼이 있는지 확인
+    if pid_column not in df.columns:
+        st.error("엑셀 파일에 '진료번호' 컬럼이 없습니다.")
+        return pd.DataFrame()
+    
+    # 엑셀 파일의 '진료번호' 컬럼을 문자열로 변환하여 비교
+    df[pid_column] = df[pid_column].astype(str).str.strip()
+    pid_in_df = df[df[pid_column].isin(pid_list)]
+    
+    return pid_in_df
 
 # --- 이메일 전송 함수 ---
 def send_email(to_email, subject, body):
+    """
+    Gmail SMTP 서버를 사용하여 이메일을 전송합니다.
+    """
     try:
         smtp_server = "smtp.gmail.com"
         smtp_port = 587
@@ -58,7 +109,6 @@ def send_email(to_email, subject, body):
             server.starttls()
             server.login(sender_email, sender_password)
             server.send_message(msg)
-        st.success(f"이메일이 {to_email}로 성공적으로 전송되었습니다.")
         return True
     except Exception as e:
         st.error(f"이메일 전송 실패: {e}")
@@ -85,7 +135,7 @@ def get_google_calendar_service(refresh_token=None):
             client_id=client_id,
             client_secret=client_secret
         )
-
+    # 인증 토큰이 유효하지 않은 경우 재인증
     if not creds or not creds.valid:
         if creds and creds.expired and creds.refresh_token:
             creds.refresh(Request())
@@ -110,11 +160,14 @@ def get_google_calendar_service(refresh_token=None):
                 creds = flow.credentials
                 st.session_state["google_refresh_token"] = creds.refresh_token
 
-    if creds:
+    if creds and creds.valid:
         return build('calendar', 'v3', credentials=creds)
     return None
 
 def create_event(service, start_time, end_time, summary, description):
+    """
+    Google Calendar에 이벤트를 생성합니다.
+    """
     event = {
         'summary': summary,
         'description': description,
@@ -133,31 +186,112 @@ def create_event(service, start_time, end_time, summary, description):
     except Exception as e:
         st.error(f"이벤트 생성 실패: {e}")
 
+# --- 엑셀 처리 관련 상수 및 함수 ---
+sheet_keyword_to_department_map = {
+    '치과보철과': '보철', '보철과': '보철', '보철': '보철',
+    '치과교정과' : '교정', '교정과': '교정', '교정': '교정',
+    '구강 악안면외과' : '외과', '구강악안면외과': '외과', '외과': '외과',
+    '구강 내과' : '내과', '구강내과': '내과', '내과': '내과',
+    '치과보존과' : '보존', '보존과': '보존', '보존': '보존',
+    '소아치과': '소치', '소치': '소치', '소아 치과': '소치',
+    '원내생진료센터': '원내생', '원내생': '원내생','원내생 진료센터': '원내생','원진실':'원내생',
+    '원스톱 협진센터' : '원스톱', '원스톱협진센터': '원스톱', '원스톱': '원스톱',
+    '임플란트 진료센터' : '임플란트', '임플란트진료센터': '임플란트', '임플란트': '임플란트',
+    '임플' : '임플란트', '치주과': '치주', '치주': '치주',
+    '임플실': '임플란트', '원진실': '원내생', '병리': '병리'
+}
 
-# --- Excel 파일 처리 관련 함수 ---
-def decrypt_and_read_excel(file, password):
+professors_dict = {
+    '소치': ['김현태', '장기택', '김정욱', '현홍근', '김영재', '신터전', '송지수'],
+    '보존': ['이인복', '금기연', '이우철', '유연지', '서덕규', '이창하', '김선영', '손원준'],
+    '외과': ['최진영', '서병무', '명훈', '김성민', '박주영', '양훈주', '한정준', '권익재'],
+    '치주': ['구영', '이용무', '설양조', '구기태', '김성태', '조영단'],
+    '보철': ['곽재영', '김성균', '임영준', '김명주', '권호범', '여인성', '윤형인', '박지만', '이재현', '조준호'],
+    '교정': [], '내과': [], '원내생': [], '원스톱': [], '임플란트': [], '병리': []
+}
+
+def process_excel_file_and_style(file_bytes_io):
+    """
+    업로드된 엑셀 파일을 처리하고 스타일을 적용하여 새 파일을 반환합니다.
+    """
+    file_bytes_io.seek(0)
     try:
-        decrypted_file = io.BytesIO()
-        office_file = msoffcrypto.OfficeFile(file)
-        office_file.decrypt(decrypted_file, password=password)
-        df = pd.read_excel(decrypted_file, engine='openpyxl')
-        return df
-    except msoffcrypto.exceptions.InvalidKeyError:
-        st.error("잘못된 비밀번호입니다.")
-        return None
+        wb_raw = load_workbook(filename=file_bytes_io, keep_vba=False, data_only=True)
     except Exception as e:
-        st.error(f"파일 처리 중 오류 발생: {e}")
-        return None
+        raise ValueError(f"엑셀 워크북 로드 실패: {e}")
 
-def find_pid_in_dataframe(df, pid_list):
-    pid_column = '진료번호' # 엑셀 파일의 '진료번호' 컬럼
-    pid_in_df = df[df[pid_column].isin(pid_list)]
-    return pid_in_df
+    processed_sheets_dfs = {}
+    for sheet_name_raw in wb_raw.sheetnames:
+        sheet_name_lower = sheet_name_raw.strip().lower()
+        sheet_key = None
+        for keyword, department_name in sorted(sheet_keyword_to_department_map.items(), key=lambda item: len(item[0]), reverse=True):
+            if keyword.lower() in sheet_name_lower:
+                sheet_key = department_name
+                break
+        if not sheet_key:
+            st.warning(f"시트 '{sheet_name_raw}'을(를) 인식할 수 없습니다. 건너킵니다.")
+            continue
+        ws = wb_raw[sheet_name_raw]
+        values = list(ws.values)
+        while values and (values[0] is None or all((v is None or str(v).strip() == "") for v in values[0])):
+            values.pop(0)
+        if len(values) < 2:
+            st.warning(f"시트 '{sheet_name_raw}'에 유효한 데이터가 충분하지 않습니다. 건너깁니다.")
+            continue
+        df = pd.DataFrame(values)
+        df.columns = df.iloc[0]
+        df = df.drop([0]).reset_index(drop=True)
+        df = df.fillna("").astype(str)
+        if '예약의사' in df.columns:
+            df['예약의사'] = df['예약의사'].str.strip().str.replace(" 교수님", "", regex=False)
+        else:
+            st.warning(f"시트 '{sheet_name_raw}': '예약의사' 컬럼이 없습니다. 이 시트는 처리되지 않습니다.")
+            continue
+        professors_list = professors_dict.get(sheet_key, [])
+        try:
+            # `process_sheet_v8` 함수는 이 예제 코드에 포함되지 않아, 간단한 정렬만 적용
+            processed_df = df.sort_values(by=['예약의사', '예약시간'], ascending=[True, True])
+            processed_sheets_dfs[sheet_name_raw] = processed_df
+        except KeyError as e:
+            st.error(f"시트 '{sheet_name_raw}' 처리 중 컬럼 오류: {e}. 이 시트는 건너깁니다.")
+            continue
+        except Exception as e:
+            st.error(f"시트 '{sheet_name_raw}' 처리 중 알 수 없는 오류: {e}. 이 시트는 건너깁니다.")
+            continue
+
+    if not processed_sheets_dfs:
+        st.info("처리된 시트가 없습니다.")
+        return None, None
+    output_buffer_for_styling = io.BytesIO()
+    with pd.ExcelWriter(output_buffer_for_styling, engine='openpyxl') as writer:
+        for sheet_name_raw, df in processed_sheets_dfs.items():
+            df.to_excel(writer, sheet_name=sheet_name_raw, index=False)
+    output_buffer_for_styling.seek(0)
+    wb_styled = load_workbook(output_buffer_for_styling, keep_vba=False, data_only=True)
+    # 스타일링 로직 (코드레용.txt의 내용 기반)
+    for sheet_name in wb_styled.sheetnames:
+        ws = wb_styled[sheet_name]
+        if sheet_name.strip() == "교정":
+            header = {cell.value: idx + 1 for idx, cell in enumerate(ws[1])}
+            if '진료내역' in header:
+                idx = header['진료내역'] - 1
+                for row_idx, row in enumerate(ws.iter_rows(min_row=2, max_row=ws.max_row), start=2):
+                    if len(row) > idx:
+                        cell = row[idx]
+                        text = str(cell.value).strip().lower()
+                        if ('bonding' in text or '본딩' in text) and 'debonding' not in text:
+                            cell.font = Font(bold=True)
+    final_output_bytes = io.BytesIO()
+    wb_styled.save(final_output_bytes)
+    final_output_bytes.seek(0)
+    return processed_sheets_dfs, final_output_bytes
+
 
 # --- Streamlit UI ---
 st.set_page_config(layout="wide")
 st.title("OCS 환자 알림 시스템")
 st.caption("환자 정보 관리 및 진료 알림을 위한 앱입니다.")
+st.markdown("---")
 
 # --- Firebase에서 환자 데이터 가져오기 ---
 ref = db.reference('/')
@@ -165,6 +299,26 @@ patients_ref_for_user = ref.child('patients')
 patients_data = patients_ref_for_user.get()
 existing_patient_data = patients_data if patients_data else {}
 existing_pids = list(val['진료번호'] for val in existing_patient_data.values() if '진료번호' in val)
+
+# --- 사용자 로그인 및 관리 ---
+# 사용자 이름 입력 필드
+user_name = st.text_input("사용자 이름을 입력하세요 (예시: 홍길동)")
+
+# Admin 계정 확인 로직
+is_admin_input = (user_name.strip().lower() == "admin")
+
+# 사용자 이름이 입력되면 해당 사용자의 환자 데이터 불러오기 (간소화된 로직)
+if user_name and not is_admin_input:
+    safe_user_name = sanitize_path(user_name)
+    patients_ref = db.reference(f'patients/{safe_user_name}')
+    patients_data = patients_ref.get()
+    existing_patient_data = patients_data if patients_data else {}
+    existing_pids = list(val['진료번호'] for val in existing_patient_data.values() if '진료번호' in val)
+    st.info(f"**{user_name}** 님의 환자 데이터가 로드되었습니다.")
+elif not user_name:
+    st.warning("사용자 이름을 입력해주세요.")
+    st.stop()
+
 
 tab1, tab2, tab3 = st.tabs(["환자 관리", "환자 상태 확인 및 알림", "이메일 알림"])
 
@@ -182,7 +336,7 @@ with tab1:
                     st.markdown(f"**{val.get('환자명', '미지정')}** / {val.get('진료번호', '미지정')} / {val.get('등록과', '미지정')}")
                 with col2:
                     if st.button("X", key=f"delete_button_{key}"):
-                        patients_ref_for_user.child(key).delete()
+                        patients_ref.child(key).delete()
                         st.rerun()
         else:
             st.info("등록된 환자가 없습니다.")
@@ -199,10 +353,10 @@ with tab1:
         if submitted:
             if not name or not pid:
                 st.warning("모든 항목을 입력해주세요.")
-            elif any(v["진료번호"] == pid for v in existing_patient_data.values()):
+            elif any(v.get("진료번호") == pid for v in existing_patient_data.values()):
                 st.error("이미 등록된 진료번호입니다.")
             else:
-                patients_ref_for_user.push().set({"환자명": name, "진료번호": pid, "등록과": selected_department})
+                patients_ref.push().set({"환자명": name, "진료번호": pid, "등록과": selected_department})
                 st.success(f"환자 '{name}'이(가) 등록되었습니다.")
                 time.sleep(1)
                 st.rerun()
