@@ -636,8 +636,8 @@ if is_admin_input:
                             
                             for registered_patient in registered_patients_data:
                                 if (registered_patient["환자명"] == excel_patient_name and
-                                        registered_patient["진료번호"] == excel_patient_pid and
-                                        registered_patient["등록과"] == excel_sheet_department):
+                                    registered_patient["진료번호"] == excel_patient_pid and
+                                    registered_patient["등록과"] == excel_sheet_department):
                                     
                                     matched_row_copy = excel_row.copy()
                                     matched_row_copy["시트"] = sheet_name_excel_raw
@@ -684,7 +684,11 @@ if is_admin_input:
                                     service = build('calendar', 'v3', credentials=creds)
                                     if not df_matched.empty:
                                         for _, row in df_matched.iterrows():
-                                            create_calendar_event(service, row['환자명'], row['진료번호'], row.get('시트', ''))
+                                            # '예약일'과 '예약시간' 컬럼에서 값을 추출하여 전달
+                                            # 실제 엑셀 파일의 컬럼명에 맞게 수정이 필요합니다.
+                                            event_date = row.get('예약일', datetime.date.today()).strftime("%Y.%m.%d")
+                                            event_time = row.get('예약시간', datetime.datetime.now().time()).strftime("%H:%M")
+                                            create_calendar_event(service, row['환자명'], row['진료번호'], row.get('시트', ''), event_date, event_time)
                                     st.success(f"**{user_name}**님의 캘린더에 일정을 추가했습니다.")
                                 except Exception as e:
                                     st.error(f"**{user_name}**님의 캘린더 일정 추가 실패: {e}")
@@ -718,7 +722,7 @@ if is_admin_input:
                                     st.success(f"**{user_name}**님 ({user_email})께 캘린더 권한 설정을 위한 메일 전송 완료!")
                                 else:
                                     st.error(f"**{user_name}**님 ({user_email})께 메일 전송 실패: {result}")
-                            
+                                
             else:
                 st.info("엑셀 파일 처리 완료. 매칭된 환자가 없습니다.")
                 
@@ -885,13 +889,15 @@ else:
     with st.form("register_form"):
         name = st.text_input("환자명")
         pid = st.text_input("진료번호")
+        event_date = st.date_input("예약 날짜", value=datetime.date.today())
+        event_time = st.time_input("예약 시간", value=datetime.time(9, 0))
 
         departments_for_registration = sorted(list(set(sheet_keyword_to_department_map.values())))
         selected_department = st.selectbox("등록 과", departments_for_registration)
 
         submitted = st.form_submit_button("등록")
         if submitted:
-            if not name or not pid:
+            if not name or not pid or not event_date or not event_time:
                 st.warning("모든 항목을 입력해주세요.")
             elif existing_patient_data and any(
                 v["환자명"] == name and v["진료번호"] == pid and v.get("등록과") == selected_department
@@ -902,6 +908,7 @@ else:
                 st.success(f"{name} ({pid}) [{selected_department}] 환자 등록 완료")
                 
                 if st.session_state.google_calendar_service:
-                    create_calendar_event(st.session_state.google_calendar_service, name, pid, selected_department)
+                    # 'YYYY.MM.DD'와 'HH:MM' 형식의 문자열로 변환하여 전달
+                    create_calendar_event(st.session_state.google_calendar_service, name, pid, selected_department, event_date.strftime("%Y.%m.%d"), event_time.strftime("%H:%M"))
 
                 st.rerun()
