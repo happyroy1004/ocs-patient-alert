@@ -65,7 +65,8 @@ def get_google_calendar_credentials():
     elif not creds:
         try:
             # secrets.toml 파일에서 Google Calendar API 설정을 가져옵니다.
-            google_calendar_secrets = st.secrets["google calendar"]
+            # toml 파일의 키와 일치하도록 'google calendar' -> 'googlecalendar'로 수정했습니다.
+            google_calendar_secrets = st.secrets["googlecalendar"]
             
             # Google API 인증 정보의 형식을 web 애플리케이션에 맞게 수정합니다.
             client_config = {
@@ -88,7 +89,7 @@ def get_google_calendar_credentials():
             st.warning("Google 계정 로그인 필요! 아래 링크를 클릭하여 로그인해주세요.")
             st.markdown(f"[{st.session_state['authorization_url']}]({st.session_state['authorization_url']})")
         except KeyError as e:
-            st.error(f"Google Calendar API 설정 오류: secrets.toml 파일에 '[google calendar]' 섹션이 없거나 형식이 잘못되었습니다. {e}")
+            st.error(f"Google Calendar API 설정 오류: secrets.toml 파일에 '[googlecalendar]' 섹션이 없거나 형식이 잘못되었습니다. {e}")
             return None
 
     if 'code' in st.session_state and not creds:
