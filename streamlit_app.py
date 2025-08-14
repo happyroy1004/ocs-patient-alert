@@ -548,7 +548,7 @@ def analyze_ocs_data_for_tabs(processed_sheets_dfs, professors_dict):
             st.markdown(f"총 Bonding 환자 수: **{bonding_count}명**")
         else:
             st.info("교정과 시트가 발견되지 않았습니다.")
-            
+
 #5. Streamlit App Start and Session State
 # --- Streamlit 애플리케이션 시작 ---
 st.set_page_config(layout="wide")
@@ -689,93 +689,58 @@ if st.session_state.email_change_mode:
             st.error("올바른 이메일 주소 형식이 아닙니다.")
 
 #7. Admin Mode Functionality
-# --- Admin 모드 로그인 처리 ---
-if is_admin_input:
-    st.session_state.logged_in_as_admin = True
-    st.session_state.found_user_email = "admin"
-    st.session_state.current_user_name = "admin"
-    
-    # 엑셀 업로드 섹션 - 비밀번호 없이도 접근 가능
-    st.subheader("💻 Excel File Processor")
-    uploaded_file = st.file_uploader("암호화된 Excel 파일을 업로드하세요", type=["xlsx", "xlsm"])
-    
-    # 엑셀 업로드 로직
-    if uploaded_file:
-        uploaded_file.seek(0)
+# --- 탭 UI 생성 (항상 표시) ---
+tab1, tab2, tab3 = st.tabs(["관리자 기능", "OCS 현황 분석", "사용자별 환자 조회"])
+
+# tab2와 tab3은 admin이 파일을 업로드해야 내용이 보입니다.
+with tab2:
+    st.header("OCS 현황 분석")
+    if 'processed_excel_data_dfs' in st.session_state and st.session_state.processed_excel_data_dfs:
+        analyze_ocs_data_for_tabs(st.session_state.processed_excel_data_dfs, professors_dict)
+    else:
+        st.info("먼저 '관리자 기능' 탭에서 엑셀 파일을 업로드하고 처리해야 현황을 볼 수 있습니다.")
+
+with tab3:
+    st.header("사용자별 토탈환자 조회")
+    if 'processed_excel_data_dfs' in st.session_state and st.session_state.processed_excel_data_dfs:
+        all_users_meta = users_ref.get()
+        user_list = [f"{user_info.get('name', '이름 없음')} ({user_info.get('email', '이메일 없음')})" 
+                        for user_info in (all_users_meta.values() if all_users_meta else [])]
         
-        password = st.text_input("엑셀 파일 비밀번호 입력", type="password") if is_encrypted_excel(uploaded_file) else None
-        if is_encrypted_excel(uploaded_file) and not password:
-            st.info("암호화된 파일입니다. 비밀번호를 입력해주세요.")
-            st.stop()
+        selected_user_str = st.selectbox("조회할 사용자 선택", user_list)
         
-        try:
-            file_name = uploaded_file.name
-            
-            # --- 엑셀 파일 이름에서 예약 날짜 정보 추출 (수정) ---
-            # 'ocs_0812' -> 8월 12일 -> 2024-08-12
-            date_match = re.search(r'_(\d{2})(\d{2})', file_name)
-            reservation_date_excel = None
-            if date_match:
-                month_str = date_match.group(1)
-                day_str = date_match.group(2)
-                current_year = datetime.datetime.now().year
-                reservation_date_excel = f"{current_year}-{month_str}-{day_str}"
-            else:
-                st.warning("엑셀 파일 이름에서 예약 날짜를 추출할 수 없습니다. 캘린더 일정은 현재 날짜로 설정됩니다.")
-                reservation_date_excel = datetime.datetime.now().strftime("%Y-%m-%d")
-            
-            xl_object, raw_file_io = load_excel(uploaded_file, password)
-            excel_data_dfs, styled_excel_bytes = process_excel_file_and_style(raw_file_io)
-
-            if excel_data_dfs is None or styled_excel_bytes is None:
-                st.warning("엑셀 파일 처리 중 문제가 발생했거나 처리할 데이터가 없습니다.")
-                st.stop()
-            
-            # 엑셀 파일 처리 후 데이터프레임을 세션 상태에 저장합니다.
-            st.session_state.processed_excel_data_dfs = excel_data_dfs
-            st.session_state.processed_styled_bytes = styled_excel_bytes
-
-            sender = st.secrets["gmail"]["sender"]
-            sender_pw = st.secrets["gmail"]["app_password"]
-
-            all_users_meta = users_ref.get()
-            all_patients_data = db.reference("patients").get()
-
-            if not all_users_meta and not all_patients_data:
-                st.warning("Firebase에 등록된 사용자 또는 환자 데이터가 없습니다. 이메일 전송은 불가능합니다.")
-            elif not all_users_meta:
-                st.warning("Firebase users 노드에 등록된 사용자 메타 정보가 없습니다. 이메일 전송 시 이름 대신 이메일이 사용됩니다.")
-            elif not all_patients_data:
-                st.warning("Firebase patients 노드에 등록된 환자 데이터가 없습니다. 매칭할 수 없습니다.")
-
-            matched_users = []
-            
-            if all_patients_data:
-                for uid_safe, registered_patients_for_this_user in all_patients_data.items():
-                    user_email = recover_email(uid_safe)
-                    user_display_name = user_email
+        if selected_user_str:
+            match = re.search(r'\((.*?)\)', selected_user_str)
+            if match:
+                user_email = match.group(1)
+                user_name = selected_user_str.split(' (')[0]
+                user_safe_key = sanitize_path(user_email)
+                
+                # 사용자의 등록 환자 정보 가져오기
+                all_patients_data = db.reference("patients").get()
+                registered_patients_for_this_user = all_patients_data.get(user_safe_key, {})
+                
+                if registered_patients_for_this_user:
+                    st.markdown(f"**{user_name}**님이 등록한 환자 목록:")
                     
-                    if all_users_meta and uid_safe in all_users_meta:
-                        user_meta = all_users_meta[uid_safe]
-                        if "name" in user_meta:
-                            user_display_name = user_meta["name"]
-                        if "email" in user_meta:
-                            user_email = user_meta["email"]
-                    
-                    registered_patients_data = []
-                    if registered_patients_for_this_user:
-                        for key, val in registered_patients_for_this_user.items():
-                            registered_patients_data.append({
-                                "환자명": val["환자명"].strip(),
-                                "진료번호": val["진료번호"].strip().zfill(8),
-                                "등록과": val.get("등록과", "")
-                            })
+                    registered_patients_df = pd.DataFrame([
+                        {
+                            "환자명": val["환자명"],
+                            "진료번호": val["진료번호"],
+                            "등록과": val.get("등록과", ""),
+                            "등록일": val.get("등록일", "")
+                        } for key, val in registered_patients_for_this_user.items()
+                    ])
+                    st.dataframe(registered_patients_df, use_container_width=True)
+
+                    # OCS 파일과 매칭되는 환자 확인
+                    st.markdown("---")
+                    st.markdown("가장 최근 OCS 파일에 포함된 환자 목록:")
                     
                     matched_rows_for_user = []
-
-                    for sheet_name_excel_raw, df_sheet in excel_data_dfs.items():
+                    
+                    for sheet_name_excel_raw, df_sheet in st.session_state.processed_excel_data_dfs.items():
                         excel_sheet_name_lower = sheet_name_excel_raw.strip().lower()
-
                         excel_sheet_department = None
                         for keyword, department_name in sorted(sheet_keyword_to_department_map.items(), key=lambda item: len(item[0]), reverse=True):
                             if keyword.lower() in excel_sheet_name_lower:
@@ -789,25 +754,144 @@ if is_admin_input:
                             excel_patient_name = excel_row["환자명"].strip()
                             excel_patient_pid = excel_row["진료번호"].strip().zfill(8)
                             
-                            for registered_patient in registered_patients_data:
+                            for key, registered_patient in registered_patients_for_this_user.items():
                                 if (registered_patient["환자명"] == excel_patient_name and
                                         registered_patient["진료번호"] == excel_patient_pid and
                                         registered_patient["등록과"] == excel_sheet_department):
-                                    
                                     matched_row_copy = excel_row.copy()
                                     matched_row_copy["시트"] = sheet_name_excel_raw
                                     matched_rows_for_user.append(matched_row_copy)
                                     break
                                 
-                    if matched_rows_for_user:
-                        combined_matched_df = pd.DataFrame(matched_rows_for_user)
-                        matched_users.append({"email": user_email, "name": user_display_name, "data": combined_matched_df, "safe_key": uid_safe})
+                                if matched_rows_for_user:
+                                    combined_matched_df = pd.DataFrame(matched_rows_for_user)
+                                    st.dataframe(combined_matched_df, use_container_width=True)
+                                else:
+                                    st.info("최근 OCS 파일에 포함된 환자가 없습니다.")
+                            else:
+                                st.info("이 사용자는 등록된 환자가 없습니다.")
+                else:
+                    st.info("먼저 '관리자 기능' 탭에서 엑셀 파일을 업로드하고 처리해야 환자 조회가 가능합니다.")
 
-            # --- 탭 UI 생성 ---
-            tab1, tab2, tab3 = st.tabs(["일반 관리자 기능", "OCS 현황 분석", "사용자별 환자 조회"])
+# --- Admin 모드 로그인 처리 (기존과 동일) ---
+with tab1:
+    st.header("관리자 기능")
+    is_admin_input = st.text_input("관리자용 이메일 입력 (admin)", key="admin_email_input").lower() == "admin"
 
-            with tab1:
-                st.header("매칭된 환자 명단")
+    if is_admin_input:
+        st.session_state.logged_in_as_admin = True
+        st.session_state.found_user_email = "admin"
+        st.session_state.current_user_name = "admin"
+        
+        # 엑셀 업로드 섹션 - 비밀번호 없이도 접근 가능
+        st.subheader("💻 Excel File Processor")
+        uploaded_file = st.file_uploader("암호화된 Excel 파일을 업로드하세요", type=["xlsx", "xlsm"])
+        
+        # 엑셀 업로드 로직
+        if uploaded_file:
+            uploaded_file.seek(0)
+            
+            password = st.text_input("엑셀 파일 비밀번호 입력", type="password") if is_encrypted_excel(uploaded_file) else None
+            if is_encrypted_excel(uploaded_file) and not password:
+                st.info("암호화된 파일입니다. 비밀번호를 입력해주세요.")
+                st.stop()
+            
+            try:
+                file_name = uploaded_file.name
+                
+                # --- 엑셀 파일 이름에서 예약 날짜 정보 추출 (수정) ---
+                # 'ocs_0812' -> 8월 12일 -> 2024-08-12
+                date_match = re.search(r'_(\d{2})(\d{2})', file_name)
+                reservation_date_excel = None
+                if date_match:
+                    month_str = date_match.group(1)
+                    day_str = date_match.group(2)
+                    current_year = datetime.datetime.now().year
+                    reservation_date_excel = f"{current_year}-{month_str}-{day_str}"
+                else:
+                    st.warning("엑셀 파일 이름에서 예약 날짜를 추출할 수 없습니다. 캘린더 일정은 현재 날짜로 설정됩니다.")
+                    reservation_date_excel = datetime.datetime.now().strftime("%Y-%m-%d")
+                
+                xl_object, raw_file_io = load_excel(uploaded_file, password)
+                excel_data_dfs, styled_excel_bytes = process_excel_file_and_style(raw_file_io)
+
+                if excel_data_dfs is None or styled_excel_bytes is None:
+                    st.warning("엑셀 파일 처리 중 문제가 발생했거나 처리할 데이터가 없습니다.")
+                    st.stop()
+                
+                # 엑셀 파일 처리 후 데이터프레임을 세션 상태에 저장합니다.
+                st.session_state.processed_excel_data_dfs = excel_data_dfs
+                st.session_state.processed_styled_bytes = styled_excel_bytes
+
+                sender = st.secrets["gmail"]["sender"]
+                sender_pw = st.secrets["gmail"]["app_password"]
+
+                all_users_meta = users_ref.get()
+                all_patients_data = db.reference("patients").get()
+
+                if not all_users_meta and not all_patients_data:
+                    st.warning("Firebase에 등록된 사용자 또는 환자 데이터가 없습니다. 이메일 전송은 불가능합니다.")
+                elif not all_users_meta:
+                    st.warning("Firebase users 노드에 등록된 사용자 메타 정보가 없습니다. 이메일 전송 시 이름 대신 이메일이 사용됩니다.")
+                elif not all_patients_data:
+                    st.warning("Firebase patients 노드에 등록된 환자 데이터가 없습니다. 매칭할 수 없습니다.")
+
+                matched_users = []
+                
+                if all_patients_data:
+                    for uid_safe, registered_patients_for_this_user in all_patients_data.items():
+                        user_email = recover_email(uid_safe)
+                        user_display_name = user_email
+                        
+                        if all_users_meta and uid_safe in all_users_meta:
+                            user_meta = all_users_meta[uid_safe]
+                            if "name" in user_meta:
+                                user_display_name = user_meta["name"]
+                            if "email" in user_meta:
+                                user_email = user_meta["email"]
+                        
+                        registered_patients_data = []
+                        if registered_patients_for_this_user:
+                            for key, val in registered_patients_for_this_user.items():
+                                registered_patients_data.append({
+                                    "환자명": val["환자명"].strip(),
+                                    "진료번호": val["진료번호"].strip().zfill(8),
+                                    "등록과": val.get("등록과", "")
+                                })
+                        
+                        matched_rows_for_user = []
+
+                        for sheet_name_excel_raw, df_sheet in excel_data_dfs.items():
+                            excel_sheet_name_lower = sheet_name_excel_raw.strip().lower()
+
+                            excel_sheet_department = None
+                            for keyword, department_name in sorted(sheet_keyword_to_department_map.items(), key=lambda item: len(item[0]), reverse=True):
+                                if keyword.lower() in excel_sheet_name_lower:
+                                    excel_sheet_department = department_name
+                                    break
+                            
+                            if not excel_sheet_department:
+                                continue
+                                
+                            for _, excel_row in df_sheet.iterrows():
+                                excel_patient_name = excel_row["환자명"].strip()
+                                excel_patient_pid = excel_row["진료번호"].strip().zfill(8)
+                                
+                                for registered_patient in registered_patients_data:
+                                    if (registered_patient["환자명"] == excel_patient_name and
+                                            registered_patient["진료번호"] == excel_patient_pid and
+                                            registered_patient["등록과"] == excel_sheet_department):
+                                        
+                                        matched_row_copy = excel_row.copy()
+                                        matched_row_copy["시트"] = sheet_name_excel_raw
+                                        matched_rows_for_user.append(matched_row_copy)
+                                        break
+                                    
+                        if matched_rows_for_user:
+                            combined_matched_df = pd.DataFrame(matched_rows_for_user)
+                            matched_users.append({"email": user_email, "name": user_display_name, "data": combined_matched_df, "safe_key": uid_safe})
+
+                st.subheader("매칭된 환자 명단")
                 if matched_users:
                     st.success(f"{len(matched_users)}명의 사용자와 일치하는 환자 발견됨.")
                     
@@ -890,168 +974,87 @@ if is_admin_input:
                     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
                 )
 
-            with tab2:
-                st.header("OCS 현황 분석")
-                if st.session_state.processed_excel_data_dfs:
-                    analyze_ocs_data_for_tabs(st.session_state.processed_excel_data_dfs, professors_dict)
-                else:
-                    st.info("먼저 엑셀 파일을 업로드하고 처리해야 현황을 볼 수 있습니다.")
+            except ValueError as ve:
+                st.error(f"파일 처리 실패: {ve}")
+            except Exception as e:
+                st.error(f"예상치 못한 오류 발생: {e}")
 
-            with tab3:
-                st.header("사용자별 토탈환자 조회")
-                if st.session_state.processed_excel_data_dfs:
-                    all_users_meta = users_ref.get()
-                    user_list = [f"{user_info.get('name', '이름 없음')} ({user_info.get('email', '이메일 없음')})" 
-                                    for user_info in (all_users_meta.values() if all_users_meta else [])]
-                    
-                    selected_user_str = st.selectbox("조회할 사용자 선택", user_list)
-                    
-                    if selected_user_str:
-                        match = re.search(r'\((.*?)\)', selected_user_str)
-                        if match:
-                            user_email = match.group(1)
-                            user_name = selected_user_str.split(' (')[0]
-                            user_safe_key = sanitize_path(user_email)
-                            
-                            # 사용자의 등록 환자 정보 가져오기
-                            all_patients_data = db.reference("patients").get()
-                            registered_patients_for_this_user = all_patients_data.get(user_safe_key, {})
-                            
-                            if registered_patients_for_this_user:
-                                st.markdown(f"**{user_name}**님이 등록한 환자 목록:")
-                                
-                                registered_patients_df = pd.DataFrame([
-                                    {
-                                        "환자명": val["환자명"],
-                                        "진료번호": val["진료번호"],
-                                        "등록과": val.get("등록과", ""),
-                                        "등록일": val.get("등록일", "")
-                                    } for key, val in registered_patients_for_this_user.items()
-                                ])
-                                st.dataframe(registered_patients_df, use_container_width=True)
+        st.markdown("---")
+        st.subheader("🛠️ Administer password")
+        admin_password_input = st.text_input("관리자 비밀번호를 입력하세요", type="password", key="admin_password")
 
-                                # OCS 파일과 매칭되는 환자 확인
-                                st.markdown("---")
-                                st.markdown("가장 최근 OCS 파일에 포함된 환자 목록:")
-                                
-                                matched_rows_for_user = []
-                                
-                                for sheet_name_excel_raw, df_sheet in st.session_state.processed_excel_data_dfs.items():
-                                    excel_sheet_name_lower = sheet_name_excel_raw.strip().lower()
-                                    excel_sheet_department = None
-                                    for keyword, department_name in sorted(sheet_keyword_to_department_map.items(), key=lambda item: len(item[0]), reverse=True):
-                                        if keyword.lower() in excel_sheet_name_lower:
-                                            excel_sheet_department = department_name
-                                            break
-                                    
-                                    if not excel_sheet_department:
-                                        continue
-                                        
-                                    for _, excel_row in df_sheet.iterrows():
-                                        excel_patient_name = excel_row["환자명"].strip()
-                                        excel_patient_pid = excel_row["진료번호"].strip().zfill(8)
-                                        
-                                        for key, registered_patient in registered_patients_for_this_user.items():
-                                            if (registered_patient["환자명"] == excel_patient_name and
-                                                    registered_patient["진료번호"] == excel_patient_pid and
-                                                    registered_patient["등록과"] == excel_sheet_department):
-                                                matched_row_copy = excel_row.copy()
-                                                matched_row_copy["시트"] = sheet_name_excel_raw
-                                                matched_rows_for_user.append(matched_row_copy)
-                                                break
-                                
-                                if matched_rows_for_user:
-                                    combined_matched_df = pd.DataFrame(matched_rows_for_user)
-                                    st.dataframe(combined_matched_df, use_container_width=True)
-                                else:
-                                    st.info("최근 OCS 파일에 포함된 환자가 없습니다.")
-                            else:
-                                st.info("이 사용자는 등록된 환자가 없습니다.")
-                else:
-                    st.info("먼저 엑셀 파일을 업로드해야 환자 조회가 가능합니다.")
+        try:
+            secret_admin_password = st.secrets["admin"]["password"]
+        except KeyError:
+            secret_admin_password = None
+            st.error("⚠️ secrets.toml 파일에 'admin.password' 설정이 없습니다. 개발자에게 문의하세요.")
+        
+        if admin_password_input and admin_password_input == secret_admin_password:
+            st.session_state.admin_password_correct = True
+            st.success("관리자 권한이 활성화되었습니다.")
+        elif admin_password_input and admin_password_input != secret_admin_password:
+            st.error("비밀번호가 틀렸습니다.")
+            st.session_state.admin_password_correct = False
+        
+        if st.session_state.admin_password_correct:
+            st.markdown("---")
+            st.subheader("📦 메일 발송")
             
-        except ValueError as ve:
-            st.error(f"파일 처리 실패: {ve}")
-        except Exception as e:
-            st.error(f"예상치 못한 오류 발생: {e}")
+            all_users_meta = users_ref.get()
+            user_list_for_dropdown = [f"{user_info.get('name', '이름 없음')} ({user_info.get('email', '이메일 없음')})" 
+                                            for user_info in (all_users_meta.values() if all_users_meta else [])]
+            
+            select_all_users_button = st.button("모든 사용자 선택/해제", key="select_all_btn")
+            if select_all_users_button:
+                st.session_state.select_all_users = not st.session_state.select_all_users
 
-    st.markdown("---")
-    st.subheader("🛠️ Administer password")
-    admin_password_input = st.text_input("관리자 비밀번호를 입력하세요", type="password", key="admin_password")
+            default_selection = user_list_for_dropdown if st.session_state.select_all_users else []
 
-    try:
-        secret_admin_password = st.secrets["admin"]["password"]
-    except KeyError:
-        secret_admin_password = None
-        st.error("⚠️ secrets.toml 파일에 'admin.password' 설정이 없습니다. 개발자에게 문의하세요.")
-    
-    if admin_password_input and admin_password_input == secret_admin_password:
-        st.session_state.admin_password_correct = True
-        st.success("관리자 권한이 활성화되었습니다.")
-    elif admin_password_input and admin_password_input != secret_admin_password:
-        st.error("비밀번호가 틀렸습니다.")
-        st.session_state.admin_password_correct = False
-    
-    if st.session_state.admin_password_correct:
-        st.markdown("---")
-        st.subheader("📦 메일 발송")
-        
-        all_users_meta = users_ref.get()
-        user_list_for_dropdown = [f"{user_info.get('name', '이름 없음')} ({user_info.get('email', '이메일 없음')})" 
-                                        for user_info in (all_users_meta.values() if all_users_meta else [])]
-        
-        select_all_users_button = st.button("모든 사용자 선택/해제", key="select_all_btn")
-        if select_all_users_button:
-            st.session_state.select_all_users = not st.session_state.select_all_users
-
-        default_selection = user_list_for_dropdown if st.session_state.select_all_users else []
-
-        selected_users_for_mail = st.multiselect("보낼 사용자 선택", user_list_for_dropdown, default=default_selection, key="mail_multiselect")
-        
-        custom_message = st.text_area("보낼 메일 내용", height=200)
-        if st.button("메일 보내기"):
-            if custom_message:
-                sender = st.secrets["gmail"]["sender"]
-                sender_pw = st.secrets["gmail"]["app_password"]
-                
-                email_list = []
-                if selected_users_for_mail:
-                    for user_str in selected_users_for_mail:
-                        match = re.search(r'\((.*?)\)', user_str)
-                        if match:
-                            email_list.append(match.group(1))
-                
-                if email_list:
-                    with st.spinner("메일 전송 중..."):
-                        for email in email_list:
-                            result = send_email(email, pd.DataFrame(), sender, sender_pw, custom_message=custom_message)
-                            if result is True:
-                                st.success(f"{email}로 메일 전송 완료!")
-                            else:
-                                st.error(f"{email}로 메일 전송 실패: {result}")
+            selected_users_for_mail = st.multiselect("보낼 사용자 선택", user_list_for_dropdown, default=default_selection, key="mail_multiselect")
+            
+            custom_message = st.text_area("보낼 메일 내용", height=200)
+            if st.button("메일 보내기"):
+                if custom_message:
+                    sender = st.secrets["gmail"]["sender"]
+                    sender_pw = st.secrets["gmail"]["app_password"]
+                    
+                    email_list = []
+                    if selected_users_for_mail:
+                        for user_str in selected_users_for_mail:
+                            match = re.search(r'\((.*?)\)', user_str)
+                            if match:
+                                email_list.append(match.group(1))
+                    
+                    if email_list:
+                        with st.spinner("메일 전송 중..."):
+                            for email in email_list:
+                                result = send_email(email, pd.DataFrame(), sender, sender_pw, custom_message=custom_message)
+                                if result is True:
+                                    st.success(f"{email}로 메일 전송 완료!")
+                                else:
+                                    st.error(f"{email}로 메일 전송 실패: {result}")
+                    else:
+                        st.warning("메일 내용을 입력했으나, 선택된 사용자가 없습니다. 전송이 진행되지 않았습니다.")
                 else:
-                    st.warning("메일 내용을 입력했으나, 선택된 사용자가 없습니다. 전송이 진행되지 않았습니다.")
-            else:
-                st.warning("메일 내용을 입력해주세요.")
-        
-        st.markdown("---")
-        st.subheader("🗑️ 사용자 삭제")
-        users_to_delete = st.multiselect("삭제할 사용자 선택", user_list_for_dropdown, key="delete_user_multiselect")
-        if st.button("선택한 사용자 삭제"):
-            if users_to_delete:
-                for user_to_del_str in users_to_delete:
-                    match = re.search(r'\((.*?)\)', user_to_del_str)
-                    if match:
-                        email_to_del = match.group(1)
-                        safe_key_to_del = sanitize_path(email_to_del)
-                        
-                        db.reference(f"users/{safe_key_to_del}").delete()
-                        db.reference(f"patients/{safe_key_to_del}").delete()
-                st.success(f"사용자 {user_to_del_str} 삭제 완료.")
-                st.rerun()
-            else:
-                st.warning("삭제할 사용자를 선택해주세요.")
-                
+                    st.warning("메일 내용을 입력해주세요.")
+            
+            st.markdown("---")
+            st.subheader("🗑️ 사용자 삭제")
+            users_to_delete = st.multiselect("삭제할 사용자 선택", user_list_for_dropdown, key="delete_user_multiselect")
+            if st.button("선택한 사용자 삭제"):
+                if users_to_delete:
+                    for user_to_del_str in users_to_delete:
+                        match = re.re(r'\((.*?)\)', user_to_del_str)
+                        if match:
+                            email_to_del = match.group(1)
+                            safe_key_to_del = sanitize_path(email_to_del)
+                            
+                            db.reference(f"users/{safe_key_to_del}").delete()
+                            db.reference(f"patients/{safe_key_to_del}").delete()
+                    st.success(f"사용자 {user_to_del_str} 삭제 완료.")
+                    st.rerun()
+                else:
+                    st.warning("삭제할 사용자를 선택해주세요.")
 #8. Regular User Mode
 # --- 일반 사용자 모드 ---
 else:
