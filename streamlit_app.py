@@ -67,14 +67,14 @@ def get_google_calendar_credentials():
             flow = InstalledAppFlow.from_client_config(
                 st.secrets["google"]["client_secret"],
                 SCOPES,
-                redirect_uri=st.secrets["google"]["redirect uri"]
+                redirect_uri=st.secrets["google"]["redirect_uri"]
             )
             authorization_url, _ = flow.authorization_url(prompt='consent')
             st.session_state['authorization_url'] = authorization_url
             st.warning("Google 계정 로그인 필요! 아래 링크를 클릭하여 로그인해주세요.")
             st.markdown(f"[{st.session_state['authorization_url']}]({st.session_state['authorization_url']})")
         except KeyError as e:
-            st.error(f"Google Calendar API 설정 오류: secrets.toml 파일에 'client_secret' 또는 'redirect uri'가 누락되었습니다. {e}")
+            st.error(f"Google Calendar API 설정 오류: secrets.toml 파일에 'client_secret' 또는 'redirect_uri'가 누락되었습니다. {e}")
             return None
 
     if 'code' in st.session_state and not creds:
