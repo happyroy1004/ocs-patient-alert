@@ -46,18 +46,18 @@ try:
     client_id = st.secrets["google_calendar"]["client_id"]
     client_secret = st.secrets["google_calendar"]["client_secret"]
     redirect_uri = st.secrets["google_calendar"]["redirect_uri"]
+    # 중요: 이 redirect_uri는 Google Cloud Platform 콘솔에 등록된 값과 정확히 일치해야 합니다.
+    # 예: "http://localhost:8501" 또는 "https://your-streamlit-app-url.com"
 except KeyError:
     st.error("`secrets.toml` 파일에 Google Calendar 설정이 누락되었습니다. 파일을 확인해 주세요.")
     st.stop()
 
 SCOPES = ['https://www.googleapis.com/auth/calendar.events']
 
-def get_google_calendar_service():
+def get_google_calendar_service(creds):
     """
-    세션에 저장된 인증 정보를 사용하여 Google Calendar 서비스 객체를 반환합니다.
+    제공된 인증 정보를 사용하여 Google Calendar 서비스 객체를 반환합니다.
     """
-    creds = st.session_state.get("credentials")
-    
     if not creds or not creds.valid:
         print("DEBUG: No valid credentials found.")
         if creds and creds.expired and creds.refresh_token:
@@ -65,10 +65,20 @@ def get_google_calendar_service():
             try:
                 creds.refresh(Request())
                 print("DEBUG: Credentials successfully refreshed.")
+                # 갱신된 토큰을 Firebase에 다시 저장
+                safe_key = sanitize_path(creds.id_token['email'])
+                users_ref = db.reference("users")
+                users_ref.child(safe_key).child("calendar_credentials").set({
+                    'token': creds.token,
+                    'refresh_token': creds.refresh_token,
+                    'token_uri': creds.token_uri,
+                    'client_id': creds.client_id,
+                    'client_secret': creds.client_secret,
+                    'scopes': creds.scopes
+                })
             except Exception as e:
                 print(f"DEBUG: Failed to refresh token: {e}")
                 st.error(f"토큰 갱신 실패: {e}")
-                st.session_state.credentials = None
                 return None
         else:
             print("DEBUG: No credentials or credentials are invalid.")
@@ -83,10 +93,10 @@ def get_google_calendar_service():
         st.error(f"캘린더 서비스 빌드 실패: {e}")
         return None
 
-
-def get_authorization_url():
+def get_authorization_url(firebase_key):
     """
     Google 인증 URL을 생성하여 반환합니다.
+    사용자 ID를 state 매개변수에 포함시켜 인증 후 돌아올 때 구분할 수 있도록 합니다.
     """
     flow = InstalledAppFlow.from_client_config(
         {
@@ -100,7 +110,7 @@ def get_authorization_url():
         },
         SCOPES
     )
-    auth_url, _ = flow.authorization_url(prompt='consent')
+    auth_url, _ = flow.authorization_url(prompt='consent', state=firebase_key)
     print(f"DEBUG: Authorization URL generated: {auth_url}")
     return auth_url
 
@@ -129,7 +139,6 @@ def add_event_to_google_calendar(service, summary, start_time, end_time, descrip
     except Exception as e:
         print(f"DEBUG: Failed to add event: {e}")
         st.error(f"일정 추가 실패: {e}")
-
 
 # Firebase-safe 경로 변환 (이메일을 Firebase 키로 사용하기 위해)
 def sanitize_path(email):
@@ -427,34 +436,6 @@ st.markdown("""
 st.markdown("---")
 st.markdown("<p style='text-align: left; color: grey; font-size: small;'>directed by HSY</p>", unsafe_allow_html=True)
 
-# URL에서 인증 코드 확인 후 토큰 교환
-query_params = st.query_params
-auth_code = query_params.get("code")
-
-if auth_code:
-    flow = InstalledAppFlow.from_client_config(
-        {
-            "installed": {
-                "client_id": client_id,
-                "client_secret": client_secret,
-                "redirect_uris": [redirect_uri],
-                "auth_uri": "https://accounts.google.com/o/oauth2/auth",
-                "token_uri": "https://oauth2.googleapis.com/token",
-            }
-        },
-        SCOPES
-    )
-    
-    try:
-        flow.fetch_token(code=auth_code[0])
-        creds = flow.credentials
-        st.session_state.credentials = creds
-        # URL에서 코드 제거
-        st.query_params.clear()
-        st.success("Google 캘린더 권한이 성공적으로 허용되었습니다!")
-    except Exception as e:
-        st.error(f"인증 실패: {e}")
-        
 # --- 세션 상태 초기화 ---
 # URL 쿼리 매개변수에 'clear'가 있을 경우 초기화
 if "clear" in st.query_params and st.query_params["clear"] == "true":
@@ -478,15 +459,61 @@ if 'admin_password_correct' not in st.session_state:
     st.session_state.admin_password_correct = False
 if 'select_all_users' not in st.session_state:
     st.session_state.select_all_users = False
-if 'credentials' not in st.session_state:
-    st.session_state.credentials = None
+# 기존 'credentials' 대신 사용자별 토큰을 저장할 딕셔너리
+if 'user_credentials' not in st.session_state:
+    st.session_state.user_credentials = None
 if 'admin_mode' not in st.session_state:
     st.session_state.admin_mode = False
 if 'matched_users' not in st.session_state:
     st.session_state.matched_users = []
 
-
 users_ref = db.reference("users")
+
+# URL에서 인증 코드 확인 후 토큰 교환 (사용자 인증 부분)
+query_params = st.query_params
+auth_code = query_params.get("code")
+auth_state = query_params.get("state") # state 파라미터로 사용자 구분
+
+if auth_code and auth_state:
+    print(f"DEBUG: Found auth code and state. State (firebase_key): {auth_state}")
+    flow = InstalledAppFlow.from_client_config(
+        {
+            "installed": {
+                "client_id": client_id,
+                "client_secret": client_secret,
+                "redirect_uris": [redirect_uri],
+                "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+                "token_uri": "https://oauth2.googleapis.com/token",
+            }
+        },
+        SCOPES
+    )
+    
+    try:
+        flow.fetch_token(code=auth_code[0])
+        creds = flow.credentials
+        
+        # 획득한 토큰을 Firebase에 해당 사용자 키 아래에 저장
+        creds_data = {
+            'token': creds.token,
+            'refresh_token': creds.refresh_token,
+            'token_uri': creds.token_uri,
+            'client_id': creds.client_id,
+            'client_secret': creds.client_secret,
+            'scopes': creds.scopes
+        }
+        users_ref.child(auth_state[0]).child("calendar_credentials").set(creds_data)
+        st.success(f"Google 캘린더 권한이 성공적으로 허용되었습니다! (사용자 키: {auth_state[0]})")
+        
+        # URL에서 코드와 state 제거
+        st.query_params.clear()
+        
+    except Exception as e:
+        st.error(f"인증 실패: {e}")
+        st.caption("Google Cloud Platform의 '승인된 리디렉션 URI'가 올바르게 설정되어 있는지 확인하세요.")
+        st.query_params.clear()
+        
+    st.rerun()
 
 # --- 사용 설명서 PDF 다운로드 버튼 추가 ---
 pdf_file_path = "manual.pdf"
@@ -559,16 +586,25 @@ if st.session_state.email_change_mode:
             new_firebase_key = sanitize_path(new_email)
 
             if old_firebase_key and old_firebase_key != new_firebase_key:
-                users_ref.child(new_firebase_key).update({"name": st.session_state.current_user_name, "email": new_email})
+                # 기존 데이터 백업 후 삭제
+                old_user_meta = users_ref.child(old_firebase_key).get()
                 old_patient_data = db.reference(f"patients/{old_firebase_key}").get()
+                
+                # 새 키로 데이터 이전
+                users_ref.child(new_firebase_key).set(old_user_meta)
+                users_ref.child(new_firebase_key).update({"name": st.session_state.current_user_name, "email": new_email})
                 if old_patient_data:
                     db.reference(f"patients/{new_firebase_key}").set(old_patient_data)
-                    db.reference(f"patients/{old_firebase_key}").delete()
+                
+                # 기존 데이터 삭제
                 users_ref.child(old_firebase_key).delete()
+                db.reference(f"patients/{old_firebase_key}").delete()
+                
                 st.session_state.current_firebase_key = new_firebase_key
                 st.session_state.found_user_email = new_email
                 st.success(f"이메일 주소가 **{new_email}**로 성공적으로 변경되었습니다.")
             elif not old_firebase_key:
+                users_ref.child(new_firebase_key).set({"name": st.session_state.current_user_name, "email": new_email})
                 st.session_state.current_firebase_key = new_firebase_key
                 st.session_state.found_user_email = new_email
                 st.success(f"새로운 사용자 정보가 등록되었습니다: {st.session_state.current_user_name} ({new_email})")
@@ -709,41 +745,44 @@ if is_admin_input:
 
                 with col_actions_2:
                     if st.button("매칭된 환자에게 캘린더 일정 추가하기"):
-                        service = get_google_calendar_service()
-                        if service:
-                            for user_match_info in st.session_state.matched_users:
-                                df_matched = user_match_info['data']
-                                if not df_matched.empty:
+                        for user_match_info in st.session_state.matched_users:
+                            user_email = user_match_info['email']
+                            safe_key = sanitize_path(user_email)
+                            df_matched = user_match_info['data']
+                            
+                            # Firebase에서 해당 사용자의 캘린더 권한 토큰을 로드
+                            creds_data = users_ref.child(safe_key).child("calendar_credentials").get()
+                            if creds_data:
+                                creds = Credentials(**creds_data)
+                                service = get_google_calendar_service(creds)
+                                if service:
                                     st.info(f"**{user_match_info['name']}**님에게 캘린더 일정을 추가합니다.")
-                                    for _, row in df_matched.iterrows():
-                                        try:
-                                            # 예약시간 컬럼이 유효한지 확인
-                                            if '예약시간' in row and row['예약시간'] and row['예약시간'] != ' ':
-                                                event_summary = f"{row['환자명']} ({row['진료번호']}) 내원"
-                                                event_description = f"등록과: {row.get('등록과', '미지정')}\n진료내역: {row.get('진료내역', '정보 없음')}"
-
-                                                # '예약시간' 문자열을 파싱하여 datetime 객체 생성
-                                                today = datetime.date.today()
-                                                
-                                                # 예약시간이 '9:00' 같은 형식일 수 있으므로 정규식으로 'H:M' 형태만 추출
-                                                time_match = re.search(r'(\d{1,2}:\d{2})', str(row['예약시간']))
-                                                if time_match:
-                                                    time_str = time_match.group(1)
-                                                    event_time = datetime.datetime.strptime(time_str, '%H:%M').time()
-                                                    start_datetime = datetime.datetime.combine(today, event_time)
-                                                    end_datetime = start_datetime + datetime.timedelta(minutes=30) # 기본 30분으로 설정
-                                                    add_event_to_google_calendar(service, event_summary, start_datetime, end_datetime, event_description)
+                                    if not df_matched.empty:
+                                        for _, row in df_matched.iterrows():
+                                            try:
+                                                if '예약시간' in row and row['예약시간'] and row['예약시간'] != ' ':
+                                                    event_summary = f"{row['환자명']} ({row['진료번호']}) 내원"
+                                                    event_description = f"등록과: {row.get('등록과', '미지정')}\n진료내역: {row.get('진료내역', '정보 없음')}"
+                                                    today = datetime.date.today()
+                                                    time_match = re.search(r'(\d{1,2}:\d{2})', str(row['예약시간']))
+                                                    if time_match:
+                                                        time_str = time_match.group(1)
+                                                        event_time = datetime.datetime.strptime(time_str, '%H:%M').time()
+                                                        start_datetime = datetime.datetime.combine(today, event_time)
+                                                        end_datetime = start_datetime + datetime.timedelta(minutes=30)
+                                                        add_event_to_google_calendar(service, event_summary, start_datetime, end_datetime, event_description)
+                                                    else:
+                                                        st.warning(f"환자 {row['환자명']}의 예약시간 형식 오류: {row['예약시간']}. 일정 추가 불가.")
                                                 else:
-                                                    st.warning(f"환자 {row['환자명']}의 예약시간 형식 오류: {row['예약시간']}. 일정 추가 불가.")
-                                            else:
-                                                st.warning(f"환자 {row['환자명']}의 예약시간 정보가 없습니다. 일정 추가 불가.")
-                                        except Exception as e:
-                                            st.error(f"캘린더 일정 추가 중 오류 발생 (환자: {row['환자명']}): {e}")
-                        else:
-                            st.warning("캘린더 권한이 없습니다. 아래 링크를 눌러 권한을 허용해 주세요.")
-                            auth_url = get_authorization_url()
-                            st.markdown(f"[**클릭하여 권한 허용하기**]({auth_url})", unsafe_allow_html=True)
-                            st.caption("링크를 복사하여 권한이 필요한 사람에게 전달할 수 있습니다.")
+                                                    st.warning(f"환자 {row['환자명']}의 예약시간 정보가 없습니다. 일정 추가 불가.")
+                                            except Exception as e:
+                                                st.error(f"캘린더 일정 추가 중 오류 발생 (환자: {row['환자명']}): {e}")
+                                    else:
+                                        st.warning(f"**{user_match_info['name']}**님에게 매칭된 환자 데이터가 없어 일정을 추가할 수 없습니다.")
+                                else:
+                                    st.warning(f"**{user_match_info['name']}**님의 캘린더 권한이 유효하지 않습니다. 토큰이 만료되었거나 삭제되었을 수 있습니다. 사용자에게 다시 권한을 허용해달라고 요청하세요.")
+                            else:
+                                st.warning(f"**{user_match_info['name']}**님은 아직 캘린더 권한을 허용하지 않았습니다. 권한을 허용해달라고 요청하세요.")
 
             else:
                 st.info("엑셀 파일 처리 완료. 매칭된 환자가 없습니다.")
@@ -786,10 +825,7 @@ if is_admin_input:
         st.subheader("📦 메일 및 캘린더 기능")
         
         # 캘린더 연동 상태를 보여주는 부분 추가
-        if st.session_state.credentials and st.session_state.credentials.valid:
-            st.markdown("✅ **Google 캘린더에 성공적으로 연결되었습니다.**")
-        else:
-            st.markdown("⚠️ **Google 캘린더 연결이 필요합니다.**")
+        st.markdown("⚠️ **이 기능은 각 사용자가 직접 캘린더 연동을 한 경우에만 작동합니다.**")
         
         col1, col2 = st.columns(2)
         with col1:
@@ -842,26 +878,11 @@ if is_admin_input:
             event_end_time = st.time_input("종료 시간", datetime.time(10, 0))
 
             if st.button("캘린더에 단일 일정 추가하기"):
-                service = get_google_calendar_service()
-                
-                if service:
-                    try:
-                        event_start_datetime = datetime.datetime.combine(event_start_date, event_start_time)
-                        event_end_datetime = datetime.datetime.combine(event_end_date, event_end_time)
-                        
-                        if event_start_datetime >= event_end_datetime:
-                            st.error("시작 시간이 종료 시간보다 빠르거나 같을 수 없습니다.")
-                        else:
-                            with st.spinner("캘린더에 일정 추가 중..."):
-                                add_event_to_google_calendar(service, event_summary_input, event_start_datetime, event_end_datetime)
-                    except Exception as e:
-                        st.error(f"시간 설정 오류: {e}")
-                else:
-                    st.warning("캘린더 권한이 없습니다. 아래 링크를 눌러 권한을 허용해 주세요.")
-                    auth_url = get_authorization_url()
-                    st.markdown(f"[**클릭하여 권한 허용하기**]({auth_url})", unsafe_allow_html=True)
-                    st.caption("링크를 복사하여 권한이 필요한 사람에게 전달할 수 있습니다.")
-
+                # 이 로직은 관리자 본인의 캘린더에 추가하는 기능
+                # 관리자 본인의 토큰이 필요하므로, 관리자 본인이 캘린더 연동을 해야 함
+                # 현재는 관리자 모드에서 토큰이 없으므로 주석 처리하거나, admin 계정도 캘린더 연동을 먼저 해야 함
+                st.warning("이 기능은 현재 관리자 본인의 캘린더에만 일정을 추가하는 기능입니다. 이 기능을 사용하려면 'admin'으로 로그인하여 캘린더 연동을 먼저 해주세요.")
+                pass
         st.markdown("---")
         st.subheader("🗑️ 사용자 삭제")
         users_to_delete = st.multiselect("삭제할 사용자 선택", user_list_for_dropdown, key="delete_user_multiselect")
@@ -902,8 +923,26 @@ else:
             st.session_state.current_firebase_key = firebase_key
             st.session_state.current_user_name = user_name
             st.session_state.found_user_email = user_id_final
+        st.session_state.current_firebase_key = firebase_key
+
 
     st.subheader(f"{user_name}님의 등록 환자 목록")
+    
+    # 캘린더 연동 상태 및 버튼
+    creds_from_firebase = users_ref.child(firebase_key).child("calendar_credentials").get()
+    if creds_from_firebase:
+        st.markdown("✅ **Google 캘린더에 연동되었습니다.**")
+        st.info("캘린더 연동을 해제하려면 이메일 주소를 변경하거나 관리자에게 문의하세요.")
+    else:
+        st.markdown("⚠️ **Google 캘린더에 연동되지 않았습니다.**")
+        st.info("캘린더에 환자 일정을 자동으로 추가하려면 아래 버튼을 눌러 연동해 주세요.")
+        if st.button("Google 캘린더 연동하기"):
+            auth_url = get_authorization_url(firebase_key)
+            st.markdown(f"[**클릭하여 권한 허용하기**]({auth_url})", unsafe_allow_html=True)
+            st.caption("링크를 복사하여 권한이 필요한 사람에게 전달할 수 있습니다.")
+    st.markdown("---")
+
+
     existing_patient_data = patients_ref_for_user.get()
 
     if existing_patient_data:
