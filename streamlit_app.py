@@ -180,8 +180,8 @@ def get_google_calendar_service(user_id_safe):
             creds = flow.credentials
             st.session_state[f"{GOOGLE_TOKEN_KEY}_{user_id_safe}"] = creds
             st.success("Google Calendar 인증이 완료되었습니다.")
-            # URL에서 쿼리 파라미터 제거
-            st.experimental_set_query_params() 
+            # URL에서 쿼리 파라미터 제거 (수정된 부분)
+            st.query_params.clear()
             st.rerun() # 앱을 다시 실행하여 인증 성공 상태로 전환
 
         else:
