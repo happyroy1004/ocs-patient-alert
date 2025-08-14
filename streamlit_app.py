@@ -247,33 +247,24 @@ def get_google_calendar_service(user_id_safe):
         db.reference(f"users/{user_id_safe}/google_creds").delete()
         return None
 
-def create_calendar_event(service, patient_name, pid, department, reservation_date_str=None, reservation_time_str=None):
+def create_calendar_event(service, patient_name, pid, department, reservation_date_str, reservation_time_str):
     """
     Google Calendar에 이벤트를 생성합니다. 예약 날짜와 시간을 기반으로 30분 일정을 만듭니다.
     """
     seoul_tz = datetime.timezone(datetime.timedelta(hours=9))
     
     # 예약 날짜와 시간을 사용하여 이벤트 시작/종료 시간 설정
-    if reservation_date_str and reservation_time_str:
-        try:
-            # reservation_time_str이 '11:00'과 같은 형식인지 확인하고, 필요한 경우 :00을 추가합니다.
-            if len(reservation_time_str.split(':')) == 1:
-                # '11'과 같은 형식이면 '11:00'으로 변환
-                reservation_time_str = f"{reservation_time_str}:00"
-            
-            # reservation_date_str과 reservation_time_str을 결합합니다.
-            date_time_str = f"{reservation_date_str} {reservation_time_str}"
-
-            # 결합된 문자열을 파싱합니다.
-            event_start = datetime.datetime.strptime(date_time_str, "%Y-%m-%d %H:%M").astimezone(seoul_tz)
-            event_end = event_start + datetime.timedelta(minutes=30)
-        except ValueError as e:
-            # 날짜 형식 파싱 실패 시 현재 시간 사용
-            st.warning(f"Failed to parse date/time for '{patient_name}'. Error: {e}. Using current time.")
-            event_start = datetime.datetime.now(seoul_tz)
-            event_end = event_start + datetime.timedelta(minutes=30)
-    else:
-        # 날짜/시간 정보 없을 시 현재 시간 사용
+    try:
+        # 예약 날짜와 시간을 조합하여 날짜/시간 문자열 생성
+        # 예: reservation_date_str='2024-08-15', reservation_time_str='11:00'
+        # -> date_time_str='2024-08-15 11:00'
+        date_time_str = f"{reservation_date_str} {reservation_time_str}"
+        
+        event_start = datetime.datetime.strptime(date_time_str, "%Y-%m-%d %H:%M").astimezone(seoul_tz)
+        event_end = event_start + datetime.timedelta(minutes=30)
+    except ValueError as e:
+        # 날짜 형식 파싱 실패 시 현재 시간 사용 (예외 처리)
+        st.warning(f"'{patient_name}' 환자의 날짜/시간 형식 파싱 실패: {e}. 현재 시간으로 일정을 추가합니다.")
         event_start = datetime.datetime.now(seoul_tz)
         event_end = event_start + datetime.timedelta(minutes=30)
     
@@ -299,7 +290,7 @@ def create_calendar_event(service, patient_name, pid, department, reservation_da
         st.warning("구글 캘린더 인증 권한을 다시 확인해주세요.")
     except Exception as e:
         st.error(f"알 수 없는 오류 발생: {e}")
-        
+
 #4. Excel Processing Constants and Functions
 # --- 엑셀 처리 관련 상수 및 함수 ---
 sheet_keyword_to_department_map = {
@@ -626,10 +617,20 @@ if is_admin_input:
         
         try:
             file_name = uploaded_file.name
-            # 파일 이름에서 날짜 정보 추출 (예: '2024')
-            date_match = re.search(r'(\d{4})', file_name)
-            extracted_date = date_match.group(1) if date_match else None
-
+            
+            # --- 엑셀 파일 이름에서 예약 날짜 정보 추출 (수정) ---
+            # 'ocs_0812' -> 8월 12일 -> 2024-08-12
+            date_match = re.search(r'_(\d{2})(\d{2})', file_name)
+            reservation_date_excel = None
+            if date_match:
+                month_str = date_match.group(1)
+                day_str = date_match.group(2)
+                current_year = datetime.datetime.now().year
+                reservation_date_excel = f"{current_year}-{month_str}-{day_str}"
+            else:
+                st.warning("엑셀 파일 이름에서 예약 날짜를 추출할 수 없습니다. 캘린더 일정은 현재 날짜로 설정됩니다.")
+                reservation_date_excel = datetime.datetime.now().strftime("%Y-%m-%d")
+            
             xl_object, raw_file_io = load_excel(uploaded_file, password)
             excel_data_dfs, styled_excel_bytes = process_excel_file_and_style(raw_file_io)
 
@@ -719,7 +720,7 @@ if is_admin_input:
                         for user_match_info in matched_users:
                             real_email = user_match_info['email']
                             df_matched = user_match_info['data']
-                            result = send_email(real_email, df_matched, sender, sender_pw, date_str=extracted_date)
+                            result = send_email(real_email, df_matched, sender, sender_pw, date_str=reservation_date_excel) # 추출된 날짜 사용
                             if result is True:
                                 st.success(f"**{user_match_info['name']}** ({real_email}) 전송 완료")
                             else:
@@ -741,8 +742,9 @@ if is_admin_input:
                                     service = build('calendar', 'v3', credentials=creds)
                                     if not df_matched.empty:
                                         for _, row in df_matched.iterrows():
+                                            # create_calendar_event 호출 시 날짜와 시간 인자 전달 (수정)
                                             create_calendar_event(service, row['환자명'], row['진료번호'], row.get('시트', ''), 
-                                                reservation_date_str=row.get('예약일'), reservation_time_str=row.get('예약시간'))
+                                                reservation_date_str=reservation_date_excel, reservation_time_str=row.get('예약시간'))
                                     st.success(f"**{user_name}**님의 캘린더에 일정을 추가했습니다.")
                                 except Exception as e:
                                     st.error(f"**{user_name}**님의 캘린더 일정 추가 실패: {e}")
@@ -816,7 +818,7 @@ if is_admin_input:
         
         all_users_meta = users_ref.get()
         user_list_for_dropdown = [f"{user_info.get('name', '이름 없음')} ({user_info.get('email', '이메일 없음')})" 
-                                    for user_info in (all_users_meta.values() if all_users_meta else [])]
+                                        for user_info in (all_users_meta.values() if all_users_meta else [])]
         
         select_all_users_button = st.button("모든 사용자 선택/해제", key="select_all_btn")
         if select_all_users_button:
