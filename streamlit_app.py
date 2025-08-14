@@ -562,7 +562,7 @@ if user_name and not is_admin_input and not st.session_state.email_change_mode:
         st.session_state.found_user_email = ""
         st.session_state.user_id_input_value = ""
         st.session_state.current_firebase_key = ""
-        st.session_state.current_user_name = ""
+        st.session_user_name = ""
 
 # 이메일 입력 필드
 if not is_admin_input:
@@ -704,7 +704,7 @@ if is_admin_input:
                             excel_patient_pid = str(excel_row.get("진료번호", "")).strip().zfill(8)
 
                             if not excel_patient_name or not excel_patient_pid:
-                                continue # 유효하지 않은 행은 건너뜀
+                                continue # 유효하지 않은 행은 건너_m
                             
                             for registered_patient in registered_patients_data:
                                 if (registered_patient["환자명"] == excel_patient_name and
@@ -908,84 +908,86 @@ else:
     user_id_final = st.session_state.user_id_input_value if st.session_state.email_change_mode or not st.session_state.found_user_email else st.session_state.found_user_email
     firebase_key = sanitize_path(user_id_final) if user_id_final else ""
 
-    if not user_name or not user_id_final:
-        st.info("내원 알람 노티를 받을 이메일 주소와 사용자 이름을 입력해주세요.")
-        st.stop()
+    # 사용자 이름과 이메일 주소가 모두 입력되었을 때만 나머지 UI를 표시
+    if user_name and user_id_final:
 
-    patients_ref_for_user = db.reference(f"patients/{firebase_key}")
+        patients_ref_for_user = db.reference(f"patients/{firebase_key}")
 
-    # 사용자 정보 (이름, 이메일) Firebase 'users' 노드에 저장 또는 업데이트
-    if not st.session_state.email_change_mode:
-        current_user_meta_data = users_ref.child(firebase_key).get()
-        if not current_user_meta_data or current_user_meta_data.get("name") != user_name or current_user_meta_data.get("email") != user_id_final:
-            users_ref.child(firebase_key).update({"name": user_name, "email": user_id_final})
-            st.success(f"사용자 정보가 업데이트되었습니다: {user_name} ({user_id_final})")
+        # 사용자 정보 (이름, 이메일) Firebase 'users' 노드에 저장 또는 업데이트
+        if not st.session_state.email_change_mode:
+            current_user_meta_data = users_ref.child(firebase_key).get()
+            if not current_user_meta_data or current_user_meta_data.get("name") != user_name or current_user_meta_data.get("email") != user_id_final:
+                users_ref.child(firebase_key).update({"name": user_name, "email": user_id_final})
+                st.success(f"사용자 정보가 업데이트되었습니다: {user_name} ({user_id_final})")
+                st.session_state.current_firebase_key = firebase_key
+                st.session_state.current_user_name = user_name
+                st.session_state.found_user_email = user_id_final
             st.session_state.current_firebase_key = firebase_key
-            st.session_state.current_user_name = user_name
-            st.session_state.found_user_email = user_id_final
-        st.session_state.current_firebase_key = firebase_key
 
 
-    st.subheader(f"{user_name}님의 등록 환자 목록")
-    
-    # 캘린더 연동 상태 및 버튼
-    creds_from_firebase = users_ref.child(firebase_key).child("calendar_credentials").get()
-    if creds_from_firebase:
-        st.markdown("✅ **Google 캘린더에 연동되었습니다.**")
-        st.info("캘린더 연동을 해제하려면 이메일 주소를 변경하거나 관리자에게 문의하세요.")
-    else:
-        st.markdown("⚠️ **Google 캘린더에 연동되지 않았습니다.**")
-        st.info("캘린더에 환자 일정을 자동으로 추가하려면 아래 버튼을 눌러 연동해 주세요.")
-        if st.button("Google 캘린더 연동하기"):
-            auth_url = get_authorization_url(firebase_key)
-            st.markdown(f"[**클릭하여 권한 허용하기**]({auth_url})", unsafe_allow_html=True)
-            st.caption("링크를 복사하여 권한이 필요한 사람에게 전달할 수 있습니다.")
-    st.markdown("---")
-
-
-    existing_patient_data = patients_ref_for_user.get()
-
-    if existing_patient_data:
-        desired_order = ['소치', '외과', '보철', '내과', '교정']
-        order_map = {dept: i for i, dept in enumerate(desired_order)}
-        patient_list = list(existing_patient_data.items())
-        sorted_patient_list = sorted(patient_list, key=lambda item: order_map.get(item[1].get('등록과', '미지정'), float('inf')))
-
-        cols_count = 3
-        cols = st.columns(cols_count)
+        st.subheader(f"{user_name}님의 등록 환자 목록")
         
-        for idx, (key, val) in enumerate(sorted_patient_list):
-            with cols[idx % cols_count]:
-                with st.container(border=True):
-                    info_col, btn_col = st.columns([4, 1])
-                    
-                    with info_col:
-                        st.markdown(f"**{val['환자명']}** / {val['진료번호']} / {val.get('등록과', '미지정')}")
-                    
-                    with btn_col:
-                        if st.button("X", key=f"delete_button_{key}"):
-                            patients_ref_for_user.child(key).delete()
-                            st.rerun()
+        # 캘린더 연동 상태 및 버튼
+        creds_from_firebase = users_ref.child(firebase_key).child("calendar_credentials").get()
+        if creds_from_firebase:
+            st.markdown("✅ **Google 캘린더에 연동되었습니다.**")
+            st.info("캘린더 연동을 해제하려면 이메일 주소를 변경하거나 관리자에게 문의하세요.")
+        else:
+            st.markdown("⚠️ **Google 캘린더에 연동되지 않았습니다.**")
+            st.info("캘린더에 환자 일정을 자동으로 추가하려면 아래 버튼을 눌러 연동해 주세요.")
+            if st.button("Google 캘린더 연동하기"):
+                auth_url = get_authorization_url(firebase_key)
+                st.markdown(f"[**클릭하여 권한 허용하기**]({auth_url})", unsafe_allow_html=True)
+                st.caption("링크를 복사하여 권한이 필요한 사람에게 전달할 수 있습니다.")
+        st.markdown("---")
+
+
+        existing_patient_data = patients_ref_for_user.get()
+
+        if existing_patient_data:
+            desired_order = ['소치', '외과', '보철', '내과', '교정']
+            order_map = {dept: i for i, dept in enumerate(desired_order)}
+            patient_list = list(existing_patient_data.items())
+            sorted_patient_list = sorted(patient_list, key=lambda item: order_map.get(item[1].get('등록과', '미지정'), float('inf')))
+
+            cols_count = 3
+            cols = st.columns(cols_count)
+            
+            for idx, (key, val) in enumerate(sorted_patient_list):
+                with cols[idx % cols_count]:
+                    with st.container(border=True):
+                        info_col, btn_col = st.columns([4, 1])
+                        
+                        with info_col:
+                            st.markdown(f"**{val['환자명']}** / {val['진료번호']} / {val.get('등록과', '미지정')}")
+                        
+                        with btn_col:
+                            if st.button("X", key=f"delete_button_{key}"):
+                                patients_ref_for_user.child(key).delete()
+                                st.rerun()
+        else:
+            st.info("등록된 환자가 없습니다.")
+        st.markdown("---")
+
+        with st.form("register_form"):
+            name = st.text_input("환자명")
+            pid = st.text_input("진료번호")
+
+            departments_for_registration = sorted(list(set(sheet_keyword_to_department_map.values())))
+            selected_department = st.selectbox("등록 과", departments_for_registration)
+
+            submitted = st.form_submit_button("등록")
+            if submitted:
+                if not name or not pid:
+                    st.warning("모든 항목을 입력해주세요.")
+                elif existing_patient_data and any(
+                    v["환자명"] == name and v["진료번호"] == pid and v.get("등록과") == selected_department
+                    for v in existing_patient_data.values()):
+                    st.error("이미 등록된 환자입니다.")
+                else:
+                    patients_ref_for_user.push().set({"환자명": name, "진료번호": pid, "등록과": selected_department})
+                    st.success(f"{name} ({pid}) [{selected_department}] 환자 등록 완료")
+                    st.rerun()
+
     else:
-        st.info("등록된 환자가 없습니다.")
-    st.markdown("---")
-
-    with st.form("register_form"):
-        name = st.text_input("환자명")
-        pid = st.text_input("진료번호")
-
-        departments_for_registration = sorted(list(set(sheet_keyword_to_department_map.values())))
-        selected_department = st.selectbox("등록 과", departments_for_registration)
-
-        submitted = st.form_submit_button("등록")
-        if submitted:
-            if not name or not pid:
-                st.warning("모든 항목을 입력해주세요.")
-            elif existing_patient_data and any(
-                v["환자명"] == name and v["진료번호"] == pid and v.get("등록과") == selected_department
-                for v in existing_patient_data.values()):
-                st.error("이미 등록된 환자입니다.")
-            else:
-                patients_ref_for_user.push().set({"환자명": name, "진료번호": pid, "등록과": selected_department})
-                st.success(f"{name} ({pid}) [{selected_department}] 환자 등록 완료")
-                st.rerun()
+        st.info("내원 알람 노티를 받을 이메일 주소와 사용자 이름을 입력해주세요.")
