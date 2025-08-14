@@ -1,3 +1,5 @@
+# -*- coding: utf-8 -*-
+
 import streamlit as st
 import pandas as pd
 import firebase_admin
@@ -21,7 +23,7 @@ from googleapiclient.discovery import build
 
 # --- 이메일 유효성 검사 함수 ---
 def is_valid_email(email):
-    email_regex = r"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$"
+    email_regex = r"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$"
     return re.match(email_regex, email) is not None
 
 # Firebase 초기화
@@ -102,12 +104,13 @@ def get_authorization_url():
     print(f"DEBUG: Authorization URL generated: {auth_url}")
     return auth_url
 
-def add_event_to_google_calendar(service, summary, start_time, end_time):
+def add_event_to_google_calendar(service, summary, start_time, end_time, description=''):
     """
     Google 캘린더에 일정을 추가하는 함수
     """
     event = {
         'summary': summary,
+        'description': description,
         'start': {
             'dateTime': start_time.isoformat(),
             'timeZone': 'Asia/Seoul',
@@ -479,6 +482,8 @@ if 'credentials' not in st.session_state:
     st.session_state.credentials = None
 if 'admin_mode' not in st.session_state:
     st.session_state.admin_mode = False
+if 'matched_users' not in st.session_state:
+    st.session_state.matched_users = []
 
 
 users_ref = db.reference("users")
@@ -615,14 +620,14 @@ if is_admin_input:
 
             if not all_users_meta and not all_patients_data:
                 st.warning("Firebase에 등록된 사용자 또는 환자 데이터가 없습니다. 이메일 전송은 불가능합니다.")
+                st.session_state.matched_users = []
             elif not all_users_meta:
                 st.warning("Firebase users 노드에 등록된 사용자 메타 정보가 없습니다. 이메일 전송 시 이름 대신 이메일이 사용됩니다.")
             elif not all_patients_data:
                 st.warning("Firebase patients 노드에 등록된 환자 데이터가 없습니다. 매칭할 수 없습니다.")
-
-            matched_users = []
-            
-            if all_patients_data:
+                st.session_state.matched_users = []
+            else:
+                matched_users = []
                 for uid_safe, registered_patients_for_this_user in all_patients_data.items():
                     user_email = recover_email(uid_safe)
                     user_display_name = user_email
@@ -679,24 +684,70 @@ if is_admin_input:
                         combined_matched_df = pd.DataFrame(matched_rows_for_user)
                         matched_users.append({"email": user_email, "name": user_display_name, "data": combined_matched_df})
 
-            if matched_users:
-                st.success(f"{len(matched_users)}명의 사용자와 일치하는 환자 발견됨.")
+                st.session_state.matched_users = matched_users
+
+            if st.session_state.matched_users:
+                st.success(f"{len(st.session_state.matched_users)}명의 사용자와 일치하는 환자 발견됨.")
                 
-                for user_match_info in matched_users:
+                for user_match_info in st.session_state.matched_users:
                     st.markdown(f"**수신자:** {user_match_info['name']} ({user_match_info['email']})")
                     st.dataframe(user_match_info['data'])
                 
-                if st.button("매칭된 환자에게 메일 보내기"):
-                    for user_match_info in matched_users:
-                        real_email = user_match_info['email']
-                        df_matched = user_match_info['data']
-                        result = send_email(real_email, df_matched, sender, sender_pw, date_str=extracted_date)
-                        if result is True:
-                            st.success(f"**{user_match_info['name']}** ({real_email}) 전송 완료")
+                # 메일 전송 및 캘린더 일정 추가 버튼 분리
+                col_actions_1, col_actions_2 = st.columns(2)
+                
+                with col_actions_1:
+                    if st.button("매칭된 환자에게 메일 보내기"):
+                        for user_match_info in st.session_state.matched_users:
+                            real_email = user_match_info['email']
+                            df_matched = user_match_info['data']
+                            result = send_email(real_email, df_matched, sender, sender_pw, date_str=extracted_date)
+                            if result is True:
+                                st.success(f"**{user_match_info['name']}** ({real_email}) 전송 완료")
+                            else:
+                                st.error(f"**{user_match_info['name']}** ({real_email}) 전송 실패: {result}")
+
+                with col_actions_2:
+                    if st.button("매칭된 환자에게 캘린더 일정 추가하기"):
+                        service = get_google_calendar_service()
+                        if service:
+                            for user_match_info in st.session_state.matched_users:
+                                df_matched = user_match_info['data']
+                                if not df_matched.empty:
+                                    st.info(f"**{user_match_info['name']}**님에게 캘린더 일정을 추가합니다.")
+                                    for _, row in df_matched.iterrows():
+                                        try:
+                                            # 예약시간 컬럼이 유효한지 확인
+                                            if '예약시간' in row and row['예약시간'] and row['예약시간'] != ' ':
+                                                event_summary = f"{row['환자명']} ({row['진료번호']}) 내원"
+                                                event_description = f"등록과: {row.get('등록과', '미지정')}\n진료내역: {row.get('진료내역', '정보 없음')}"
+
+                                                # '예약시간' 문자열을 파싱하여 datetime 객체 생성
+                                                today = datetime.date.today()
+                                                
+                                                # 예약시간이 '9:00' 같은 형식일 수 있으므로 정규식으로 'H:M' 형태만 추출
+                                                time_match = re.search(r'(\d{1,2}:\d{2})', str(row['예약시간']))
+                                                if time_match:
+                                                    time_str = time_match.group(1)
+                                                    event_time = datetime.datetime.strptime(time_str, '%H:%M').time()
+                                                    start_datetime = datetime.datetime.combine(today, event_time)
+                                                    end_datetime = start_datetime + datetime.timedelta(minutes=30) # 기본 30분으로 설정
+                                                    add_event_to_google_calendar(service, event_summary, start_datetime, end_datetime, event_description)
+                                                else:
+                                                    st.warning(f"환자 {row['환자명']}의 예약시간 형식 오류: {row['예약시간']}. 일정 추가 불가.")
+                                            else:
+                                                st.warning(f"환자 {row['환자명']}의 예약시간 정보가 없습니다. 일정 추가 불가.")
+                                        except Exception as e:
+                                            st.error(f"캘린더 일정 추가 중 오류 발생 (환자: {row['환자명']}): {e}")
                         else:
-                            st.error(f"**{user_match_info['name']}** ({real_email}) 전송 실패: {result}")
+                            st.warning("캘린더 권한이 없습니다. 아래 링크를 눌러 권한을 허용해 주세요.")
+                            auth_url = get_authorization_url()
+                            st.markdown(f"[**클릭하여 권한 허용하기**]({auth_url})", unsafe_allow_html=True)
+                            st.caption("링크를 복사하여 권한이 필요한 사람에게 전달할 수 있습니다.")
+
             else:
                 st.info("엑셀 파일 처리 완료. 매칭된 환자가 없습니다.")
+                st.session_state.matched_users = []
                 
             output_filename = uploaded_file.name.replace(".xlsx", "_processed.xlsx").replace(".xlsm", "_processed.xlsm")
             st.download_button(
@@ -710,6 +761,7 @@ if is_admin_input:
             st.error(f"파일 처리 실패: {ve}")
         except Exception as e:
             st.error(f"예상치 못한 오류 발생: {e}")
+            st.session_state.matched_users = []
 
     # 관리자 비밀번호 입력 섹션 - 별도 분리
     st.markdown("---")
@@ -789,7 +841,7 @@ if is_admin_input:
             event_end_date = st.date_input("종료일", datetime.date.today())
             event_end_time = st.time_input("종료 시간", datetime.time(10, 0))
 
-            if st.button("캘린더에 일정 추가하기"):
+            if st.button("캘린더에 단일 일정 추가하기"):
                 service = get_google_calendar_service()
                 
                 if service:
