@@ -1058,6 +1058,20 @@ with tab1:
 
 #8. Regular User Mode
 else:
+    # --- st.session_state 키 초기화 ---
+    if 'user_id_input_value' not in st.session_state:
+        st.session_state.user_id_input_value = ""
+    if 'email_change_mode' not in st.session_state:
+        st.session_state.email_change_mode = False
+    if 'found_user_email' not in st.session_state:
+        st.session_state.found_user_email = ""
+    if 'current_firebase_key' not in st.session_state:
+        st.session_state.current_firebase_key = ""
+    if 'current_user_name' not in st.session_state:
+        st.session_state.current_user_name = ""
+    if 'google_calendar_service' not in st.session_state:
+        st.session_state.google_calendar_service = None
+
     user_id_final = st.session_state.user_id_input_value if st.session_state.email_change_mode or not st.session_state.found_user_email else st.session_state.found_user_email
     firebase_key = sanitize_path(user_id_final) if user_id_final else ""
 
@@ -1079,9 +1093,6 @@ else:
     # --- 구글 캘린더 연동 섹션 ---
     st.subheader("Google Calendar 연동")
     st.info("환자 등록 시 입력된 이메일 계정의 구글 캘린더에 자동으로 일정이 추가됩니다.")
-
-    if 'google_calendar_service' not in st.session_state:
-        st.session_state.google_calendar_service = None
     
     # 구글 캘린더 서비스 객체 가져오기
     google_calendar_service = get_google_calendar_service(firebase_key)
@@ -1140,13 +1151,12 @@ else:
                 for v in existing_patient_data.values()):
                 st.error("이미 등록된 환자입니다.")
             else:
-                patients_ref_for_user.push().set({"환자명": name, "진료번호": pid, "등록과": selected_department})
+                patients_ref_for_user.push().set({"환자명": name, "진료번호": pid, "등록과": selected_department, "등록일": datetime.date.today().isoformat()})
                 st.success(f"{name} ({pid}) [{selected_department}] 환자 등록 완료")
                 
                 if st.session_state.google_calendar_service:
                      # Manual registration does not have reservation date/time.
                      # The function will use the current time as a fallback.
                     create_calendar_event(st.session_state.google_calendar_service, name, pid, selected_department)
-                # ... (rest of the block) ...
 
                 st.rerun()
