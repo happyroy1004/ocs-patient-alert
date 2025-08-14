@@ -241,7 +241,6 @@ def create_calendar_event(service, patient_name, pid, department, event_date, ev
         st.error(f"알 수 없는 오류 발생: {e}")
 
 
-
 #4. Excel Processing Constants and Functions
 
 # --- 엑셀 처리 관련 상수 및 함수 ---
