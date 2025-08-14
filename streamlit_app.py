@@ -693,6 +693,7 @@ if st.session_state.email_change_mode:
             st.rerun()
         else:
             st.error("올바른 이메일 주소 형식이 아닙니다.")
+
 # --- #7. Admin Mode Functionality ---
 if st.session_state.current_user_name and st.session_state.current_user_name.lower() == "admin":
     st.session_state.logged_in_as_admin = True
@@ -734,6 +735,15 @@ if st.session_state.current_user_name and st.session_state.current_user_name.low
 
             st.session_state.processed_excel_data_dfs = excel_data_dfs
             st.session_state.processed_styled_bytes = styled_excel_bytes
+
+            # --- 수정된 코드: 처리된 데이터를 Firebase에 저장 (덮어쓰기) ---
+            st.info("기존 OCS 분석 데이터를 삭제하고 새로운 파일로 덮어쓰는 중...")
+            processed_data_ref = db.reference("processed_data/ocs_analysis")
+            # set() 함수를 사용하여 기존 데이터를 완전히 대체합니다.
+            data_to_save = {sheet_name: df.to_dict('records') for sheet_name, df in excel_data_dfs.items()}
+            processed_data_ref.set(data_to_save)
+            st.success("엑셀 분석 데이터가 Firebase에 성공적으로 저장되었습니다.")
+            # -----------------------------------------------
 
             sender = st.secrets["gmail"]["sender"]
             sender_pw = st.secrets["gmail"]["app_password"]
@@ -967,9 +977,9 @@ if st.session_state.current_user_name and st.session_state.current_user_name.low
             else:
                 st.warning("삭제할 사용자를 선택해주세요.")
 
+
 # --- #8. Regular User Mode ---
 else:
-    # 6번 파트에서 로그인 정보가 이미 처리되었으므로, 별도의 입력 필드 없이 바로 내용을 표시합니다.
     st.session_state.logged_in_as_admin = False
     
     if st.session_state.current_user_name and st.session_state.found_user_email:
@@ -1058,8 +1068,17 @@ else:
         
         with tab2:
             st.header("OCS 현황 분석")
-            if 'processed_excel_data_dfs' in st.session_state and st.session_state.processed_excel_data_dfs:
-                analyze_ocs_data_for_tabs(st.session_state.processed_excel_data_dfs, professors_dict)
+            # --- 수정된 코드: Firebase에서 데이터 불러오기 ---
+            processed_data_ref = db.reference("processed_data/ocs_analysis")
+            firebase_data = processed_data_ref.get()
+
+            if firebase_data:
+                st.info("Firebase에서 OCS 분석 데이터를 불러왔습니다.")
+                
+                # 딕셔너리 데이터를 DataFrame으로 변환
+                loaded_excel_data_dfs = {sheet_name: pd.DataFrame(records) for sheet_name, records in firebase_data.items()}
+                
+                analyze_ocs_data_for_tabs(loaded_excel_data_dfs, professors_dict)
             else:
                 st.info("OCS 현황 분석 기능은 관리자 모드에서 파일을 업로드해야 활성화됩니다.")
 
