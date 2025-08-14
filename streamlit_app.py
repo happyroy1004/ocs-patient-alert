@@ -178,7 +178,8 @@ with tab1:
             for key, val in existing_patient_data.items():
                 col1, col2 = st.columns([0.9, 0.1])
                 with col1:
-                    st.markdown(f"**{val['환자명']}** / {val['진료번호']} / {val.get('등록과', '미지정')}")
+                    # '환자명'과 '진료번호' 키가 없을 경우 오류를 방지하기 위해 .get() 메서드를 사용
+                    st.markdown(f"**{val.get('환자명', '미지정')}** / {val.get('진료번호', '미지정')} / {val.get('등록과', '미지정')}")
                 with col2:
                     if st.button("X", key=f"delete_button_{key}"):
                         patients_ref_for_user.child(key).delete()
@@ -284,4 +285,3 @@ with tab3:
             else:
                 if send_email(to_email, subject, body):
                     st.success("이메일이 성공적으로 발송되었습니다.")
-
