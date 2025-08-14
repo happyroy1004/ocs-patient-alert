@@ -48,10 +48,7 @@ def sanitize_path(email):
 
 # 이메일 주소 복원 (Firebase 안전 키에서 원래 이메일로)
 def recover_email(safe_id: str) -> str:
-    email = safe_id.replace("_at_", "@").replace("_dot_", ".")
-    # _com이 항상 .com으로 복원되도록 수정
-    if email.endswith("_com"):
-        email = email.replace("_com", ".com")
+    email = safe_id.replace("_at_", "@").replace("_dot_", ".").replace("_com", ".com")
     return email
 
 # --- Excel 파일 처리 관련 함수 ---
@@ -115,6 +112,7 @@ def send_email(to_email, subject, body):
         return False
 
 # --- Google Calendar API 관련 설정 및 함수 ---
+# secrets.toml 파일에서 Google Calendar API 설정 가져오기
 try:
     client_id = st.secrets["googlecalendar"]["client_id"]
     client_secret = st.secrets["googlecalendar"]["client_secret"]
@@ -126,6 +124,10 @@ except KeyError:
 SCOPES = ['https://www.googleapis.com/auth/calendar.events']
 
 def get_google_calendar_service(refresh_token=None):
+    """
+    Google Calendar API 서비스 객체를 반환합니다.
+    사용자의 refresh token이 있으면 이를 사용하고, 없으면 새로운 인증 절차를 시작합니다.
+    """
     creds = None
     if refresh_token:
         creds = Credentials(
@@ -135,30 +137,37 @@ def get_google_calendar_service(refresh_token=None):
             client_id=client_id,
             client_secret=client_secret
         )
-    # 인증 토큰이 유효하지 않은 경우 재인증
-    if not creds or not creds.valid:
-        if creds and creds.expired and creds.refresh_token:
-            creds.refresh(Request())
-        else:
-            flow = InstalledAppFlow.from_client_config(
-                {
-                    "installed": {
-                        "client_id": client_id,
-                        "client_secret": client_secret,
-                        "redirect_uris": [redirect_uri],
-                        "auth_uri": "https://accounts.google.com/o/oauth2/auth",
-                        "token_uri": "https://oauth2.googleapis.com/token"
-                    }
-                },
-                SCOPES
-            )
-            authorization_url, _ = flow.authorization_url(prompt='consent')
-            st.markdown(f"[Google 계정 연동하기]({authorization_url})")
-            auth_code = st.text_input("위 링크를 클릭하여 인증 코드를 입력하세요.")
-            if auth_code:
+    
+    if creds and creds.expired and creds.refresh_token:
+        creds.refresh(Request())
+    else:
+        flow = InstalledAppFlow.from_client_config(
+            {
+                "installed": {
+                    "client_id": client_id,
+                    "client_secret": client_secret,
+                    "redirect_uris": [redirect_uri],
+                    "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+                    "token_uri": "https://oauth2.googleapis.com/token"
+                }
+            },
+            SCOPES
+        )
+        authorization_url, _ = flow.authorization_url(prompt='consent')
+        st.markdown(f"[Google 계정 연동하기]({authorization_url})")
+        auth_code = st.text_input("위 링크를 클릭하여 인증 코드를 입력하세요.")
+        if auth_code:
+            try:
                 flow.fetch_token(code=auth_code)
                 creds = flow.credentials
+                # Refresh token 저장
                 st.session_state["google_refresh_token"] = creds.refresh_token
+                st.success("Google Calendar에 성공적으로 연동되었습니다.")
+                st.experimental_rerun()
+            except Exception as e:
+                st.error(f"인증 실패: {e}")
+        else:
+            return None
 
     if creds and creds.valid:
         return build('calendar', 'v3', credentials=creds)
@@ -286,12 +295,15 @@ def process_excel_file_and_style(file_bytes_io):
     final_output_bytes.seek(0)
     return processed_sheets_dfs, final_output_bytes
 
-
 # --- Streamlit UI ---
 st.set_page_config(layout="wide")
 st.title("OCS 환자 알림 시스템")
 st.caption("환자 정보 관리 및 진료 알림을 위한 앱입니다.")
 st.markdown("---")
+
+# --- 세션 상태 초기화 ---
+if 'logged_in_as_admin' not in st.session_state:
+    st.session_state.logged_in_as_admin = False
 
 # --- Firebase에서 환자 데이터 가져오기 ---
 ref = db.reference('/')
@@ -300,25 +312,26 @@ patients_data = patients_ref_for_user.get()
 existing_patient_data = patients_data if patients_data else {}
 existing_pids = list(val['진료번호'] for val in existing_patient_data.values() if '진료번호' in val)
 
-# --- 사용자 로그인 및 관리 ---
 # 사용자 이름 입력 필드
-user_name = st.text_input("사용자 이름을 입력하세요 (예시: 홍길동)")
+user_name = st.text_input("사용자 이름을 입력하세요 (예시: 홍길동 또는 admin)")
 
 # Admin 계정 확인 로직
 is_admin_input = (user_name.strip().lower() == "admin")
+if is_admin_input:
+    admin_password = st.text_input("관리자 비밀번호를 입력하세요", type="password")
+    if admin_password == st.secrets["admin"]["password"]:
+        st.session_state.logged_in_as_admin = True
+        st.info("관리자 계정으로 로그인했습니다.")
+    else:
+        st.error("비밀번호가 올바르지 않습니다.")
+        st.session_state.logged_in_as_admin = False
 
-# 사용자 이름이 입력되면 해당 사용자의 환자 데이터 불러오기 (간소화된 로직)
-if user_name and not is_admin_input:
-    safe_user_name = sanitize_path(user_name)
-    patients_ref = db.reference(f'patients/{safe_user_name}')
-    patients_data = patients_ref.get()
-    existing_patient_data = patients_data if patients_data else {}
-    existing_pids = list(val['진료번호'] for val in existing_patient_data.values() if '진료번호' in val)
-    st.info(f"**{user_name}** 님의 환자 데이터가 로드되었습니다.")
+elif user_name:
+    st.session_state.logged_in_as_admin = False
+    st.info(f"**{user_name}** 님으로 로그인되었습니다.")
 elif not user_name:
     st.warning("사용자 이름을 입력해주세요.")
     st.stop()
-
 
 tab1, tab2, tab3 = st.tabs(["환자 관리", "환자 상태 확인 및 알림", "이메일 알림"])
 
@@ -332,12 +345,11 @@ with tab1:
             for key, val in existing_patient_data.items():
                 col1, col2 = st.columns([0.9, 0.1])
                 with col1:
-                    # '환자명'과 '진료번호' 키가 없을 경우 오류를 방지하기 위해 .get() 메서드를 사용
                     st.markdown(f"**{val.get('환자명', '미지정')}** / {val.get('진료번호', '미지정')} / {val.get('등록과', '미지정')}")
                 with col2:
                     if st.button("X", key=f"delete_button_{key}"):
-                        patients_ref.child(key).delete()
-                        st.rerun()
+                        patients_ref_for_user.child(key).delete()
+                        st.experimental_rerun()
         else:
             st.info("등록된 환자가 없습니다.")
     
@@ -356,10 +368,10 @@ with tab1:
             elif any(v.get("진료번호") == pid for v in existing_patient_data.values()):
                 st.error("이미 등록된 진료번호입니다.")
             else:
-                patients_ref.push().set({"환자명": name, "진료번호": pid, "등록과": selected_department})
+                patients_ref_for_user.push().set({"환자명": name, "진료번호": pid, "등록과": selected_department})
                 st.success(f"환자 '{name}'이(가) 등록되었습니다.")
                 time.sleep(1)
-                st.rerun()
+                st.experimental_rerun()
 
 with tab2:
     st.header("환자 상태 확인 및 알림")
@@ -389,38 +401,56 @@ with tab2:
     
     st.markdown("### Google Calendar 연동")
     google_refresh_token = st.session_state.get("google_refresh_token", None)
-    
-    if st.button("Google Calendar 연동 시작"):
-        service = get_google_calendar_service(refresh_token=None)
-        if service:
-            st.session_state["google_refresh_token"] = service._http.credentials.refresh_token
-            st.success("Google Calendar에 성공적으로 연동되었습니다.")
-            st.rerun()
-    
-    if google_refresh_token:
-        st.success("Google Calendar와 연동되어 있습니다.")
-        with st.form("calendar_event_form"):
-            st.subheader("새로운 진료 이벤트 추가")
-            event_summary = st.text_input("이벤트 제목", "환자 진료 일정")
-            event_description = st.text_area("이벤트 설명", "진료 관련 내용")
-            event_start_date = st.date_input("시작 날짜", datetime.date.today())
-            event_start_time = st.time_input("시작 시간", datetime.time(9, 0))
-            event_end_date = st.date_input("종료 날짜", datetime.date.today())
-            event_end_time = st.time_input("종료 시간", datetime.time(10, 0))
 
-            submitted_event = st.form_submit_button("캘린더에 추가")
-            if submitted_event:
-                try:
-                    start_datetime = datetime.datetime.combine(event_start_date, event_start_time)
-                    end_datetime = datetime.datetime.combine(event_end_date, event_end_time)
-                    if start_datetime >= end_datetime:
-                        st.error("종료 시간이 시작 시간보다 빨라야 합니다.")
-                    else:
-                        service = get_google_calendar_service(refresh_token=google_refresh_token)
-                        if service:
-                            create_event(service, start_datetime, end_datetime, event_summary, event_description)
-                except Exception as e:
-                    st.error(f"날짜/시간 입력 오류: {e}")
+    if st.session_state.logged_in_as_admin:
+        # 관리자용 기능
+        if not google_refresh_token:
+            if st.button("Google Calendar 연동 시작 (관리자용)"):
+                service = get_google_calendar_service(refresh_token=None)
+                if service:
+                    st.session_state["google_refresh_token"] = service._http.credentials.refresh_token
+                    st.success("Google Calendar에 성공적으로 연동되었습니다.")
+                    st.experimental_rerun()
+        else:
+            st.success("Google Calendar와 연동되어 있습니다.")
+            with st.form("calendar_event_form"):
+                st.subheader("새로운 진료 이벤트 추가")
+                event_summary = st.text_input("이벤트 제목", "환자 진료 일정")
+                event_description = st.text_area("이벤트 설명", "진료 관련 내용")
+                event_start_date = st.date_input("시작 날짜", datetime.date.today())
+                event_start_time = st.time_input("시작 시간", datetime.time(9, 0))
+                event_end_date = st.date_input("종료 날짜", datetime.date.today())
+                event_end_time = st.time_input("종료 시간", datetime.time(10, 0))
+
+                submitted_event = st.form_submit_button("캘린더에 추가")
+                if submitted_event:
+                    try:
+                        start_datetime = datetime.datetime.combine(event_start_date, event_start_time)
+                        end_datetime = datetime.datetime.combine(event_end_date, event_end_time)
+                        if start_datetime >= end_datetime:
+                            st.error("종료 시간이 시작 시간보다 빠를 수 없습니다.")
+                        else:
+                            service = get_google_calendar_service(refresh_token=google_refresh_token)
+                            if service:
+                                create_event(service, start_datetime, end_datetime, event_summary, event_description)
+                    except Exception as e:
+                        st.error(f"날짜/시간 입력 오류: {e}")
+    else:
+        # 일반 사용자용 기능
+        if not google_refresh_token:
+            st.info("Google Calendar를 연동하여 진료 일정을 확인할 수 있습니다.")
+            if st.button("Google Calendar 연동 시작"):
+                # 일반 사용자는 연동만 가능하도록 함
+                service = get_google_calendar_service(refresh_token=None)
+                if service:
+                    st.session_state["google_refresh_token"] = service._http.credentials.refresh_token
+                    st.success("Google Calendar에 성공적으로 연동되었습니다.")
+                    st.experimental_rerun()
+        else:
+            st.success("Google Calendar와 연동되어 있습니다.")
+            # 일반 사용자는 이벤트를 추가할 수 없음
+            st.info("관리자만 일정을 추가할 수 있습니다.")
+
 
 with tab3:
     st.header("이메일 알림")
