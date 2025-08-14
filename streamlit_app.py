@@ -1055,8 +1055,8 @@ with tab1:
                     st.rerun()
                 else:
                     st.warning("삭제할 사용자를 선택해주세요.")
+
 #8. Regular User Mode
-# --- 일반 사용자 모드 ---
 else:
     user_id_final = st.session_state.user_id_input_value if st.session_state.email_change_mode or not st.session_state.found_user_email else st.session_state.found_user_email
     firebase_key = sanitize_path(user_id_final) if user_id_final else ""
