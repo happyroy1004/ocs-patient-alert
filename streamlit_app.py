@@ -953,3 +953,4 @@ else:
                 patients_ref_for_user.push().set({"환자명": name, "진료번호": pid, "등록과": selected_department})
                 st.success(f"{name} ({pid}) [{selected_department}] 환자 등록 완료")
                 st.rerun()
+�
