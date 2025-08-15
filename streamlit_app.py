@@ -132,6 +132,7 @@ def process_excel_file_and_style(file_io):
         return None, None
     
 # OCS 분석 함수
+# OCS 분석 함수
 def run_analysis(df_dict, professors_dict):
     analysis_results = {}
     
@@ -139,15 +140,17 @@ def run_analysis(df_dict, professors_dict):
     if '소치' in df_dict:
         df = df_dict['소치']
         non_professors_df = df[~df['예약의사'].isin(professors_dict.get('소치', []))]
-        non_professors_df['예약시간'] = pd.to_datetime(non_professors_df['예약시간'], format='%H:%M').dt.time
+        
+        # 오류 수정: '예약시간'을 문자열로 비교
+        non_professors_df['예약시간'] = non_professors_df['예약시간'].astype(str).str.strip()
         
         morning_patients = non_professors_df[
-            (non_professors_df['예약시간'] >= datetime.time(8, 0)) & 
-            (non_professors_df['예약시간'] <= datetime.time(12, 30))
+            (non_professors_df['예약시간'] >= '08:00') & 
+            (non_professors_df['예약시간'] <= '12:30')
         ].shape[0]
         
         afternoon_patients = non_professors_df[
-            non_professors_df['예약시간'] >= datetime.time(12, 50)
+            non_professors_df['예약시간'] >= '12:50'
         ].shape[0]
         
         analysis_results['소치'] = {'오전': morning_patients, '오후': afternoon_patients}
@@ -156,15 +159,17 @@ def run_analysis(df_dict, professors_dict):
     if '보존' in df_dict:
         df = df_dict['보존']
         non_professors_df = df[~df['예약의사'].isin(professors_dict.get('보존', []))]
-        non_professors_df['예약시간'] = pd.to_datetime(non_professors_df['예약시간'], format='%H:%M').dt.time
+        
+        # 오류 수정: '예약시간'을 문자열로 비교
+        non_professors_df['예약시간'] = non_professors_df['예약시간'].astype(str).str.strip()
         
         morning_patients = non_professors_df[
-            (non_professors_df['예약시간'] >= datetime.time(8, 0)) & 
-            (non_professors_df['예약시간'] <= datetime.time(12, 30))
+            (non_professors_df['예약시간'] >= '08:00') & 
+            (non_professors_df['예약시간'] <= '12:30')
         ].shape[0]
         
         afternoon_patients = non_professors_df[
-            non_professors_df['예약시간'] >= datetime.time(12, 50)
+            non_professors_df['예약시간'] >= '12:50'
         ].shape[0]
         
         analysis_results['보존'] = {'오전': morning_patients, '오후': afternoon_patients}
@@ -177,15 +182,16 @@ def run_analysis(df_dict, professors_dict):
             ~df['진료내역'].str.contains('debonding', case=False, na=False)
         ]
         
-        bonding_patients_df['예약시간'] = pd.to_datetime(bonding_patients_df['예약시간'], format='%H:%M').dt.time
+        # 오류 수정: '예약시간'을 문자열로 비교
+        bonding_patients_df['예약시간'] = bonding_patients_df['예약시간'].astype(str).str.strip()
         
         morning_bonding_patients = bonding_patients_df[
-            (bonding_patients_df['예약시간'] >= datetime.time(8, 0)) & 
-            (bonding_patients_df['예약시간'] <= datetime.time(12, 30))
+            (bonding_patients_df['예약시간'] >= '08:00') & 
+            (bonding_patients_df['예약시간'] <= '12:30')
         ].shape[0]
         
         afternoon_bonding_patients = bonding_patients_df[
-            bonding_patients_df['예약시간'] >= datetime.time(12, 50)
+            bonding_patients_df['예약시간'] >= '12:50'
         ].shape[0]
         
         analysis_results['교정'] = {'오전': morning_bonding_patients, '오후': afternoon_bonding_patients}
