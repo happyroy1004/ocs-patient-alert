@@ -110,6 +110,8 @@ if "processed_styled_bytes" not in st.session_state:
     st.session_state.processed_styled_bytes = None
 if 'google_calendar_service' not in st.session_state:
     st.session_state.google_calendar_service = None
+if "email_change_mode" not in st.session_state:
+    st.session_state.email_change_mode = False
 
 #2. Excel and Email Processing Functions
 # 암호화된 엑셀 파일인지 확인
