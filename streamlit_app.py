@@ -757,28 +757,23 @@ if is_admin_input:
                 st.stop()
             
             try:
-                file_name = uploaded_file.name
-                
-                # --- 엑셀 파일 이름에서 예약 날짜 정보 추출 (수정) ---
-                # 'ocs_0812' -> 8월 12일 -> 2024-08-12
-                date_match = re.search(r'_(\d{2})(\d{2})', file_name)
-                reservation_date_excel = None
-                if date_match:
-                    month_str = date_match.group(1)
-                    day_str = date_match.group(2)
-                    current_year = datetime.datetime.now().year
-                    reservation_date_excel = f"{current_year}-{month_str}-{day_str}"
-                else:
-                    st.warning("엑셀 파일 이름에서 예약 날짜를 추출할 수 없습니다. 캘린더 일정은 현재 날짜로 설정됩니다.")
-                    reservation_date_excel = datetime.datetime.now().strftime("%Y-%m-%d")
-                
                 xl_object, raw_file_io = load_excel(uploaded_file, password)
                 excel_data_dfs, styled_excel_bytes = process_excel_file_and_style(raw_file_io)
 
-                # 분석 결과를 세션 상태에 저장 (추가)
+                # Firebase에 OCS 분석 결과 영구 저장 (가장 최신값으로 덮어쓰기)
+                professors_dict = {
+                    '소치': ['김현태', '장기택', '김정욱', '현홍근', '김영재', '신터전', '송지수'],
+                    '보존': ['이인복', '금기연', '이우철', '유연지', '서덕규', '이창하', '김선영', '손원준']
+                }
+                analysis_results = run_analysis(excel_data_dfs, professors_dict)
+                
+                # 'yyyy-mm-dd' 형식의 키 생성
+                today_date_str = datetime.datetime.now().strftime("%Y-%m-%d")
+                db.reference("ocs_analysis/latest_result").set(analysis_results)
+                db.reference("ocs_analysis/latest_date").set(today_date_str)
+                
                 st.session_state.last_processed_data = excel_data_dfs
                 st.session_state.last_processed_file_name = file_name
-                
                 if excel_data_dfs is None or styled_excel_bytes is None:
                     st.warning("엑셀 파일 처리 중 문제가 발생했거나 처리할 데이터가 없습니다.")
                     st.stop()
