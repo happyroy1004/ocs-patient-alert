@@ -582,7 +582,6 @@ def analyze_ocs_data_for_tabs(processed_sheets_dfs, professors_dict):
             st.markdown(f"- 오후 Bonding: **{afternoon_count}명**")
         else:
             st.info("교정과 시트가 발견되지 않았습니다.")
-
 #5. Streamlit App Start and Session State
 # --- Streamlit 애플리케이션 시작 ---
 st.set_page_config(layout="wide")
@@ -1027,7 +1026,6 @@ if st.session_state.current_user_name and st.session_state.current_user_name.low
                 st.rerun()
             else:
                 st.warning("삭제할 사용자를 선택해주세요.")
-                
 #8. Regular User Mode
 # --- 일반 사용자 모드 ---
 else:
