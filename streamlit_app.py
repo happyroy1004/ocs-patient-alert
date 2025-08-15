@@ -630,6 +630,8 @@ def analyze_ocs_data_for_tabs(processed_sheets_dfs, professors_dict):
             
 # #5. Main User Mode
 if st.session_state.logged_in and st.session_state.current_user_name != "admin":
+    st.title("환자 내원 확인 시스템")
+    
     # 탭 구성
     tab1, tab2, tab3 = st.tabs(["진료내역 확인", "OCS 분석 결과", "환자 등록"])
 
@@ -718,7 +720,6 @@ if st.session_state.logged_in and st.session_state.current_user_name != "admin":
                                                datetime.date.today().strftime("%Y-%m-%d"), datetime.datetime.now().strftime("%H:%M"), "수동등록", "환자 수동 등록")
 
                     st.rerun()
-
 #6. User and Admin Login and User Management
 # --- 사용 설명서 PDF 다운로드 버튼 추가 ---
 pdf_file_path = "manual.pdf"
