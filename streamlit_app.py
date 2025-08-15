@@ -751,6 +751,7 @@ if is_admin_input:
         if uploaded_file:
             file_name = uploaded_file.name
             
+            uploaded_file.seek(0)
             password = st.text_input("엑셀 파일 비밀번호 입력", type="password") if is_encrypted_excel(uploaded_file) else None
             if is_encrypted_excel(uploaded_file) and not password:
                 st.info("암호화된 파일입니다. 비밀번호를 입력해주세요.")
@@ -771,6 +772,7 @@ if is_admin_input:
                 today_date_str = datetime.datetime.now().strftime("%Y-%m-%d")
                 db.reference("ocs_analysis/latest_result").set(analysis_results)
                 db.reference("ocs_analysis/latest_date").set(today_date_str)
+                db.reference("ocs_analysis/latest_file_name").set(file_name)
                 
                 st.session_state.last_processed_data = excel_data_dfs
                 st.session_state.last_processed_file_name = file_name
@@ -945,9 +947,10 @@ if is_admin_input:
         all_analysis_data = db.reference("ocs_analysis").get()
         if all_analysis_data:
             latest_date = sorted(all_analysis_data.keys(), reverse=True)[0]
+            latest_file_name = db.reference("ocs_analysis/latest_file_name").get()
             analysis_results = all_analysis_data[latest_date]
             
-            st.markdown(f"**<h3 style='text-align: left;'>{latest_date} 분석 결과</h3>**", unsafe_allow_html=True)
+            st.markdown(f"**<h3 style='text-align: left;'>{latest_file_name} 분석 결과</h3>**", unsafe_allow_html=True)
             st.markdown("---")
             
             # 소아치과 현황
@@ -1085,11 +1088,10 @@ else:
 
         # Firebase에서 최신 OCS 분석 결과 로드
         all_analysis_data = db.reference("ocs_analysis").get()
-        if all_analysis_data:
-            latest_date = sorted(all_analysis_data.keys(), reverse=True)[0]
-            analysis_results = all_analysis_data[latest_date]
-            
-            st.markdown(f"**<h3 style='text-align: left;'>{latest_date} 분석 결과</h3>**", unsafe_allow_html=True)
+        latest_file_name = db.reference("ocs_analysis/latest_file_name").get()
+
+        if analysis_results and latest_file_name:
+            st.markdown(f"**<h3 style='text-align: left;'>{latest_file_name} 분석 결과</h3>**", unsafe_allow_html=True)
             st.markdown("---")
 
             # 소아치과 현황
