@@ -954,19 +954,6 @@ if is_admin_input:
             
             st.markdown(f"**<h3 style='text-align: left;'>{latest_date} 분석 결과</h3>**", unsafe_allow_html=True)
             st.markdown("---")
-
-        
-        # 세션 상태에 저장된 데이터가 있는지 확인
-        if st.session_state.last_processed_data and st.session_state.last_processed_file_name:
-            file_name_display = st.session_state.last_processed_file_name
-            professors_dict = {
-                '소치': ['김현태', '장기택', '김정욱', '현홍근', '김영재', '신터전', '송지수'],
-                '보존': ['이인복', '금기연', '이우철', '유연지', '서덕규', '이창하', '김선영', '손원준'] 
-            }
-            analysis_results = run_analysis(st.session_state.last_processed_data, professors_dict)
-            
-            st.markdown(f"**<h3 style='text-align: left;'>{file_name_display} 분석 결과</h3>**", unsafe_allow_html=True)
-            st.markdown("---")
             
             # 소아치과 현황
             if '소치' in analysis_results:
@@ -1109,18 +1096,7 @@ else:
             
             st.markdown(f"**<h3 style='text-align: left;'>{latest_date} 분석 결과</h3>**", unsafe_allow_html=True)
             st.markdown("---")
-        # 세션 상태에 저장된 데이터가 있는지 확인
-        if st.session_state.last_processed_data and st.session_state.last_processed_file_name:
-            file_name_display = st.session_state.last_processed_file_name
-            professors_dict = {
-                '소치': ['김현태', '장기택', '김정욱', '현홍근', '김영재', '신터전', '송지수'],
-                '보존': ['이인복', '금기연', '이우철', '유연지', '서덕규', '이창하', '김선영', '손원준'] 
-            }
-            analysis_results = run_analysis(st.session_state.last_processed_data, professors_dict)
-            
-            st.markdown(f"**<h3 style='text-align: left;'>{file_name_display} 분석 결과</h3>**", unsafe_allow_html=True)
-            st.markdown("---")
-            
+
             # 소아치과 현황
             if '소치' in analysis_results:
                 st.subheader("소아치과 현황 (단타)")
