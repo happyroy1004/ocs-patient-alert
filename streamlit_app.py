@@ -134,6 +134,17 @@ def process_excel_file_and_style(file_io):
 # OCS 분석 함수
 def run_analysis(df_dict, professors_dict):
     analysis_results = {}
+
+    # 각 부서의 키워드
+    dept_keywords = {'소치': '소치', '보존': '보존', '교정': '교정'}
+    
+    # 딕셔너리 키를 순회하며 시트 이름 찾기
+    found_sheets = {}
+    for key, df in df_dict.items():
+        stripped_key = key.replace(" ", "").lower()
+        for dept, keyword in dept_keywords.items():
+            if keyword in stripped_key:
+                found_sheets[dept] = df
     
     # 소아치과 분석
     if '소치' in df_dict:
