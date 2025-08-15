@@ -947,7 +947,6 @@ if is_admin_input:
                 '소치': ['김현태', '장기택', '김정욱', '현홍근', '김영재', '신터전', '송지수'],
                 '보존': ['이인복', '금기연', '이우철', '유연지', '서덕규', '이창하', '김선영', '손원준'] 
             }
-            analysis
             analysis_results = run_analysis(st.session_state.last_processed_data, professors_dict)
             
             st.markdown(f"**<h3 style='text-align: left;'>{file_name_display} 분석 결과</h3>**", unsafe_allow_html=True)
