@@ -961,8 +961,8 @@ if is_admin_input:
             # 소아치과 현황
             if '소치' in analysis_results:
                 st.subheader("소아치과 현황 (단타)")
-                st.info("오전: **{analysis_results['소치']['오전']}명**")
-                st.info("오후: **{analysis_results['소치']['오후']}명**")
+                st.info(f"오전: **{analysis_results['소치']['오전']}명**")
+                st.info(f"오후: **{analysis_results['소치']['오후']}명**")
             else:
                 st.warning("소아치과 데이터가 엑셀 파일에 없습니다.")
             st.markdown("---")
@@ -970,8 +970,8 @@ if is_admin_input:
             # 보존과 현황
             if '보존' in analysis_results:
                 st.subheader("보존과 현황 (단타)")
-                st.info("오전: **{analysis_results['보존']['오전']}명**")
-                st.info("오후: **{analysis_results['보존']['오후']}명**")
+                st.info(f"오전: **{analysis_results['보존']['오전']}명**")
+                st.info(f"오후: **{analysis_results['보존']['오후']}명**")
             else:
                 st.warning("보존과 데이터가 엑셀 파일에 없습니다.")
             st.markdown("---")
@@ -979,8 +979,8 @@ if is_admin_input:
             # 교정과 현황 (Bonding)
             if '교정' in analysis_results:
                 st.subheader("교정과 현황 (Bonding)")
-                st.info("오전: **{analysis_results['교정']['오전']}명**")
-                st.info("오후: **{analysis_results['교정']['오후']}명**")
+                st.info(f"오전: **{analysis_results['교정']['오전']}명**")
+                st.info(f"오후: **{analysis_results['교정']['오후']}명**")
             else:
                 st.warning("교정과 데이터가 엑셀 파일에 없습니다.")
             st.markdown("---")
@@ -1106,8 +1106,8 @@ else:
             # 소아치과 현황
             if '소치' in analysis_results:
                 st.subheader("소아치과 현황 (단타)")
-                st.info(f"☀️ 오전: **{analysis_results['소치']['오전']}명**")
-                st.info(f"🌙 오후: **{analysis_results['소치']['오후']}명**")
+                st.info(f"오전: **{analysis_results['소치']['오전']}명**")
+                st.info(f"오후: **{analysis_results['소치']['오후']}명**")
             else:
                 st.warning("소아치과 데이터가 엑셀 파일에 없습니다.")
             st.markdown("---")
@@ -1115,8 +1115,8 @@ else:
             # 보존과 현황
             if '보존' in analysis_results:
                 st.subheader("보존과 현황 (단타)")
-                st.info(f"☀️ 오전: **{analysis_results['보존']['오전']}명**")
-                st.info(f"🌙 오후: **{analysis_results['보존']['오후']}명**")
+                st.info(f"오전: **{analysis_results['보존']['오전']}명**")
+                st.info(f"오후: **{analysis_results['보존']['오후']}명**")
             else:
                 st.warning("보존과 데이터가 엑셀 파일에 없습니다.")
             st.markdown("---")
@@ -1124,8 +1124,8 @@ else:
             # 교정과 현황 (Bonding)
             if '교정' in analysis_results:
                 st.subheader("교정과 현황 (Bonding)")
-                st.info(f"☀️ 오전: **{analysis_results['교정']['오전']}명**")
-                st.info(f"🌙 오후: **{analysis_results['교정']['오후']}명**")
+                st.info(f"오전: **{analysis_results['교정']['오전']}명**")
+                st.info(f"오후: **{analysis_results['교정']['오후']}명**")
             else:
                 st.warning("교정과 데이터가 엑셀 파일에 없습니다.")
             st.markdown("---")
