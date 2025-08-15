@@ -179,7 +179,7 @@ def send_email(receiver, rows, sender, password, date_str=None, custom_message=N
         return str(e)
 
 
-# #3. Google Calendar API Functions
+#3. Google Calendar API Functions
 # --- Google Calendar API 관련 함수 (수정) ---
 
 # 사용할 스코프 정의. 캘린더 이벤트 생성 권한
@@ -231,7 +231,7 @@ def get_google_calendar_service(user_id_safe):
             st.markdown(f"**[Google Calendar 인증 링크]({auth_url})**")
             return None
 
-    if creds and creds.expired and creds.refresh_token:
+    if creds.expired and creds.refresh_token:
         creds.refresh(Request())
         st.session_state[f"google_creds_{user_id_safe}"] = creds
         # Update credentials in Firebase
@@ -255,18 +255,15 @@ def create_calendar_event(service, patient_name, pid, department, reservation_da
 
     # 예약 날짜와 시간을 사용하여 이벤트 시작/종료 시간 설정
     try:
-        if reservation_date_str and reservation_time_str:
-            date_time_str = f"{reservation_date_str} {reservation_time_str}"
-            naive_start = datetime.datetime.strptime(date_time_str, "%Y-%m-%d %H:%M")
-            event_start = naive_start.replace(tzinfo=seoul_tz)
-        else:
-            # 날짜 형식 파싱 실패 시 현재 시간 사용 (예외 처리)
-            st.warning(f"'{patient_name}' 환자의 날짜/시간 정보가 없습니다. 현재 시간으로 일정을 추가합니다.")
-            event_start = datetime.datetime.now(seoul_tz)
+        date_time_str = f"{reservation_date_str} {reservation_time_str}"
         
+        # Naive datetime 객체 생성 후 한국 시간대(KST)로 로컬라이즈
+        naive_start = datetime.datetime.strptime(date_time_str, "%Y-%m-%d %H:%M")
+        event_start = naive_start.replace(tzinfo=seoul_tz)
         event_end = event_start + datetime.timedelta(minutes=30)
-
+        
     except ValueError as e:
+        # 날짜 형식 파싱 실패 시 현재 시간 사용 (예외 처리)
         st.warning(f"'{patient_name}' 환자의 날짜/시간 형식 파싱 실패: {e}. 현재 시간으로 일정을 추가합니다.")
         event_start = datetime.datetime.now(seoul_tz)
         event_end = event_start + datetime.timedelta(minutes=30)
@@ -296,21 +293,9 @@ def create_calendar_event(service, patient_name, pid, department, reservation_da
         st.warning("구글 캘린더 인증 권한을 다시 확인해주세요.")
     except Exception as e:
         st.error(f"알 수 없는 오류 발생: {e}")
-        
-# #4. Excel Processing Constants and Functions
-# --- 엑셀 처리 관련 상수 및 함수 ---
-# 필요한 라이브러리 추가
-import pandas as pd
-import openpyxl
-from openpyxl.styles import Font
-from openpyxl import load_workbook
-import msoffcrypto
-import re
-import datetime
-import io
-import streamlit as st
-import os
 
+#4. Excel Processing Constants and Functions
+# --- 엑셀 처리 관련 상수 및 함수 ---
 sheet_keyword_to_department_map = {
     '치과보철과': '보철', '보철과': '보철', '보철': '보철',
     '치과교정과' : '교정', '교정과': '교정', '교정': '교정',
@@ -383,44 +368,12 @@ def process_sheet_v8(df, professors_list, sheet_key):
     final_df = final_df[[col for col in required_cols if col in final_df.columns]]
     return final_df
 
-def load_excel(file, password=None):
-    """암호화된 엑셀 파일을 로드합니다."""
-    # 이제 file은 이미 io.BytesIO 객체이므로 getvalue()를 다시 호출할 필요가 없습니다.
-    file.seek(0)
-    try:
-        if password:
-            decrypted_file = io.BytesIO()
-            office_file = msoffcrypto.OfficeFile(file)
-            office_file.load_key(password=password)
-            office_file.decrypt(decrypted_file)
-            decrypted_file.seek(0)
-            return pd.ExcelFile(decrypted_file), decrypted_file
-        else:
-            return pd.ExcelFile(file), file # file 객체를 그대로 반환
-    except msoffcrypto.exceptions.InvalidKeyError:
-        raise ValueError("잘못된 비밀번호입니다.")
-    except Exception as e:
-        st.error(f"파일을 읽는 중 오류가 발생했습니다: {e}")
-        st.stop()
-        
-# is_encrypted_excel 함수도 file-like 객체를 받도록 수정해야 합니다. (이 예제에서는 가상의 함수)
-def is_encrypted_excel(file):
-    # 파일 포인터를 처음으로 이동
-    file.seek(0)
-    try:
-        office_file = msoffcrypto.OfficeFile(file)
-        return True
-    except Exception as e:
-        return False
-    finally:
-        # 함수 종료 후에는 파일 포인터를 다시 처음으로 이동
-        file.seek(0)
+# 엑셀 파일 전체 처리 및 스타일 적용
+def process_excel_file_and_style(file_bytes_io):
+    file_bytes_io.seek(0)
 
-# 엑셀 파일 전체 처리 및 스타일 적용 (기존 코드와 새 코드 통합)
-def process_excel_file_and_style(raw_file_io):
-    raw_file_io.seek(0)
     try:
-        wb_raw = load_workbook(filename=raw_file_io, keep_vba=False, data_only=True)
+        wb_raw = load_workbook(filename=file_bytes_io, keep_vba=False, data_only=True)
     except Exception as e:
         raise ValueError(f"엑셀 워크북 로드 실패: {e}")
 
@@ -428,6 +381,7 @@ def process_excel_file_and_style(raw_file_io):
 
     for sheet_name_raw in wb_raw.sheetnames:
         sheet_name_lower = sheet_name_raw.strip().lower()
+
         sheet_key = None
         for keyword, department_name in sorted(sheet_keyword_to_department_map.items(), key=lambda item: len(item[0]), reverse=True):
             if keyword.lower() in sheet_name_lower:
@@ -472,7 +426,6 @@ def process_excel_file_and_style(raw_file_io):
         st.info("처리된 시트가 없습니다.")
         return None, None
 
-    # 하이라이트 스타일 적용 (새로운 코드)
     output_buffer_for_styling = io.BytesIO()
     with pd.ExcelWriter(output_buffer_for_styling, engine='openpyxl') as writer:
         for sheet_name_raw, df in processed_sheets_dfs.items():
@@ -503,79 +456,8 @@ def process_excel_file_and_style(raw_file_io):
     final_output_bytes = io.BytesIO()
     wb_styled.save(final_output_bytes)
     final_output_bytes.seek(0)
-    
+
     return processed_sheets_dfs, final_output_bytes
-
-def analyze_ocs_data_for_tabs(processed_sheets_dfs, professors_dict):
-    """
-    업로드된 OCS 데이터를 분석하여 소치, 보존, 교정 현황을 출력합니다.
-    """
-    with st.spinner("OCS 현황을 분석 중입니다..."):
-        # 소아치과 단타 분석
-        if '소치' in processed_sheets_dfs:
-            df_sochi = processed_sheets_dfs['소치']
-            professors = professors_dict.get('소치', [])
-            
-            # 교수님 진료 제외
-            df_non_prof = df_sochi[~df_sochi['예약의사'].isin(professors)]
-            
-            # 오전/오후 분리 (오후 1시 기준)
-            try:
-                df_non_prof['예약시간'] = pd.to_datetime(df_non_prof['예약시간'], format='%H:%M').dt.time
-                morning_count = df_non_prof[df_non_prof['예약시간'] < datetime.time(13, 0)].shape[0]
-                afternoon_count = df_non_prof[df_non_prof['예약시간'] >= datetime.time(13, 0)].shape[0]
-            except:
-                morning_count = '시간 정보 오류'
-                afternoon_count = '시간 정보 오류'
-            total_count = df_non_prof.shape[0]
-            
-            st.subheader("소아치과 현황 (단타)")
-            st.markdown(f"총 단타 환자 수: **{total_count}명**")
-            st.markdown(f"- 오전 진료: **{morning_count}명**")
-            st.markdown(f"- 오후 진료: **{afternoon_count}명**")
-        else:
-            st.info("소아치과 시트가 발견되지 않았습니다.")
-
-        # 보존과 단타 분석
-        if '보존' in processed_sheets_dfs:
-            df_bojon = processed_sheets_dfs['보존']
-            professors = professors_dict.get('보존', [])
-            
-            # 교수님 진료 제외
-            df_non_prof = df_bojon[~df_bojon['예약의사'].isin(professors)]
-            
-            # 오전/오후 분리
-            try:
-                df_non_prof['예약시간'] = pd.to_datetime(df_non_prof['예약시간'], format='%H:%M').dt.time
-                morning_count = df_non_prof[df_non_prof['예약시간'] < datetime.time(13, 0)].shape[0]
-                afternoon_count = df_non_prof[df_non_prof['예약시간'] >= datetime.time(13, 0)].shape[0]
-            except:
-                morning_count = '시간 정보 오류'
-                afternoon_count = '시간 정보 오류'
-            total_count = df_non_prof.shape[0]
-            
-            st.subheader("보존과 현황 (단타)")
-            st.markdown(f"총 단타 환자 수: **{total_count}명**")
-            st.markdown(f"- 오전 진료: **{morning_count}명**")
-            st.markdown(f"- 오후 진료: **{afternoon_count}명**")
-        else:
-            st.info("보존과 시트가 발견되지 않았습니다.")
-
-        # 교정 Bonding 갯수 분석
-        if '교정' in processed_sheets_dfs:
-            df_kyo = processed_sheets_dfs['교정']
-            # bonding 또는 본딩을 포함하고 debonding 또는 탈부착을 포함하지 않는 경우만 카운트
-            bonding_count = df_kyo[
-                ((df_kyo['진료내역'].str.contains('bonding', case=False, na=False)) |
-                (df_kyo['진료내역'].str.contains('본딩', case=False, na=False))) &
-                (~(df_kyo['진료내역'].str.contains('debonding', case=False, na=False)) &
-                ~(df_kyo['진료내역'].str.contains('탈부착', case=False, na=False)))
-            ].shape[0]
-            
-            st.subheader("교정과 현황 (Bonding)")
-            st.markdown(f"총 Bonding 환자 수: **{bonding_count}명**")
-        else:
-            st.info("교정과 시트가 발견되지 않았습니다.")
 
 #5. Streamlit App Start and Session State
 # --- Streamlit 애플리케이션 시작 ---
@@ -716,35 +598,31 @@ if st.session_state.email_change_mode:
         else:
             st.error("올바른 이메일 주소 형식이 아닙니다.")
 
-# --- #7. Admin Mode Functionality ---
-if st.session_state.current_user_name and st.session_state.current_user_name.lower() == "admin":
+#7. Admin Mode Functionality
+# --- Admin 모드 로그인 처리 ---
+if is_admin_input:
     st.session_state.logged_in_as_admin = True
     st.session_state.found_user_email = "admin"
-    st.header("관리자 기능")
-
-    # 엑셀 업로드 섹션
+    st.session_state.current_user_name = "admin"
+    
+    # 엑셀 업로드 섹션 - 비밀번호 없이도 접근 가능
     st.subheader("💻 Excel File Processor")
     uploaded_file = st.file_uploader("암호화된 Excel 파일을 업로드하세요", type=["xlsx", "xlsm"])
-
+    
+    # 엑셀 업로드 로직
     if uploaded_file:
-        # 파일 내용을 메모리 버퍼(BytesIO)로 변환하여 안정적으로 처리
-        file_content = uploaded_file.getvalue()
-        file_stream = io.BytesIO(file_content)
-
-        # is_encrypted_excel 함수가 file_stream을 사용하도록 수정
-        password = st.text_input("엑셀 파일 비밀번호 입력", type="password") if is_encrypted_excel(file_stream) else None
+        uploaded_file.seek(0)
         
-        # is_encrypted_excel을 한 번 더 호출해야 하므로, file_stream을 다시 seek(0)하여 처음으로 되돌립니다.
-        file_stream.seek(0)
-        
-        if is_encrypted_excel(file_stream) and not password:
+        password = st.text_input("엑셀 파일 비밀번호 입력", type="password") if is_encrypted_excel(uploaded_file) else None
+        if is_encrypted_excel(uploaded_file) and not password:
             st.info("암호화된 파일입니다. 비밀번호를 입력해주세요.")
             st.stop()
         
         try:
             file_name = uploaded_file.name
-
-            # OCS 파일 매칭용 예약 날짜 (파일명에서 추출)
+            
+            # --- 엑셀 파일 이름에서 예약 날짜 정보 추출 (수정) ---
+            # 'ocs_0812' -> 8월 12일 -> 2024-08-12
             date_match = re.search(r'_(\d{2})(\d{2})', file_name)
             reservation_date_excel = None
             if date_match:
@@ -755,51 +633,14 @@ if st.session_state.current_user_name and st.session_state.current_user_name.low
             else:
                 st.warning("엑셀 파일 이름에서 예약 날짜를 추출할 수 없습니다. 캘린더 일정은 현재 날짜로 설정됩니다.")
                 reservation_date_excel = datetime.datetime.now().strftime("%Y-%m-%d")
-
-            # load_excel 함수가 file_stream을 사용하도록 수정
-            xl_object, raw_file_io = load_excel(file_stream, password)
+            
+            xl_object, raw_file_io = load_excel(uploaded_file, password)
             excel_data_dfs, styled_excel_bytes = process_excel_file_and_style(raw_file_io)
 
             if excel_data_dfs is None or styled_excel_bytes is None:
                 st.warning("엑셀 파일 처리 중 문제가 발생했거나 처리할 데이터가 없습니다.")
                 st.stop()
-
-            # --- 교수님 진료 제외 필터링 로직 추가 ---
-            filtered_excel_data_dfs = {}
-            for sheet_name, df in excel_data_dfs.items():
-                department = sheet_keyword_to_department_map.get(sheet_name.strip().lower(), None)
-                if department and department in professors_dict:
-                    professors_in_dept = professors_dict[department]
-                    # '진료의사', '의사명', '담당의' 컬럼 중 하나에 교수님 이름이 있는지 확인
-                    doctor_col = None
-                    for col in ['진료의사', '의사명', '담당의']:
-                        if col in df.columns:
-                            doctor_col = col
-                            break
-                    
-                    if doctor_col:
-                        # 교수님 목록에 포함되지 않는 행만 선택
-                        filtered_df = df[~df[doctor_col].isin(professors_in_dept)]
-                        filtered_excel_data_dfs[sheet_name] = filtered_df
-                    else:
-                        filtered_excel_data_dfs[sheet_name] = df
-                else:
-                    filtered_excel_data_dfs[sheet_name] = df
             
-            st.session_state.processed_excel_data_dfs = filtered_excel_data_dfs
-            st.session_state.processed_styled_bytes = styled_excel_bytes
-
-            # --- 처리된 데이터를 Firebase에 저장 (파일명 정보 포함) ---
-            st.info("기존 OCS 분석 데이터를 삭제하고 새로운 파일로 덮어쓰는 중...")
-            processed_data_ref = db.reference("processed_data/ocs_analysis")
-            data_to_save = {
-                "file_name": file_name,  # 파일명 정보 추가
-                "sheets": {sheet_name: df.to_dict('records') for sheet_name, df in filtered_excel_data_dfs.items()}
-            }
-            processed_data_ref.set(data_to_save)
-            st.success("엑셀 분석 데이터가 Firebase에 성공적으로 저장되었습니다.")
-            # -----------------------------------------------
-
             sender = st.secrets["gmail"]["sender"]
             sender_pw = st.secrets["gmail"]["app_password"]
 
@@ -814,19 +655,19 @@ if st.session_state.current_user_name and st.session_state.current_user_name.low
                 st.warning("Firebase patients 노드에 등록된 환자 데이터가 없습니다. 매칭할 수 없습니다.")
 
             matched_users = []
-
+            
             if all_patients_data:
                 for uid_safe, registered_patients_for_this_user in all_patients_data.items():
                     user_email = recover_email(uid_safe)
                     user_display_name = user_email
-
+                    
                     if all_users_meta and uid_safe in all_users_meta:
                         user_meta = all_users_meta[uid_safe]
                         if "name" in user_meta:
                             user_display_name = user_meta["name"]
                         if "email" in user_meta:
                             user_email = user_meta["email"]
-
+                    
                     registered_patients_data = []
                     if registered_patients_for_this_user:
                         for key, val in registered_patients_for_this_user.items():
@@ -835,10 +676,10 @@ if st.session_state.current_user_name and st.session_state.current_user_name.low
                                 "진료번호": val["진료번호"].strip().zfill(8),
                                 "등록과": val.get("등록과", "")
                             })
-
+                    
                     matched_rows_for_user = []
-                    # 필터링된 데이터에서 매칭을 진행
-                    for sheet_name_excel_raw, df_sheet in filtered_excel_data_dfs.items():
+
+                    for sheet_name_excel_raw, df_sheet in excel_data_dfs.items():
                         excel_sheet_name_lower = sheet_name_excel_raw.strip().lower()
 
                         excel_sheet_department = None
@@ -846,49 +687,48 @@ if st.session_state.current_user_name and st.session_state.current_user_name.low
                             if keyword.lower() in excel_sheet_name_lower:
                                 excel_sheet_department = department_name
                                 break
-
+                        
                         if not excel_sheet_department:
                             continue
-
+                            
                         for _, excel_row in df_sheet.iterrows():
                             excel_patient_name = excel_row["환자명"].strip()
                             excel_patient_pid = excel_row["진료번호"].strip().zfill(8)
-
+                            
                             for registered_patient in registered_patients_data:
                                 if (registered_patient["환자명"] == excel_patient_name and
                                         registered_patient["진료번호"] == excel_patient_pid and
                                         registered_patient["등록과"] == excel_sheet_department):
-
+                                    
                                     matched_row_copy = excel_row.copy()
                                     matched_row_copy["시트"] = sheet_name_excel_raw
                                     matched_rows_for_user.append(matched_row_copy)
                                     break
-
+                                
                     if matched_rows_for_user:
                         combined_matched_df = pd.DataFrame(matched_rows_for_user)
                         matched_users.append({"email": user_email, "name": user_display_name, "data": combined_matched_df, "safe_key": uid_safe})
 
-            st.subheader("매칭된 환자 명단")
             if matched_users:
                 st.success(f"{len(matched_users)}명의 사용자와 일치하는 환자 발견됨.")
-
+                
                 for user_match_info in matched_users:
                     st.markdown(f"**수신자:** {user_match_info['name']} ({user_match_info['email']})")
                     st.dataframe(user_match_info['data'])
-
+                
                 mail_col, calendar_col = st.columns(2)
-
+                
                 with mail_col:
                     if st.button("매칭된 환자에게 메일 보내기"):
                         for user_match_info in matched_users:
                             real_email = user_match_info['email']
                             df_matched = user_match_info['data']
-                            result = send_email(real_email, df_matched, sender, sender_pw, date_str=reservation_date_excel)
+                            result = send_email(real_email, df_matched, sender, sender_pw, date_str=reservation_date_excel) # 추출된 날짜 사용
                             if result is True:
                                 st.success(f"**{user_match_info['name']}** ({real_email}) 전송 완료")
                             else:
                                 st.error(f"**{user_match_info['name']}** ({real_email}) 전송 실패: {result}")
-
+                
                 with calendar_col:
                     if st.button("Google Calendar 일정 추가"):
                         for user_match_info in matched_users:
@@ -896,23 +736,25 @@ if st.session_state.current_user_name and st.session_state.current_user_name.low
                             user_email = user_match_info['email']
                             user_name = user_match_info['name']
                             df_matched = user_match_info['data']
-
+                            
+                            # Check for user-specific Google Calendar credentials
                             creds = load_google_creds_from_firebase(user_safe_key)
-
+                            
                             if creds and creds.valid and not creds.expired:
                                 try:
                                     service = build('calendar', 'v3', credentials=creds)
                                     if not df_matched.empty:
                                         for _, row in df_matched.iterrows():
-                                            doctor_name = row.get('진료의사', '') or row.get('의사명', '') or row.get('담당의', '')
-                                            # 진료내역 추가
-                                            treatment_details = row.get('진료내역', '')
-                                            create_calendar_event(service, row['환자명'], row['진료번호'], row.get('시트', ''),
-                                                    reservation_date_str=reservation_date_excel, reservation_time_str=row.get('예약시간'), doctor_name=doctor_name, treatment_details=treatment_details)
+                                            # create_calendar_event 호출 시 날짜, 시간, 의사 이름 인자 전달 (수정)
+                                            # 엑셀 파일에 '예약의사' 컬럼이 있다고 가정합니다.
+                                            doctor_name = row.get('예약의사', '')
+                                            create_calendar_event(service, row['환자명'], row['진료번호'], row.get('시트', ''), 
+                                                reservation_date_str=reservation_date_excel, reservation_time_str=row.get('예약시간'), doctor_name=doctor_name)
                                     st.success(f"**{user_name}**님의 캘린더에 일정을 추가했습니다.")
                                 except Exception as e:
                                     st.error(f"**{user_name}**님의 캘린더 일정 추가 실패: {e}")
                             else:
+                                # If credentials are not found, send an email with the authorization link
                                 client_config = {
                                     "web": {
                                         "client_id": st.secrets["google_calendar"]["client_id"],
@@ -925,7 +767,7 @@ if st.session_state.current_user_name and st.session_state.current_user_name.low
                                 }
                                 flow = InstalledAppFlow.from_client_config(client_config, SCOPES, redirect_uri=st.secrets["google_calendar"]["redirect_uri"])
                                 auth_url, _ = flow.authorization_url(prompt='consent')
-
+                                
                                 custom_message = f"""
                                     안녕하세요, {user_name}님.<br><br>
                                     환자 내원 확인 시스템의 구글 캘린더 연동을 위해 인증이 필요합니다.<br>
@@ -941,13 +783,14 @@ if st.session_state.current_user_name and st.session_state.current_user_name.low
                                     st.success(f"**{user_name}**님 ({user_email})께 캘린더 권한 설정을 위한 메일 전송 완료!")
                                 else:
                                     st.error(f"**{user_name}**님 ({user_email})께 메일 전송 실패: {result}")
+                            
             else:
                 st.info("엑셀 파일 처리 완료. 매칭된 환자가 없습니다.")
-
+                
             output_filename = uploaded_file.name.replace(".xlsx", "_processed.xlsx").replace(".xlsm", "_processed.xlsm")
             st.download_button(
                 "처리된 엑셀 다운로드",
-                data=st.session_state.processed_styled_bytes,
+                data=styled_excel_bytes,
                 file_name=output_filename,
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
             )
@@ -958,7 +801,7 @@ if st.session_state.current_user_name and st.session_state.current_user_name.low
             st.error(f"예상치 못한 오류 발생: {e}")
 
     st.markdown("---")
-    st.subheader("🛠️ 최고 관리자 권한")
+    st.subheader("🛠️ Administer password")
     admin_password_input = st.text_input("관리자 비밀번호를 입력하세요", type="password", key="admin_password")
 
     try:
@@ -966,22 +809,22 @@ if st.session_state.current_user_name and st.session_state.current_user_name.low
     except KeyError:
         secret_admin_password = None
         st.error("⚠️ secrets.toml 파일에 'admin.password' 설정이 없습니다. 개발자에게 문의하세요.")
-
+    
     if admin_password_input and admin_password_input == secret_admin_password:
         st.session_state.admin_password_correct = True
-        st.success("최고 관리자 권한이 활성화되었습니다.")
+        st.success("관리자 권한이 활성화되었습니다.")
     elif admin_password_input and admin_password_input != secret_admin_password:
         st.error("비밀번호가 틀렸습니다.")
         st.session_state.admin_password_correct = False
-
+    
     if st.session_state.admin_password_correct:
         st.markdown("---")
         st.subheader("📦 메일 발송")
-
+        
         all_users_meta = users_ref.get()
-        user_list_for_dropdown = [f"{user_info.get('name', '이름 없음')} ({user_info.get('email', '이메일 없음')})"
+        user_list_for_dropdown = [f"{user_info.get('name', '이름 없음')} ({user_info.get('email', '이메일 없음')})" 
                                         for user_info in (all_users_meta.values() if all_users_meta else [])]
-
+        
         select_all_users_button = st.button("모든 사용자 선택/해제", key="select_all_btn")
         if select_all_users_button:
             st.session_state.select_all_users = not st.session_state.select_all_users
@@ -989,20 +832,20 @@ if st.session_state.current_user_name and st.session_state.current_user_name.low
         default_selection = user_list_for_dropdown if st.session_state.select_all_users else []
 
         selected_users_for_mail = st.multiselect("보낼 사용자 선택", user_list_for_dropdown, default=default_selection, key="mail_multiselect")
-
+        
         custom_message = st.text_area("보낼 메일 내용", height=200)
         if st.button("메일 보내기"):
             if custom_message:
                 sender = st.secrets["gmail"]["sender"]
                 sender_pw = st.secrets["gmail"]["app_password"]
-
+                
                 email_list = []
                 if selected_users_for_mail:
                     for user_str in selected_users_for_mail:
                         match = re.search(r'\((.*?)\)', user_str)
                         if match:
                             email_list.append(match.group(1))
-
+                
                 if email_list:
                     with st.spinner("메일 전송 중..."):
                         for email in email_list:
@@ -1015,7 +858,7 @@ if st.session_state.current_user_name and st.session_state.current_user_name.low
                     st.warning("메일 내용을 입력했으나, 선택된 사용자가 없습니다. 전송이 진행되지 않았습니다.")
             else:
                 st.warning("메일 내용을 입력해주세요.")
-
+        
         st.markdown("---")
         st.subheader("🗑️ 사용자 삭제")
         users_to_delete = st.multiselect("삭제할 사용자 선택", user_list_for_dropdown, key="delete_user_multiselect")
@@ -1026,124 +869,106 @@ if st.session_state.current_user_name and st.session_state.current_user_name.low
                     if match:
                         email_to_del = match.group(1)
                         safe_key_to_del = sanitize_path(email_to_del)
-
+                        
                         db.reference(f"users/{safe_key_to_del}").delete()
                         db.reference(f"patients/{safe_key_to_del}").delete()
                 st.success(f"사용자 {user_to_del_str} 삭제 완료.")
                 st.rerun()
             else:
                 st.warning("삭제할 사용자를 선택해주세요.")
-
-# --- #8. Regular User Mode ---
+                
+#8. Regular User Mode
+# --- 일반 사용자 모드 ---
 else:
-    st.session_state.logged_in_as_admin = False
-    
-    if st.session_state.current_user_name and st.session_state.found_user_email:
-        user_id_final = st.session_state.found_user_email
-        user_name = st.session_state.current_user_name
-        
-        firebase_key = sanitize_path(user_id_final)
-        
+    user_id_final = st.session_state.user_id_input_value if st.session_state.email_change_mode or not st.session_state.found_user_email else st.session_state.found_user_email
+    firebase_key = sanitize_path(user_id_final) if user_id_final else ""
+
+    if not user_name or not user_id_final:
+        st.info("내원 알람 노티를 받을 이메일 주소와 사용자 이름을 입력해주세요.")
+        st.stop()
+
+    patients_ref_for_user = db.reference(f"patients/{firebase_key}")
+
+    if not st.session_state.email_change_mode:
         current_user_meta_data = users_ref.child(firebase_key).get()
         if not current_user_meta_data or current_user_meta_data.get("name") != user_name or current_user_meta_data.get("email") != user_id_final:
             users_ref.child(firebase_key).update({"name": user_name, "email": user_id_final})
             st.success(f"사용자 정보가 업데이트되었습니다: {user_name} ({user_id_final})")
-        else:
-            st.success(f"로그인 성공: {user_name}님, 환영합니다!")
-            
         st.session_state.current_firebase_key = firebase_key
-        
-        # --- 수정된 코드: tab3 제거 ---
-        tab1, tab2 = st.tabs(["환자 등록/조회", "OCS 현황 분석"])
+        st.session_state.current_user_name = user_name
+        st.session_state.found_user_email = user_id_final
+    
+    # --- 구글 캘린더 연동 섹션 ---
+    st.subheader("Google Calendar 연동")
+    st.info("환자 등록 시 입력된 이메일 계정의 구글 캘린더에 자동으로 일정이 추가됩니다.")
 
-        with tab1:
-            st.subheader("Google Calendar 연동")
-            st.info("환자 등록 시 입력된 이메일 계정의 구글 캘린더에 자동으로 일정이 추가됩니다.")
-            
-            google_calendar_service = get_google_calendar_service(firebase_key)
-            st.session_state.google_calendar_service = google_calendar_service
+    if 'google_calendar_service' not in st.session_state:
+        st.session_state.google_calendar_service = None
+    
+    # 구글 캘린더 서비스 객체 가져오기
+    google_calendar_service = get_google_calendar_service(firebase_key)
+    st.session_state.google_calendar_service = google_calendar_service
 
-            if google_calendar_service:
-                st.success("✅ 캘린더 추가 기능이 허용되어 있습니다.")
-            else:
-                pass
-            
-            st.markdown("---")
-            st.subheader(f"{user_name}님의 등록 환자 목록")
-            
-            patients_ref_for_user = db.reference(f"patients/{firebase_key}")
-            existing_patient_data = patients_ref_for_user.get()
-
-            if existing_patient_data:
-                desired_order = ['소치', '외과', '보철', '내과', '교정']
-                order_map = {dept: i for i, dept in enumerate(desired_order)}
-                patient_list = list(existing_patient_data.items())
-                sorted_patient_list = sorted(patient_list, key=lambda item: order_map.get(item[1].get('등록과', '미지정'), float('inf')))
-
-                cols_count = 3
-                cols = st.columns(cols_count)
-                
-                for idx, (key, val) in enumerate(sorted_patient_list):
-                    with cols[idx % cols_count]:
-                        with st.container(border=True):
-                            info_col, btn_col = st.columns([4, 1])
-                    
-                            with info_col:
-                                st.markdown(f"**{val['환자명']}** / {val['진료번호']} / {val.get('등록과', '미지정')}")
-                            
-                            with btn_col:
-                                if st.button("X", key=f"delete_button_{key}"):
-                                    patients_ref_for_user.child(key).delete()
-                                    st.rerun()
-            else:
-                st.info("등록된 환자가 없습니다.")
-            st.markdown("---")
-
-            with st.form("register_form"):
-                name = st.text_input("환자명")
-                pid = st.text_input("진료번호")
-
-                departments_for_registration = sorted(list(set(sheet_keyword_to_department_map.values())))
-                selected_department = st.selectbox("등록 과", departments_for_registration)
-
-                submitted = st.form_submit_button("등록")
-                if submitted:
-                    if not name or not pid:
-                        st.warning("모든 항목을 입력해주세요.")
-                    elif existing_patient_data and any(
-                        v["환자명"] == name and v["진료번호"] == pid and v.get("등록과") == selected_department
-                        for v in existing_patient_data.values()):
-                        st.error("이미 등록된 환자입니다.")
-                    else:
-                        patients_ref_for_user.push().set({"환자명": name, "진료번호": pid, "등록과": selected_department, "등록일": datetime.date.today().isoformat()})
-                        st.success(f"{name} ({pid}) [{selected_department}] 환자 등록 완료")
-                        
-                        if st.session_state.google_calendar_service:
-                            create_calendar_event(st.session_state.google_calendar_service, name, pid, selected_department,
-                                                  reservation_date_str=None, reservation_time_str=None, doctor_name=None, treatment_details="")
-
-                        st.rerun()
-        
-        with tab2:
-            processed_data_ref = db.reference("processed_data/ocs_analysis")
-            firebase_data = processed_data_ref.get()
-
-            if firebase_data and "sheets" in firebase_data:
-                raw_file_name = firebase_data.get("file_name", "미지정 파일")
-                
-                # 확장자 제거
-                title_file_name = os.path.splitext(raw_file_name)[0]
-                
-                # 탭 내부에 제목으로 표시
-                st.header(f"🗓️ {title_file_name} 분석결과")
-                
-                loaded_excel_data_dfs = {sheet_name: pd.DataFrame(records) for sheet_name, records in firebase_data["sheets"].items()}
-                
-                # 여기에서 analyze_ocs_data_for_tabs 함수가 professors_dict를 참조합니다.
-                # 따라서 이 코드가 실행되기 전에 professors_dict가 정의되어야 합니다.
-                analyze_ocs_data_for_tabs(loaded_excel_data_dfs, professors_dict)
-            else:
-                st.info("OCS 현황 분석 기능은 관리자 모드에서 파일을 업로드해야 활성화됩니다.")
-
+    # Display calendar integration status
+    if google_calendar_service:
+        st.success("✅ 캘린더 추가 기능이 허용되어 있습니다.")
     else:
-        st.info("로그인 정보가 없습니다. 사용자 이름을 입력해주세요.")
+        # get_google_calendar_service already shows the link
+        pass
+
+    st.markdown("---")
+    st.subheader(f"{user_name}님의 등록 환자 목록")
+    
+    existing_patient_data = patients_ref_for_user.get()
+
+    if existing_patient_data:
+        desired_order = ['소치', '외과', '보철', '내과', '교정']
+        order_map = {dept: i for i, dept in enumerate(desired_order)}
+        patient_list = list(existing_patient_data.items())
+        sorted_patient_list = sorted(patient_list, key=lambda item: order_map.get(item[1].get('등록과', '미지정'), float('inf')))
+
+        cols_count = 3
+        cols = st.columns(cols_count)
+        
+        for idx, (key, val) in enumerate(sorted_patient_list):
+            with cols[idx % cols_count]:
+                with st.container(border=True):
+                    info_col, btn_col = st.columns([4, 1])
+            
+                    with info_col:
+                        st.markdown(f"**{val['환자명']}** / {val['진료번호']} / {val.get('등록과', '미지정')}")
+                    
+                    with btn_col:
+                        if st.button("X", key=f"delete_button_{key}"):
+                            patients_ref_for_user.child(key).delete()
+                            st.rerun()
+    else:
+        st.info("등록된 환자가 없습니다.")
+    st.markdown("---")
+
+    with st.form("register_form"):
+        name = st.text_input("환자명")
+        pid = st.text_input("진료번호")
+
+        departments_for_registration = sorted(list(set(sheet_keyword_to_department_map.values())))
+        selected_department = st.selectbox("등록 과", departments_for_registration)
+
+        submitted = st.form_submit_button("등록")
+        if submitted:
+            if not name or not pid:
+                st.warning("모든 항목을 입력해주세요.")
+            elif existing_patient_data and any(
+                v["환자명"] == name and v["진료번호"] == pid and v.get("등록과") == selected_department
+                for v in existing_patient_data.values()):
+                st.error("이미 등록된 환자입니다.")
+            else:
+                patients_ref_for_user.push().set({"환자명": name, "진료번호": pid, "등록과": selected_department})
+                st.success(f"{name} ({pid}) [{selected_department}] 환자 등록 완료")
+                
+                if st.session_state.google_calendar_service:
+                     # Manual registration does not have reservation date/time.
+                     # The function will use the current time as a fallback.
+                    create_calendar_event(st.session_state.google_calendar_service, name, pid, selected_department)
+                # ... (rest of the block) ...
+
+                st.rerun()
