@@ -163,7 +163,7 @@ def run_analysis(df_dict, professors_dict):
     
     # 소아치과 분석
     if '소치' in mapped_dfs:
-    df = mapped_dfs['소치']
+        df = mapped_dfs['소치']
         non_professors_df = df[~df['예약의사'].isin(professors_dict.get('소치', []))]
         
         # 🐛 오류 수정: '예약시간'을 문자열로 비교하기 전 유효하지 않은 값 필터링
