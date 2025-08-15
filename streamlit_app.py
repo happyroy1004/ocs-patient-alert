@@ -92,7 +92,170 @@ def load_google_creds_from_firebase(user_id_safe):
     except Exception as e:
         st.error(f"Failed to load Google credentials: {e}")
         return None
+#1. 추가코드
+#1. Imports, Validation Functions, and Firebase Initialization
+import streamlit as st
+import pandas as pd
+import firebase_admin
+from firebase_admin import credentials, db
+from openpyxl import load_workbook
+import openpyxl
+import io
+import datetime # 추가
+import os
+import time
 
+# Firebase 인증 초기화
+# Streamlit secrets에서 JSON 문자열을 가져옴
+firebase_creds_json = st.secrets.get("firebase_credentials")
+if not firebase_creds_json:
+    st.error("Firebase 인증 정보가 Streamlit Secrets에 설정되지 않았습니다.")
+else:
+    # JSON 문자열을 io.BytesIO 객체로 변환하여 credentials.Certificate에 전달
+    try:
+        cred = credentials.Certificate(io.BytesIO(firebase_creds_json.encode('utf-8')))
+        if not firebase_admin._apps:
+            firebase_admin.initialize_app(cred, {
+                "databaseURL": "https://cal-box-default-rtdb.firebaseio.com/"
+            })
+    except Exception as e:
+        st.error(f"Firebase 초기화 중 오류 발생: {e}")
+
+# 사용자 입력값에 대한 유효성 검사 함수
+def validate_inputs(name, phone, appointment_time, medical_records, department, professor):
+    if not name or not phone or not appointment_time or not medical_records or not department or not professor:
+        return False, "모든 필드를 채워주세요."
+    if not phone.isdigit():
+        return False, "전화번호는 숫자만 입력해주세요."
+    if not all(field.strip() for field in [name, phone, appointment_time, medical_records, department, professor]):
+        return False, "입력 필드에 공백만 있으면 안됩니다."
+    return True, ""
+
+# 엑셀 파일 암호화 여부 확인
+def is_encrypted_excel(file_path):
+    try:
+        with openpyxl.open(file_path, read_only=True) as wb:
+            return False
+    except openpyxl.utils.exceptions.InvalidFileException:
+        return True
+    except Exception:
+        return False
+
+# 엑셀 파일 로드
+def load_excel(uploaded_file, password=None):
+    try:
+        # Streamlit uploaded_file은 io.BytesIO 객체와 유사
+        file_io = io.BytesIO(uploaded_file.getvalue())
+        wb = load_workbook(file_io, data_only=True)
+        return wb, file_io
+    except Exception as e:
+        st.error(f"엑셀 파일 로드 중 오류 발생: {e}")
+        return None, None
+    
+# 데이터 처리 및 스타일링
+def process_excel_file_and_style(file_io):
+    try:
+        # 파일을 다시 읽어서 raw data를 가져옴
+        raw_df = pd.read_excel(file_io)
+        
+        # DataFrame을 사용하여 각 시트 데이터를 처리
+        excel_data_dfs = pd.read_excel(file_io, sheet_name=None)
+        
+        return excel_data_dfs, raw_df.to_excel(index=False, header=True, engine='xlsxwriter')
+    except Exception as e:
+        st.error(f"엑셀 데이터 처리 및 스타일링 중 오류 발생: {e}")
+        return None, None
+    
+# --- 세션 상태 초기화 ---
+if "clear" in st.query_params and st.query_params["clear"] == "true":
+    st.session_state.clear()
+    st.query_params["clear"] = "false"
+    st.rerun()
+
+if 'email_change_mode' not in st.session_state:
+    st.session_state.email_change_mode = False
+if 'last_email_change_time' not in st.session_state:
+    st.session_state.last_email_change_time = 0
+if 'email_change_sent' not in st.session_state:
+    st.session_state.email_change_sent = False
+if 'user_logged_in' not in st.session_state:
+    st.session_state.user_logged_in = False
+if 'found_user_email' not in st.session_state:
+    st.session_state.found_user_email = None
+if 'user_role' not in st.session_state:
+    st.session_state.user_role = 'user'  # 기본값은 'user'
+if 'google_creds' not in st.session_state:
+    st.session_state['google_creds'] = {}
+
+# 추가된 세션 상태 변수
+if 'last_processed_file_name' not in st.session_state:
+    st.session_state.last_processed_file_name = None
+if 'last_processed_data' not in st.session_state:
+    st.session_state.last_processed_data = None
+
+users_ref = db.reference("users")
+
+# --- OCS 분석 함수 ---
+def run_analysis(df_dict, professors_dict):
+    analysis_results = {}
+    
+    # 소아치과 분석
+    if '소치' in df_dict:
+        df = df_dict['소치']
+        non_professors_df = df[~df['예약의사'].isin(professors_dict.get('소치', []))]
+        non_professors_df['예약시간'] = pd.to_datetime(non_professors_df['예약시간'], format='%H:%M').dt.time
+        
+        morning_patients = non_professors_df[
+            (non_professors_df['예약시간'] >= datetime.time(8, 0)) & 
+            (non_professors_df['예약시간'] <= datetime.time(12, 30))
+        ].shape[0]
+        
+        afternoon_patients = non_professors_df[
+            non_professors_df['예약시간'] >= datetime.time(12, 50)
+        ].shape[0]
+        
+        analysis_results['소치'] = {'오전': morning_patients, '오후': afternoon_patients}
+
+    # 보존과 분석
+    if '보존' in df_dict:
+        df = df_dict['보존']
+        non_professors_df = df[~df['예약의사'].isin(professors_dict.get('보존', []))]
+        non_professors_df['예약시간'] = pd.to_datetime(non_professors_df['예약시간'], format='%H:%M').dt.time
+        
+        morning_patients = non_professors_df[
+            (non_professors_df['예약시간'] >= datetime.time(8, 0)) & 
+            (non_professors_df['예약시간'] <= datetime.time(12, 30))
+        ].shape[0]
+        
+        afternoon_patients = non_professors_df[
+            non_professors_df['예약시간'] >= datetime.time(12, 50)
+        ].shape[0]
+        
+        analysis_results['보존'] = {'오전': morning_patients, '오후': afternoon_patients}
+
+    # 교정과 분석 (Bonding)
+    if '교정' in df_dict:
+        df = df_dict['교정']
+        bonding_patients_df = df[
+            df['진료내역'].str.contains('bonding|본딩', case=False, na=False) &
+            ~df['진료내역'].str.contains('debonding', case=False, na=False)
+        ]
+        
+        bonding_patients_df['예약시간'] = pd.to_datetime(bonding_patients_df['예약시간'], format='%H:%M').dt.time
+        
+        morning_bonding_patients = bonding_patients_df[
+            (bonding_patients_df['예약시간'] >= datetime.time(8, 0)) & 
+            (bonding_patients_df['예약시간'] <= datetime.time(12, 30))
+        ].shape[0]
+        
+        afternoon_bonding_patients = bonding_patients_df[
+            bonding_patients_df['예약시간'] >= datetime.time(12, 50)
+        ].shape[0]
+        
+        analysis_results['교정'] = {'오전': morning_bonding_patients, '오후': afternoon_bonding_patients}
+        
+    return analysis_results
+    
 #2. Excel and Email Processing Functions
 # 암호화된 엑셀 파일인지 확인
 def is_encrypted_excel(file):
@@ -599,6 +762,74 @@ if st.session_state.email_change_mode:
             st.error("올바른 이메일 주소 형식이 아닙니다.")
 
 #7. Admin Mode Functionality
+
+#7. Admin Mode Functionality
+if is_admin_input:
+    st.subheader("관리자 모드")
+
+    # 엑셀 업로드 로직
+    uploaded_file = st.file_uploader("엑셀 파일 업로드", type=["xlsx"])
+    
+    if uploaded_file:
+        uploaded_file.seek(0)
+        
+        password = st.text_input("엑셀 파일 비밀번호 입력", type="password") if is_encrypted_excel(uploaded_file) else None
+        
+        if password is not None and not password.strip():
+            st.warning("비밀번호를 입력해주세요.")
+        elif password is None or password.strip(): # 비밀번호가 없거나 입력된 경우
+            try:
+                file_name = uploaded_file.name
+                
+                # --- 엑셀 파일 이름에서 예약 날짜 정보 추출 (수정) ---
+                booking_date_match = re.search(r'(\d{4}[년]\d{1,2}[월]\d{1,2}[일])', file_name)
+                booking_date = booking_date_match.group(1) if booking_date_match else None
+
+                xl_object, raw_file_io = load_excel(uploaded_file, password)
+                excel_data_dfs, styled_excel_bytes = process_excel_file_and_style(raw_file_io)
+
+                # 분석 결과를 세션 상태에 저장 (추가)
+                st.session_state.last_processed_data = excel_data_dfs
+                st.session_state.last_processed_file_name = file_name
+                
+                if excel_data_dfs is None or styled_excel_bytes is None:
+                    raise ValueError("엑셀 파일 처리 실패")
+                
+                # 진료과 시트명 확인
+                expected_sheets = ['소치', '보존', '교정']
+                missing_sheets = [s for s in expected_sheets if s not in excel_data_dfs]
+                if missing_sheets:
+                    st.warning(f"경고: 엑셀 파일에 다음 시트가 없습니다: {', '.join(missing_sheets)}")
+                    
+                st.success(f"'{file_name}' 파일이 성공적으로 업로드 및 처리되었습니다.")
+                st.info(f"업로드된 파일의 예약 날짜: {booking_date}")
+
+                # 데이터 미리보기
+                st.subheader("업로드된 데이터 미리보기")
+                for sheet_name, df in excel_data_dfs.items():
+                    if not df.empty:
+                        st.write(f"**{sheet_name}**")
+                        st.dataframe(df.head())
+                    
+                # 다운로드 버튼
+                if styled_excel_bytes:
+                    st.download_button(
+                        label="처리된 데이터 다운로드",
+                        data=styled_excel_bytes,
+                        file_name=f"processed_{file_name}",
+                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                    )
+            
+            except Exception as e:
+                st.error(f"파일 처리 중 예상치 못한 오류가 발생했습니다: {e}")
+                st.warning("비밀번호가 올바르지 않거나 파일이 손상되었을 수 있습니다.")
+
+    st.markdown("---")
+    st.subheader("관리자용 계정 관리")
+
+    ... # 기존의 관리자 계정 관리 코드가 여기에 들어갑니다.
+
+
 # --- Admin 모드 로그인 처리 ---
 if is_admin_input:
     st.session_state.logged_in_as_admin = True
@@ -878,20 +1109,73 @@ if is_admin_input:
             else:
                 st.warning("삭제할 사용자를 선택해주세요.")
                 
-#8. Regular User Mode
-# --- 일반 사용자 모드 ---
-else:
-    user_id_final = st.session_state.user_id_input_value if st.session_state.email_change_mode or not st.session_state.found_user_email else st.session_state.found_user_email
-    firebase_key = sanitize_path(user_id_final) if user_id_final else ""
 
-    if not user_name or not user_id_final:
-        st.info("내원 알람 노티를 받을 이메일 주소와 사용자 이름을 입력해주세요.")
-        st.stop()
+#8. General User Interface
+if not is_admin_input and st.session_state.found_user_email:
+    
+    # 두 개의 탭 생성 (추가)
+    analysis_tab, registration_tab = st.tabs(['OCS 분석 결과', '환자 등록'])
+    
+    with analysis_tab:
+        st.header("📈 OCS 분석 결과")
+        
+        # 세션 상태에 저장된 데이터가 있는지 확인
+        if st.session_state.last_processed_data and st.session_state.last_processed_file_name:
+            file_name_display = st.session_state.last_processed_file_name
+            professors_dict = {
+                '소치': ['김성오', '송지수', '김정욱', '김소연', '최성철', '김지혜', '문성진', '박은정', '김미라'],
+                '보존': ['이승수', '최신영'],
+                '교정': ['이주리']
+            }
+            analysis_results = run_analysis(st.session_state.last_processed_data, professors_dict)
+            
+            st.markdown(f"**<h3 style='text-align: left;'>{file_name_display} 분석 결과</h3>**", unsafe_allow_html=True)
+            st.markdown("---")
+            
+            # 소아치과 현황
+            if '소치' in analysis_results:
+                st.subheader("소아치과 현황 (단타)")
+                st.info(f"☀️ 오전: **{analysis_results['소치']['오전']}명**")
+                st.info(f"🌙 오후: **{analysis_results['소치']['오후']}명**")
+            else:
+                st.warning("소아치과 데이터가 엑셀 파일에 없습니다.")
+            st.markdown("---")
+            
+            # 보존과 현황
+            if '보존' in analysis_results:
+                st.subheader("보존과 현황 (단타)")
+                st.info(f"☀️ 오전: **{analysis_results['보존']['오전']}명**")
+                st.info(f"🌙 오후: **{analysis_results['보존']['오후']}명**")
+            else:
+                st.warning("보존과 데이터가 엑셀 파일에 없습니다.")
+            st.markdown("---")
 
-    patients_ref_for_user = db.reference(f"patients/{firebase_key}")
+            # 교정과 현황 (Bonding)
+            if '교정' in analysis_results:
+                st.subheader("교정과 현황 (Bonding)")
+                st.info(f"☀️ 오전: **{analysis_results['교정']['오전']}명**")
+                st.info(f"🌙 오후: **{analysis_results['교정']['오후']}명**")
+            else:
+                st.warning("교정과 데이터가 엑셀 파일에 없습니다.")
+            st.markdown("---")
 
-    if not st.session_state.email_change_mode:
-        current_user_meta_data = users_ref.child(firebase_key).get()
+        else:
+            st.info("💡 분석 결과가 없습니다. 관리자가 엑셀 파일을 업로드하면 표시됩니다.")
+    
+    # 기존 '환자 등록' 기능을 'registration_tab'으로 이동 (변경)
+    with registration_tab:
+        st.subheader("✅ 환자 등록 및 확인")
+        user_id_final = st.session_state.user_id_input_value if st.session_state.email_change_mode or not st.session_state.found_user_email else st.session_state.found_user_email
+        firebase_key = sanitize_path(user_id_final) if user_id_final else ""
+
+        if not user_name or not user_id_final:
+            st.info("내원 알람 노티를 받을 이메일 주소와 사용자 이름을 입력해주세요.")
+            st.stop()
+
+        patients_ref_for_user = db.reference(f"patients/{firebase_key}")
+
+        if not st.session_state.email_change_mode:
+            current_user_meta_data = users_ref.child(firebase_key).get()
         if not current_user_meta_data or current_user_meta_data.get("name") != user_name or current_user_meta_data.get("email") != user_id_final:
             users_ref.child(firebase_key).update({"name": user_name, "email": user_id_final})
             st.success(f"사용자 정보가 업데이트되었습니다: {user_name} ({user_id_final})")
