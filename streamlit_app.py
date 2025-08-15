@@ -297,8 +297,20 @@ def create_calendar_event(service, patient_name, pid, department, reservation_da
     except Exception as e:
         st.error(f"알 수 없는 오류 발생: {e}")
         
-#4. Excel Processing Constants and Functions
+# #4. Excel Processing Constants and Functions
 # --- 엑셀 처리 관련 상수 및 함수 ---
+# 필요한 라이브러리 추가
+import pandas as pd
+import openpyxl
+from openpyxl.styles import Font
+from openpyxl import load_workbook
+import msoffcrypto
+import re
+import datetime
+import io
+import streamlit as st
+import os
+
 sheet_keyword_to_department_map = {
     '치과보철과': '보철', '보철과': '보철', '보철': '보철',
     '치과교정과' : '교정', '교정과': '교정', '교정': '교정',
@@ -371,12 +383,44 @@ def process_sheet_v8(df, professors_list, sheet_key):
     final_df = final_df[[col for col in required_cols if col in final_df.columns]]
     return final_df
 
-# 엑셀 파일 전체 처리 및 스타일 적용
-def process_excel_file_and_style(file_bytes_io):
-    file_bytes_io.seek(0)
-
+def load_excel(file, password=None):
+    """암호화된 엑셀 파일을 로드합니다."""
+    # 이제 file은 이미 io.BytesIO 객체이므로 getvalue()를 다시 호출할 필요가 없습니다.
+    file.seek(0)
     try:
-        wb_raw = load_workbook(filename=file_bytes_io, keep_vba=False, data_only=True)
+        if password:
+            decrypted_file = io.BytesIO()
+            office_file = msoffcrypto.OfficeFile(file)
+            office_file.load_key(password=password)
+            office_file.decrypt(decrypted_file)
+            decrypted_file.seek(0)
+            return pd.ExcelFile(decrypted_file), decrypted_file
+        else:
+            return pd.ExcelFile(file), file # file 객체를 그대로 반환
+    except msoffcrypto.exceptions.InvalidKeyError:
+        raise ValueError("잘못된 비밀번호입니다.")
+    except Exception as e:
+        st.error(f"파일을 읽는 중 오류가 발생했습니다: {e}")
+        st.stop()
+        
+# is_encrypted_excel 함수도 file-like 객체를 받도록 수정해야 합니다. (이 예제에서는 가상의 함수)
+def is_encrypted_excel(file):
+    # 파일 포인터를 처음으로 이동
+    file.seek(0)
+    try:
+        office_file = msoffcrypto.OfficeFile(file)
+        return True
+    except Exception as e:
+        return False
+    finally:
+        # 함수 종료 후에는 파일 포인터를 다시 처음으로 이동
+        file.seek(0)
+
+# 엑셀 파일 전체 처리 및 스타일 적용 (기존 코드와 새 코드 통합)
+def process_excel_file_and_style(raw_file_io):
+    raw_file_io.seek(0)
+    try:
+        wb_raw = load_workbook(filename=raw_file_io, keep_vba=False, data_only=True)
     except Exception as e:
         raise ValueError(f"엑셀 워크북 로드 실패: {e}")
 
@@ -384,7 +428,6 @@ def process_excel_file_and_style(file_bytes_io):
 
     for sheet_name_raw in wb_raw.sheetnames:
         sheet_name_lower = sheet_name_raw.strip().lower()
-
         sheet_key = None
         for keyword, department_name in sorted(sheet_keyword_to_department_map.items(), key=lambda item: len(item[0]), reverse=True):
             if keyword.lower() in sheet_name_lower:
@@ -429,6 +472,7 @@ def process_excel_file_and_style(file_bytes_io):
         st.info("처리된 시트가 없습니다.")
         return None, None
 
+    # 하이라이트 스타일 적용 (새로운 코드)
     output_buffer_for_styling = io.BytesIO()
     with pd.ExcelWriter(output_buffer_for_styling, engine='openpyxl') as writer:
         for sheet_name_raw, df in processed_sheets_dfs.items():
@@ -459,8 +503,79 @@ def process_excel_file_and_style(file_bytes_io):
     final_output_bytes = io.BytesIO()
     wb_styled.save(final_output_bytes)
     final_output_bytes.seek(0)
-
+    
     return processed_sheets_dfs, final_output_bytes
+
+def analyze_ocs_data_for_tabs(processed_sheets_dfs, professors_dict):
+    """
+    업로드된 OCS 데이터를 분석하여 소치, 보존, 교정 현황을 출력합니다.
+    """
+    with st.spinner("OCS 현황을 분석 중입니다..."):
+        # 소아치과 단타 분석
+        if '소치' in processed_sheets_dfs:
+            df_sochi = processed_sheets_dfs['소치']
+            professors = professors_dict.get('소치', [])
+            
+            # 교수님 진료 제외
+            df_non_prof = df_sochi[~df_sochi['예약의사'].isin(professors)]
+            
+            # 오전/오후 분리 (오후 1시 기준)
+            try:
+                df_non_prof['예약시간'] = pd.to_datetime(df_non_prof['예약시간'], format='%H:%M').dt.time
+                morning_count = df_non_prof[df_non_prof['예약시간'] < datetime.time(13, 0)].shape[0]
+                afternoon_count = df_non_prof[df_non_prof['예약시간'] >= datetime.time(13, 0)].shape[0]
+            except:
+                morning_count = '시간 정보 오류'
+                afternoon_count = '시간 정보 오류'
+            total_count = df_non_prof.shape[0]
+            
+            st.subheader("소아치과 현황 (단타)")
+            st.markdown(f"총 단타 환자 수: **{total_count}명**")
+            st.markdown(f"- 오전 진료: **{morning_count}명**")
+            st.markdown(f"- 오후 진료: **{afternoon_count}명**")
+        else:
+            st.info("소아치과 시트가 발견되지 않았습니다.")
+
+        # 보존과 단타 분석
+        if '보존' in processed_sheets_dfs:
+            df_bojon = processed_sheets_dfs['보존']
+            professors = professors_dict.get('보존', [])
+            
+            # 교수님 진료 제외
+            df_non_prof = df_bojon[~df_bojon['예약의사'].isin(professors)]
+            
+            # 오전/오후 분리
+            try:
+                df_non_prof['예약시간'] = pd.to_datetime(df_non_prof['예약시간'], format='%H:%M').dt.time
+                morning_count = df_non_prof[df_non_prof['예약시간'] < datetime.time(13, 0)].shape[0]
+                afternoon_count = df_non_prof[df_non_prof['예약시간'] >= datetime.time(13, 0)].shape[0]
+            except:
+                morning_count = '시간 정보 오류'
+                afternoon_count = '시간 정보 오류'
+            total_count = df_non_prof.shape[0]
+            
+            st.subheader("보존과 현황 (단타)")
+            st.markdown(f"총 단타 환자 수: **{total_count}명**")
+            st.markdown(f"- 오전 진료: **{morning_count}명**")
+            st.markdown(f"- 오후 진료: **{afternoon_count}명**")
+        else:
+            st.info("보존과 시트가 발견되지 않았습니다.")
+
+        # 교정 Bonding 갯수 분석
+        if '교정' in processed_sheets_dfs:
+            df_kyo = processed_sheets_dfs['교정']
+            # bonding 또는 본딩을 포함하고 debonding 또는 탈부착을 포함하지 않는 경우만 카운트
+            bonding_count = df_kyo[
+                ((df_kyo['진료내역'].str.contains('bonding', case=False, na=False)) |
+                (df_kyo['진료내역'].str.contains('본딩', case=False, na=False))) &
+                (~(df_kyo['진료내역'].str.contains('debonding', case=False, na=False)) &
+                ~(df_kyo['진료내역'].str.contains('탈부착', case=False, na=False)))
+            ].shape[0]
+            
+            st.subheader("교정과 현황 (Bonding)")
+            st.markdown(f"총 Bonding 환자 수: **{bonding_count}명**")
+        else:
+            st.info("교정과 시트가 발견되지 않았습니다.")
 
 #5. Streamlit App Start and Session State
 # --- Streamlit 애플리케이션 시작 ---
@@ -1024,6 +1139,8 @@ else:
                 
                 loaded_excel_data_dfs = {sheet_name: pd.DataFrame(records) for sheet_name, records in firebase_data["sheets"].items()}
                 
+                # 여기에서 analyze_ocs_data_for_tabs 함수가 professors_dict를 참조합니다.
+                # 따라서 이 코드가 실행되기 전에 professors_dict가 정의되어야 합니다.
                 analyze_ocs_data_for_tabs(loaded_excel_data_dfs, professors_dict)
             else:
                 st.info("OCS 현황 분석 기능은 관리자 모드에서 파일을 업로드해야 활성화됩니다.")
