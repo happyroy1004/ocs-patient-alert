@@ -1086,14 +1086,14 @@ else:
     with analysis_tab:
         st.header("📈 OCS 분석 결과")
 
-        # Firebase에서 최신 OCS 분석 결과 로드
-        all_analysis_data = db.reference("ocs_analysis").get()
+        # Firebase에서 최신 OCS 분석 결과 및 파일명 로드
+        analysis_results = db.reference("ocs_analysis/latest_result").get()
         latest_file_name = db.reference("ocs_analysis/latest_file_name").get()
 
-        if analysis_results:
+        if analysis_results and latest_file_name:
             st.markdown(f"**<h3 style='text-align: left;'>{latest_file_name} 분석 결과</h3>**", unsafe_allow_html=True)
             st.markdown("---")
-
+            
             # 소아치과 현황
             if '소치' in analysis_results:
                 st.subheader("소아치과 현황 (단타)")
