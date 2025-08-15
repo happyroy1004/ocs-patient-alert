@@ -943,7 +943,7 @@ if is_admin_input:
         # 세션 상태에 저장된 데이터가 있는지 확인
         if st.session_state.last_processed_data and st.session_state.last_processed_file_name:
             file_name_display = st.session_state.last_processed_file_name
-           professors_dict = {
+            professors_dict = {
                 '소치': ['김현태', '장기택', '김정욱', '현홍근', '김영재', '신터전', '송지수'],
                 '보존': ['이인복', '금기연', '이우철', '유연지', '서덕규', '이창하', '김선영', '손원준'] 
             }
