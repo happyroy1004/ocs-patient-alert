@@ -945,6 +945,16 @@ if is_admin_input:
 
     with analysis_tab:
         st.header("📈 OCS 분석 결과")
+
+    # Firebase에서 최신 OCS 분석 결과 로드
+        all_analysis_data = db.reference("ocs_analysis").get()
+        if all_analysis_data:
+            latest_date = sorted(all_analysis_data.keys(), reverse=True)[0]
+            analysis_results = all_analysis_data[latest_date]
+            
+            st.markdown(f"**<h3 style='text-align: left;'>{latest_date} 분석 결과</h3>**", unsafe_allow_html=True)
+            st.markdown("---")
+
         
         # 세션 상태에 저장된 데이터가 있는지 확인
         if st.session_state.last_processed_data and st.session_state.last_processed_file_name:
@@ -1090,7 +1100,15 @@ else:
     
     with analysis_tab:
         st.header("📈 OCS 분석 결과")
-        
+
+        # Firebase에서 최신 OCS 분석 결과 로드
+        all_analysis_data = db.reference("ocs_analysis").get()
+        if all_analysis_data:
+            latest_date = sorted(all_analysis_data.keys(), reverse=True)[0]
+            analysis_results = all_analysis_data[latest_date]
+            
+            st.markdown(f"**<h3 style='text-align: left;'>{latest_date} 분석 결과</h3>**", unsafe_allow_html=True)
+            st.markdown("---")
         # 세션 상태에 저장된 데이터가 있는지 확인
         if st.session_state.last_processed_data and st.session_state.last_processed_file_name:
             file_name_display = st.session_state.last_processed_file_name
