@@ -135,16 +135,31 @@ def process_excel_file_and_style(file_io):
 def run_analysis(df_dict, professors_dict):
     analysis_results = {}
 
-    # 각 부서의 키워드
-    dept_keywords = {'소치': '소치', '보존': '보존', '교정': '교정'}
-    
-    # 딕셔너리 키를 순회하며 시트 이름 찾기
-    found_sheets = {}
-    for key, df in df_dict.items():
-        stripped_key = key.replace(" ", "").lower()
-        for dept, keyword in dept_keywords.items():
-            if keyword in stripped_key:
-                found_sheets[dept] = df
+    # 딕셔너리로 시트 이름과 부서 맵핑 정의
+    sheet_department_map = {
+        '소치': '소치',
+        '소아치과': '소치',
+        '소아 치과': '소치',
+        '보존': '보존',
+        '보존과': '보존',
+        '치과보존과': '보존',
+        '교정': '교정',
+        '교정과': '교정',
+        '치과교정과': '교정'
+    }
+
+    # 맵핑된 데이터프레임을 저장할 딕셔너리
+    mapped_dfs = {}
+    for sheet_name, df in df_dict.items():
+        # 공백 제거 및 소문자 변환
+        processed_sheet_name = sheet_name.replace(" ", "").lower()
+        
+        # 맵핑 딕셔너리에서 부서 이름 찾기
+        for key, dept in sheet_department_map.items():
+            if processed_sheet_name == key.replace(" ", "").lower():
+                mapped_dfs[dept] = df
+                break
+
     
     # 소아치과 분석
     if '소치' in df_dict:
