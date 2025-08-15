@@ -155,7 +155,10 @@ def run_analysis(df_dict, professors_dict):
         afternoon_patients = non_professors_df[
             non_professors_df['예약시간'] >= '13:00'
         ].shape[0]
-        
+
+        # ⚠️ 계산된 값에서 1을 빼는 로직 추가
+        if afternoon_patients > 0:
+            afternoon_patients -= 1
         analysis_results['소치'] = {'오전': morning_patients, '오후': afternoon_patients}
 
     # 보존과 분석
@@ -178,7 +181,9 @@ def run_analysis(df_dict, professors_dict):
         afternoon_patients = non_professors_df[
             non_professors_df['예약시간'] >= '12:50'
         ].shape[0]
-        
+# ⚠️ 계산된 값에서 1을 빼는 로직 추가
+        if afternoon_patients > 0:
+            afternoon_patients -= 1
         analysis_results['보존'] = {'오전': morning_patients, '오후': afternoon_patients}
 
     # 교정과 분석 (Bonding)
