@@ -162,8 +162,8 @@ def run_analysis(df_dict, professors_dict):
 
     
     # 소아치과 분석
-    if '소치' in df_dict:
-        df = df_dict['소치']
+    if '소치' in mapped_dfs:
+    df = mapped_dfs['소치']
         non_professors_df = df[~df['예약의사'].isin(professors_dict.get('소치', []))]
         
         # 🐛 오류 수정: '예약시간'을 문자열로 비교하기 전 유효하지 않은 값 필터링
@@ -188,8 +188,8 @@ def run_analysis(df_dict, professors_dict):
         analysis_results['소치'] = {'오전': morning_patients, '오후': afternoon_patients}
 
     # 보존과 분석
-    if '보존' in df_dict:
-        df = df_dict['보존']
+    if '보존' in mapped_dfs:
+        df = mapped_dfs['보존']
         non_professors_df = df[~df['예약의사'].isin(professors_dict.get('보존', []))]
         
         # 🐛 오류 수정: '예약시간'을 문자열로 비교하기 전 유효하지 않은 값 필터링
@@ -213,8 +213,8 @@ def run_analysis(df_dict, professors_dict):
         analysis_results['보존'] = {'오전': morning_patients, '오후': afternoon_patients}
 
     # 교정과 분석 (Bonding)
-    if '교정' in df_dict:
-        df = df_dict['교정']
+    if '교정' in mapped_dfs:
+        df = mapped_dfs['교정']
         bonding_patients_df = df[
             df['진료내역'].str.contains('bonding|본딩', case=False, na=False) &
             ~df['진료내역'].str.contains('debonding', case=False, na=False)
