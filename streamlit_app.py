@@ -92,6 +92,24 @@ def load_google_creds_from_firebase(user_id_safe):
     except Exception as e:
         st.error(f"Failed to load Google credentials: {e}")
         return None
+        
+# --- 세션 상태 초기화 ---
+if "logged_in" not in st.session_state:
+    st.session_state.logged_in = False
+if "current_user_name" not in st.session_state:
+    st.session_state.current_user_name = None
+if "found_user_email" not in st.session_state:
+    st.session_state.found_user_email = None
+if "admin_password_correct" not in st.session_state:
+    st.session_state.admin_password_correct = False
+if "select_all_users" not in st.session_state:
+    st.session_state.select_all_users = False
+if "processed_excel_data_dfs" not in st.session_state:
+    st.session_state.processed_excel_data_dfs = None
+if "processed_styled_bytes" not in st.session_state:
+    st.session_state.processed_styled_bytes = None
+if 'google_calendar_service' not in st.session_state:
+    st.session_state.google_calendar_service = None
 
 #2. Excel and Email Processing Functions
 # 암호화된 엑셀 파일인지 확인
