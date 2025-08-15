@@ -132,7 +132,6 @@ def process_excel_file_and_style(file_io):
         return None, None
     
 # OCS 분석 함수
-# OCS 분석 함수
 def run_analysis(df_dict, professors_dict):
     analysis_results = {}
     
@@ -140,6 +139,10 @@ def run_analysis(df_dict, professors_dict):
     if '소치' in df_dict:
         df = df_dict['소치']
         non_professors_df = df[~df['예약의사'].isin(professors_dict.get('소치', []))]
+        
+        # 🐛 오류 수정: '예약시간'을 문자열로 비교하기 전 유효하지 않은 값 필터링
+        non_professors_df['예약시간'] = non_professors_df['예약시간'].astype(str).str.strip()
+        non_professors_df = non_professors_df[non_professors_df['예약시간'] != 'nan']
         
         # 오류 수정: '예약시간'을 문자열로 비교
         non_professors_df['예약시간'] = non_professors_df['예약시간'].astype(str).str.strip()
@@ -159,6 +162,10 @@ def run_analysis(df_dict, professors_dict):
     if '보존' in df_dict:
         df = df_dict['보존']
         non_professors_df = df[~df['예약의사'].isin(professors_dict.get('보존', []))]
+        
+        # 🐛 오류 수정: '예약시간'을 문자열로 비교하기 전 유효하지 않은 값 필터링
+        non_professors_df['예약시간'] = non_professors_df['예약시간'].astype(str).str.strip()
+        non_professors_df = non_professors_df[non_professors_df['예약시간'] != 'nan']
         
         # 오류 수정: '예약시간'을 문자열로 비교
         non_professors_df['예약시간'] = non_professors_df['예약시간'].astype(str).str.strip()
