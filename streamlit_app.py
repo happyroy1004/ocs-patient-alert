@@ -1090,7 +1090,7 @@ else:
         all_analysis_data = db.reference("ocs_analysis").get()
         latest_file_name = db.reference("ocs_analysis/latest_file_name").get()
 
-        if analysis_results and latest_file_name:
+        if analysis_results:
             st.markdown(f"**<h3 style='text-align: left;'>{latest_file_name} 분석 결과</h3>**", unsafe_allow_html=True)
             st.markdown("---")
 
