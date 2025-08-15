@@ -749,7 +749,7 @@ if is_admin_input:
         
         # 엑셀 업로드 로직
         if uploaded_file:
-            uploaded_file.seek(0)
+            file_name = uploaded_file.name
             
             password = st.text_input("엑셀 파일 비밀번호 입력", type="password") if is_encrypted_excel(uploaded_file) else None
             if is_encrypted_excel(uploaded_file) and not password:
