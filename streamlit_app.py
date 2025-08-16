@@ -718,7 +718,6 @@ with st.container():
     
     login_button = st.button("로그인")
 
-# 로그인 버튼을 눌렀을 때의 로직
 if login_button:
     if not user_name:
         st.error("사용자 이름을 입력해주세요.")
@@ -730,7 +729,19 @@ if login_button:
         if all_users_meta:
             for safe_key, user_info in all_users_meta.items():
                 if user_info and user_info.get("name") == user_name:
-                    if user_info.get("password") == password_input:
+                    # Case 1: 비밀번호가 없는 기존 사용자
+                    if "password" not in user_info or user_info.get("password") is None:
+                        users_ref.child(safe_key).update({"password": password_input})
+                        st.session_state.user_logged_in = True
+                        st.session_state.found_user_email = user_info.get("email")
+                        st.session_state.current_firebase_key = safe_key
+                        st.session_state.current_user_name = user_name
+                        st.session_state.logged_in = True
+                        st.success(f"**{user_name}**님으로 로그인되었으며, 새로운 비밀번호가 설정되었습니다.")
+                        found = True
+                        break
+                    # Case 2: 비밀번호가 있는 사용자
+                    elif user_info.get("password") == password_input:
                         st.session_state.user_logged_in = True
                         st.session_state.found_user_email = user_info.get("email")
                         st.session_state.current_firebase_key = safe_key
@@ -745,15 +756,14 @@ if login_button:
                         break
         
         if not found:
-            # 새로운 사용자 등록
-            # 이메일 입력 필드가 없으므로, 필요에 따라 추가하거나 임시 값 설정
+            # 새로운 사용자 등록 로직 (기존과 동일)
             new_email = "" 
             new_firebase_key = sanitize_path(user_name) if user_name else ""
             if new_firebase_key:
                 users_ref.child(new_firebase_key).set({
                     "name": user_name,
                     "email": new_email,
-                    "password": "1234"  # 초기 비밀번호 설정
+                    "password": "1234"
                 })
                 st.session_state.user_logged_in = True
                 st.session_state.found_user_email = new_email
@@ -761,7 +771,6 @@ if login_button:
                 st.session_state.current_user_name = user_name
                 st.session_state.logged_in = True
                 st.success(f"새로운 사용자 **{user_name}**이(가) 등록되었습니다. 초기 비밀번호는 **1234**입니다.")
-
 # 로그인 상태에 따라 다른 화면 표시
 if st.session_state.logged_in:
     st.markdown("---")
