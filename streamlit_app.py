@@ -737,7 +737,7 @@ if login_button:
                         st.session_state.current_firebase_key = safe_key
                         st.session_state.current_user_name = user_name
                         st.session_state.logged_in = True
-                        st.success(f"**{user_name}**님으로 로그인되었으며, 새로운 비밀번호가 설정되었습니다.")
+                        st.success(f"**{user_name}**님으로 로그인되었습니다. 새로운 비밀번호를 설정하세요.")
                         found = True
                         break
                     # Case 2: 비밀번호가 있는 사용자
