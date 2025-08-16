@@ -683,6 +683,9 @@ users_ref = db.reference("users")
 import os
 import streamlit as st
 
+# Admin 계정 확인 로직 (추가)
+is_admin_input = (user_name.strip().lower() == "admin")
+
 # 세션 상태 초기화
 if 'logged_in' not in st.session_state:
     st.session_state.logged_in = False
