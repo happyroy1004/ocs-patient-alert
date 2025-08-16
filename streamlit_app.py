@@ -1230,16 +1230,5 @@ else:
                     patients_ref_for_user.push().set({"환자명": name, "진료번호": pid, "등록과": selected_department})
                     st.success(f"{name} ({pid}) [{selected_department}] 환자 등록 완료")
                     
-                    if st.session_state.google_calendar_service:
-                        # Manual registration does not have reservation date/time.
-                        # The function will use the current time as a fallback.
-                        create_calendar_event_for_manual_registration(
-                            st.session_state.google_calendar_service,
-                            name,
-                            pid,
-                            selected_department,
-                            "수동 등록",
-                            st.session_state.found_user_email
-                        )
 
                     st.rerun()
