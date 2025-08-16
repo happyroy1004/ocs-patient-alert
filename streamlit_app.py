@@ -683,9 +683,6 @@ users_ref = db.reference("users")
 import os
 import streamlit as st
 
-# Admin 계정 확인 로직 (추가)
-is_admin_input = (user_name.strip().lower() == "admin")
-
 # 세션 상태 초기화
 if 'logged_in' not in st.session_state:
     st.session_state.logged_in = False
@@ -715,6 +712,9 @@ with st.container():
     st.subheader("로그인")
     user_name = st.text_input("사용자 이름을 입력하세요 (예: 홍길동)")
     password_input = st.text_input("비밀번호를 입력하세요", type="password")
+    
+    # user_name 변수가 정의된 후에 is_admin_input을 정의
+    is_admin_input = (user_name.strip().lower() == "admin")
     
     login_button = st.button("로그인")
 
@@ -778,7 +778,7 @@ if st.session_state.logged_in:
             st.success("비밀번호가 성공적으로 변경되었습니다!")
         else:
             st.error("새로운 비밀번호가 일치하지 않습니다.")
-
+            
 #7. Admin Mode Functionality
 # --- Admin 모드 로그인 처리 ---
 if is_admin_input:
