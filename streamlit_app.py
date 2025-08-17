@@ -815,6 +815,10 @@ if 'patient_data' not in st.session_state:
 if 'patients_ref' not in st.session_state:
     st.session_state['patients_ref'] = db.reference("patients")
 
+users_ref = db.reference("users")
+ocs_analysis_ref = db.reference("ocs_analysis")
+
+
 # Firestore에 환자 정보 저장 함수
 def save_patient_data(patient_id, patient_info):
     st.session_state.patients_ref.child(st.session_state.current_firebase_key).child(patient_id).set(patient_info)
@@ -1001,8 +1005,46 @@ if st.session_state.logged_in:
 
     with analysis_tab:
         # 기존 OCS 분석 결과 탭의 코드를 여기에 붙여넣으세요.
-        st.header("OCS 분석 결과")
-        st.write("여기에 기존 OCS 분석 결과를 시각화하는 코드를 붙여넣으세요.")
+        st.header("📈 OCS 분석 결과")
+        
+        # Firebase에서 최신 OCS 분석 결과 로드
+        all_analysis_data = db.reference("ocs_analysis").get()
+        if all_analysis_data:
+            latest_date_key = sorted([k for k in all_analysis_data.keys() if k != 'latest_file_name'], reverse=True)[0]
+            latest_file_name = all_analysis_data.get('latest_file_name', '분석 파일 이름')
+            analysis_results = all_analysis_data[latest_date_key]
+            
+            st.markdown(f"**<h3 style='text-align: left;'>{latest_file_name} 분석 결과</h3>**", unsafe_allow_html=True)
+            st.markdown("---")
+            
+            # 소아치과 현황
+            if '소치' in analysis_results:
+                st.subheader("소아치과 현황 (단타)")
+                st.info(f"오전: **{analysis_results['소치']['오전']}명**")
+                st.info(f"오후: **{analysis_results['소치']['오후']}명**")
+            else:
+                st.warning("소아치과 데이터가 엑셀 파일에 없습니다.")
+            st.markdown("---")
+            
+            # 보존과 현황
+            if '보존' in analysis_results:
+                st.subheader("보존과 현황 (단타)")
+                st.info(f"오전: **{analysis_results['보존']['오전']}명**")
+                st.info(f"오후: **{analysis_results['보존']['오후']}명**")
+            else:
+                st.warning("보존과 데이터가 엑셀 파일에 없습니다.")
+            st.markdown("---")
+
+            # 교정과 현황 (Bonding)
+            if '교정' in analysis_results:
+                st.subheader("교정과 현황 (Bonding)")
+                st.info(f"오전: **{analysis_results['교정']['오전']}명**")
+                st.info(f"오후: **{analysis_results['교정']['오후']}명**")
+            else:
+                st.warning("교정과 데이터가 엑셀 파일에 없습니다.")
+            st.markdown("---")
+        else:
+            st.info("💡 분석 결과가 없습니다. 엑셀 파일을 업로드하면 표시됩니다.")
         
     # 비밀번호 수정 기능 추가
     st.subheader("비밀번호 수정")
@@ -1058,6 +1100,7 @@ if st.session_state.logged_in:
             if st.button("이메일 주소 변경"):
                 st.session_state.email_change_mode = True
                 st.rerun()
+
                 
 #7. Admin Mode Functionality
 # --- Admin 모드 로그인 처리 ---
