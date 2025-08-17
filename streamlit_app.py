@@ -715,24 +715,36 @@ if user_name and not is_admin_input and not st.session_state.email_change_mode:
                 break
     
     if matched_user:
-        # 비밀번호 정보가 없는 경우 '1234'를 기본값으로 설정
-        user_password = matched_user.get("password", "1234")
-        if password_input == user_password:
-            # 로그인 성공 시, 비밀번호가 없었다면 '1234'로 업데이트
-            if "password" not in matched_user:
+        # 비밀번호가 없는 기존 사용자의 경우
+        if "password" not in matched_user or not matched_user.get("password"):
+            if password_input == "1234":
+                # 초기 비밀번호 '1234'로 로그인 성공
+                st.session_state.found_user_email = matched_user["email"]
+                st.session_state.user_id_input_value = matched_user["email"]
+                st.session_state.current_firebase_key = matched_user["safe_key"]
+                st.session_state.current_user_name = user_name
+                st.info(f"**{user_name}**님으로 로그인되었습니다. 기존 사용자이므로 초기 비밀번호 **1234**가 설정되었습니다.")
                 users_ref.child(matched_user["safe_key"]).update({"password": "1234"})
-            
-            st.session_state.found_user_email = matched_user["email"]
-            st.session_state.user_id_input_value = matched_user["email"]
-            st.session_state.current_firebase_key = matched_user["safe_key"]
-            st.session_state.current_user_name = user_name
-            st.info(f"**{user_name}**님으로 로그인되었습니다. 이메일 주소: **{st.session_state.found_user_email}**")
+            else:
+                st.error("비밀번호가 일치하지 않습니다. 기존 사용자의 초기 비밀번호는 **'1234'**입니다. 다시 시도해주세요.")
+                st.session_state.found_user_email = ""
+                st.session_state.user_id_input_value = ""
+                st.session_state.current_firebase_key = ""
+                st.session_state.current_user_name = ""
+        # 비밀번호가 있는 기존 사용자의 경우
         else:
-            st.error("비밀번호가 일치하지 않습니다. 다시 확인해주세요.")
-            st.session_state.found_user_email = ""
-            st.session_state.user_id_input_value = ""
-            st.session_state.current_firebase_key = ""
-            st.session_state.current_user_name = ""
+            if password_input == matched_user.get("password"):
+                st.session_state.found_user_email = matched_user["email"]
+                st.session_state.user_id_input_value = matched_user["email"]
+                st.session_state.current_firebase_key = matched_user["safe_key"]
+                st.session_state.current_user_name = user_name
+                st.info(f"**{user_name}**님으로 로그인되었습니다. 이메일 주소: **{st.session_state.found_user_email}**")
+            else:
+                st.error("비밀번호가 일치하지 않습니다. 다시 확인해주세요.")
+                st.session_state.found_user_email = ""
+                st.session_state.user_id_input_value = ""
+                st.session_state.current_firebase_key = ""
+                st.session_state.current_user_name = ""
     else:
         # 신규 사용자임을 안내하고 등록 절차로 진행
         st.info(f"'{user_name}'님은 새로운 사용자입니다. 아래에 이메일 주소를 입력하여 등록을 완료하세요.")
@@ -807,6 +819,7 @@ if not is_admin_input:
                     st.success("🎉 비밀번호가 성공적으로 변경되었습니다!")
                 except Exception as e:
                     st.error(f"비밀번호 변경 중 오류가 발생했습니다: {e}")
+                    
 #7. Admin Mode Functionality
 # --- Admin 모드 로그인 처리 ---
 if is_admin_input:
