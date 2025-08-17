@@ -800,8 +800,6 @@ if not is_admin_input:
                 st.error("올바른 이메일 주소 형식이 아닙니다.")
 
 
-#7. Admin Mode Functionality
-# --- Admin 모드 로그인 처리 ---
 if is_admin_input:
     st.session_state.logged_in_as_admin = True
     st.session_state.found_user_email = "admin"
@@ -926,7 +924,7 @@ if is_admin_input:
                             for user_match_info in matched_users:
                                 real_email = user_match_info['email']
                                 df_matched = user_match_info['data']
-                                result = send_email(real_email, df_matched, sender, sender_pw, date_str=today_date_str) # 추출된 날짜 사용
+                                result = send_email(real_email, df_matched, sender, sender_pw, date_str=today_date_str)
                                 if result is True:
                                     st.success(f"**{user_match_info['name']}** ({real_email}) 전송 완료")
                                 else:
@@ -1026,30 +1024,30 @@ if is_admin_input:
             st.markdown("---")
             
             # 소아치과 현황
-            if DEPARTMENTS['소치'] in analysis_results:
-                st.subheader(f"{DEPARTMENTS['소치']} 현황 (단타)")
-                st.info(f"오전: **{analysis_results[DEPARTMENTS['소치']]['오전']}명**")
-                st.info(f"오후: **{analysis_results[DEPARTMENTS['소치']]['오후']}명**")
+            if '소아치과' in analysis_results:
+                st.subheader(f"소아치과 현황 (단타)")
+                st.info(f"오전: **{analysis_results['소아치과']['오전']}명**")
+                st.info(f"오후: **{analysis_results['소아치과']['오후']}명**")
             else:
-                st.warning(f"{DEPARTMENTS['소치']} 데이터가 엑셀 파일에 없습니다.")
+                st.warning("소아치과 데이터가 엑셀 파일에 없습니다.")
             st.markdown("---")
             
             # 보존과 현황
-            if DEPARTMENTS['보존'] in analysis_results:
-                st.subheader(f"{DEPARTMENTS['보존']} 현황 (단타)")
-                st.info(f"오전: **{analysis_results[DEPARTMENTS['보존']]['오전']}명**")
-                st.info(f"오후: **{analysis_results[DEPARTMENTS['보존']]['오후']}명**")
+            if '보존과' in analysis_results:
+                st.subheader(f"보존과 현황 (단타)")
+                st.info(f"오전: **{analysis_results['보존과']['오전']}명**")
+                st.info(f"오후: **{analysis_results['보존과']['오후']}명**")
             else:
-                st.warning(f"{DEPARTMENTS['보존']} 데이터가 엑셀 파일에 없습니다.")
+                st.warning("보존과 데이터가 엑셀 파일에 없습니다.")
             st.markdown("---")
 
             # 교정과 현황 (Bonding)
-            if DEPARTMENTS['교정'] in analysis_results:
-                st.subheader(f"{DEPARTMENTS['교정']} 현황 (Bonding)")
-                st.info(f"오전: **{analysis_results[DEPARTMENTS['교정']]['오전']}명**")
-                st.info(f"오후: **{analysis_results[DEPARTMENTS['교정']]['오후']}명**")
+            if '교정과' in analysis_results:
+                st.subheader(f"교정과 현황 (Bonding)")
+                st.info(f"오전: **{analysis_results['교정과']['오전']}명**")
+                st.info(f"오후: **{analysis_results['교정과']['오후']}명**")
             else:
-                st.warning(f"{DEPARTMENTS['교정']} 데이터가 엑셀 파일에 없습니다.")
+                st.warning("교정과 데이터가 엑셀 파일에 없습니다.")
             st.markdown("---")
         else:
             st.info("💡 분석 결과가 없습니다. 엑셀 파일을 업로드하면 표시됩니다.")
@@ -1132,7 +1130,7 @@ if st.session_state.admin_password_correct:
             st.rerun()
         else:
             st.warning("삭제할 사용자를 선택해주세요.")
-            
+
 #8. Regular User Mode
 # --- 일반 사용자 모드 ---
 else:
