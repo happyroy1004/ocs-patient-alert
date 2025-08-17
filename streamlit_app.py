@@ -845,7 +845,8 @@ if is_admin_input:
                     month_str = date_match.group(1)
                     day_str = date_match.group(2)
                     current_year = datetime.datetime.now().year
-                    reservation_date_excel = f"{current_year}-{month_str}-{day_str}"
+                    # 파일명 날짜를 YYYY-MM-DD 형식으로 저장
+                    reservation_date_excel = f"{current_year}-{month_str.zfill(2)}-{day_str.zfill(2)}"
                 else:
                     st.warning("엑셀 파일 이름에서 예약 날짜를 추출할 수 없습니다. 캘린더 일정은 현재 날짜로 설정됩니다.")
                     reservation_date_excel = datetime.datetime.now().strftime("%Y-%m-%d")
@@ -955,13 +956,20 @@ if is_admin_input:
                                 if not df_matched.empty:
                                     for _, row in df_matched.iterrows():
                                         # 매칭된 데이터프레임에서 날짜/시간 정보를 다시 가져와 처리
-                                        reservation_date = str(row.get('예약일시', '')).strip()
+                                        # 예약일시 열은 무시하고 파일명에서 추출한 날짜를 사용
                                         reservation_time = str(row.get('예약시간', '')).strip()
-                                        full_datetime_str = f"{reservation_date} {reservation_time}".strip()
+                                        
+                                        # 시간 데이터가 유효한지 확인
+                                        if not reservation_time:
+                                            st.warning(f"⚠️ {row.get('환자명', '')} 환자의 시간 데이터가 비어 있습니다. 메일 전송을 건너뜁니다.")
+                                            continue
+
+                                        # 파일명에서 추출한 날짜와 시간 결합
+                                        full_datetime_str = f"{reservation_date_excel} {reservation_time}"
 
                                         try:
                                             # 날짜와 시간을 결합하여 datetime 객체를 생성합니다.
-                                            datetime_obj = datetime.datetime.strptime(full_datetime_str, '%Y/%m/%d %H:%M')
+                                            datetime_obj = datetime.datetime.strptime(full_datetime_str, '%Y-%m-%d %H:%M')
                                             
                                             # 이메일에 사용할 날짜 형식
                                             date_str_to_email = datetime_obj.strftime("%Y년 %m월 %d일 %H시 %M분")
@@ -1000,66 +1008,52 @@ if is_admin_input:
                                                 patient_name = row.get('환자명', '')
                                                 patient_pid = row.get('진료번호', '')
                                                 department = row.get('등록과', '')
+                                                doctor_name = row.get('예약의사', '')
+                                                treatment_details = row.get('진료내역', '')
                                                 
                                                 # 날짜/시간 데이터를 가져와서 유효성 검사
-                                                reservation_date_raw = row.get('예약일시')
                                                 reservation_time_raw = row.get('예약시간')
 
-                                                # 날짜나 시간이 NaN이거나 빈 문자열일 경우 처리
-                                                is_date_invalid = pd.isna(reservation_date_raw) or str(reservation_date_raw).strip() == ""
+                                                # 시간이 NaN이거나 빈 문자열일 경우 처리
                                                 is_time_invalid = pd.isna(reservation_time_raw) or str(reservation_time_raw).strip() == ""
 
                                                 if is_time_invalid:
                                                     st.warning(f"⚠️ {patient_name} 환자의 시간 데이터가 비어 있습니다. 일정 추가를 건너뜁니다.")
                                                     continue
 
-                                                date_str_to_parse = ""
                                                 time_str_to_parse = str(reservation_time_raw).strip()
                                                 
-                                                if not is_date_invalid:
-                                                    # 날짜가 있는 경우, 먼저 str() 변환하고 strip()으로 공백 제거
-                                                    date_str_to_parse = str(reservation_date_raw).strip()
-                                                else:
-                                                    # 날짜가 없는 경우, 파일명에서 추출한 날짜를 사용
-                                                    st.info(f"💡 {patient_name} 환자의 날짜 데이터가 비어있어, 파일명에서 추출한 날짜를 사용합니다.")
-                                                    date_str_to_parse = reservation_date_excel
+                                                # 파일명에서 추출한 날짜를 사용
+                                                date_str_to_parse = reservation_date_excel
                                                 
-                                                # 날짜와 시간을 합치고, 여러 공백을 하나의 공백으로 대체합니다.
-                                                full_datetime_str = re.sub(r'\s+', ' ', f"{date_str_to_parse} {time_str_to_parse}").strip()
+                                                # 날짜와 시간을 합칩니다.
+                                                full_datetime_str = f"{date_str_to_parse} {time_str_to_parse}"
                                                 
                                                 try:
-                                                    # '/' 형식을 먼저 시도
+                                                    # '-' 형식을 먼저 시도
                                                     reservation_datetime = datetime.datetime.strptime(
                                                         full_datetime_str,
-                                                        '%Y/%m/%d %H:%M'
+                                                        '%Y-%m-%d %H:%M'
                                                     )
-                                                    st.write(f"✅ {patient_name} 환자: '/' 형식 파싱 성공 -> {reservation_datetime}")
+                                                    st.write(f"✅ {patient_name} 환자: '-' 형식 파싱 성공 -> {reservation_datetime}")
 
-                                                except ValueError:
-                                                    # 실패하면 '-' 형식을 시도
-                                                    try:
-                                                        reservation_datetime = datetime.datetime.strptime(
-                                                            full_datetime_str,
-                                                            '%Y-%m-%d %H:%M'
-                                                        )
-                                                        st.write(f"✅ {patient_name} 환자: '-' 형식 파싱 성공 -> {reservation_datetime}")
+                                                except ValueError as e:
+                                                    st.error(f"❌ {patient_name} 환자의 날짜/시간 형식 파싱 최종 실패: {e}. 일정 추가를 건너뜁니다.")
+                                                    continue # 다음 행으로 넘어감
 
-                                                    except ValueError as e:
-                                                        st.error(f"❌ {patient_name} 환자의 날짜/시간 형식 파싱 최종 실패: {e}. 일정 추가를 건너뜁니다.")
-                                                        continue # 다음 행으로 넘어감
-
-                                                doctor_name = row.get('예약의사', '')
-                                                treatment_details = row.get('진료내역', '')
+                                                # 캘린더 이벤트 제목 및 내용 생성
+                                                event_title = f"{patient_name} ({department}, {doctor_name})"
+                                                event_description = f"환자명 : {patient_name}\n진료번호 : {patient_pid}\n진료내역 : {treatment_details}"
 
                                                 # datetime 객체 하나만 전달
                                                 create_calendar_event(
                                                     service,
-                                                    patient_name,
+                                                    event_title,
                                                     patient_pid,
                                                     department,
                                                     reservation_datetime,
                                                     doctor_name,
-                                                    treatment_details
+                                                    event_description
                                                 )
 
                                             st.success(f"**{user_name}**님의 캘린더에 일정을 추가했습니다.")
@@ -1238,7 +1232,6 @@ if is_admin_input:
                 st.rerun()
             else:
                 st.warning("삭제할 사용자를 선택해주세요.")
-                
 #8. Regular User Mode
 # --- 일반 사용자 모드 ---
 else:
