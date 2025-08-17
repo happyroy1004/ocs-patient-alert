@@ -419,26 +419,35 @@ def get_google_calendar_service(user_id_safe):
         db.reference(f"users/{user_id_safe}/google_creds").delete()
         return None
 
-def create_calendar_event(service, patient_name, pid, department, reservation_datetime_str, doctor_name, treatment_details):
+def create_calendar_event(service, patient_name, pid, department, reservation_datetime, doctor_name, treatment_details):
     """
-    Google Calendar에 이벤트를 생성합니다. 예약 날짜와 시간을 기반으로 30분 일정을 만들고 의사 이름과 진료내역을 추가합니다.
+    Google Calendar에 이벤트를 생성합니다. reservation_datetime 객체를 사용합니다.
     """
     seoul_tz = datetime.timezone(datetime.timedelta(hours=9))
 
-    # 예약 날짜와 시간을 사용하여 이벤트 시작/종료 시간 설정
+    # 이미 datetime 객체로 변환되었기 때문에 그대로 사용합니다.
+    event_start = reservation_datetime.replace(tzinfo=seoul_tz)
+    event_end = event_start + datetime.timedelta(minutes=30)
+    
+    event = {
+        'summary': f"{department} {patient_name} ({pid}) - {doctor_name} 예약",
+        'location': '연세대학교 치과대학병원',
+        'description': f"진료내역: {treatment_details}",
+        'start': {
+            'dateTime': event_start.isoformat(),
+            'timeZone': 'Asia/Seoul',
+        },
+        'end': {
+            'dateTime': event_end.isoformat(),
+            'timeZone': 'Asia/Seoul',
+        },
+    }
+
     try:
-        date_time_str = reservation_datetime_str
-        
-        # Naive datetime 객체 생성 후 한국 시간대(KST)로 로컬라이즈
-        naive_start = datetime.datetime.strptime(date_time_str, "%Y-%m-%d %H:%M")
-        event_start = naive_start.replace(tzinfo=seoul_tz)
-        event_end = event_start + datetime.timedelta(minutes=30)
-        
-    except ValueError as e:
-        # 날짜 형식 파싱 실패 시 현재 시간 사용 (예외 처리)
-        st.warning(f"'{patient_name}' 환자의 날짜/시간 형식 파싱 실패: {e}. 현재 시간으로 일정을 추가합니다.")
-        event_start = datetime.datetime.now(seoul_tz)
-        event_end = event_start + datetime.timedelta(minutes=30)
+        event = service.events().insert(calendarId='primary', body=event).execute()
+        # st.success(f"'{patient_name}' 환자의 캘린더 일정이 추가되었습니다: {event.get('htmlLink')}")
+    except HttpError as error:
+        st.error(f"'{patient_name}' 환자의 캘린더 일정 추가 실패: {error}")
     
     # 캘린더 이벤트 요약(summary)을 새로운 형식으로 변경
     summary_text = f'내원예정: {patient_name} ({department}, {doctor_name})' if doctor_name else f'내원예정: {patient_name} ({department})'
