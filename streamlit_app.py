@@ -466,63 +466,6 @@ def create_calendar_event(service, patient_name, pid, department, reservation_da
     except Exception as e:
         st.error(f"알 수 없는 오류 발생: {e}")
 
-def create_calendar_and_send_email_from_excel(processed_sheets_dfs, service, sender, password):
-    """
-    엑셀 데이터프레임에서 정보를 추출하여 캘린더 이벤트를 생성하고 이메일을 전송하는 통합 함수
-    """
-    st.info("엑셀 데이터 기반으로 캘린더 이벤트 생성 및 이메일 전송을 시작합니다.")
-
-    for sheet_name, df in processed_sheets_dfs.items():
-        st.subheader(f"시트: {sheet_name}")
-        
-        # '진료번호', '예약시간', '환자명', '예약의사', '진료내역' 컬럼이 있는지 확인
-        required_cols = ['진료번호', '예약시간', '환자명', '예약의사', '진료내역']
-        if not all(col in df.columns for col in required_cols):
-            st.error(f"'{sheet_name}' 시트에 필수 컬럼({', '.join(required_cols)})이 누락되었습니다. 이 시트를 건너뜁니다.")
-            continue
-        
-        # 실제 환자 데이터만 필터링 (NaN 값, 교수님, 공백 행 제외)
-        patient_df = df[df['진료번호'].str.strip() != '']
-        patient_df = patient_df[~patient_df['진료번호'].astype(str).str.contains('<', case=False, na=False)]
-
-        if patient_df.empty:
-            st.warning(f"'{sheet_name}' 시트에 처리할 환자 데이터가 없습니다.")
-            continue
-        
-        # 이메일 전송용 데이터프레임 생성
-        email_df = patient_df[required_cols]
-
-        # 캘린더 이벤트 생성 및 이메일 전송
-        for index, row in patient_df.iterrows():
-            try:
-                # 캘린더 이벤트 생성
-                create_calendar_event(
-                    service=service,
-                    patient_name=row['환자명'],
-                    pid=row['진료번호'],
-                    department=sheet_name,
-                    reservation_date_str=datetime.datetime.now().strftime("%Y-%m-%d"), # 오늘 날짜를 사용합니다.
-                    reservation_time_str=row['예약시간'],
-                    doctor_name=row['예약의사'],
-                    treatment_details=row['진료내역']
-                )
-
-            except Exception as e:
-                st.error(f"'{row['환자명']}' 환자의 캘린더 이벤트 생성 중 오류 발생: {e}")
-        
-        # 이메일 전송 (시트별로 한 번씩)
-        st.info(f"'{sheet_name}' 시트의 환자 목록을 이메일로 전송합니다.")
-        email_result = send_email(
-            receiver=st.session_state.found_user_email,
-            rows=email_df,
-            sender=sender,
-            password=password,
-            date_str=datetime.datetime.now().strftime("%Y-%m-%d")
-        )
-        if email_result is True:
-            st.success(f"'{sheet_name}' 시트의 환자 내원 알림 이메일이 {st.session_state.found_user_email} (으)로 전송되었습니다.")
-        else:
-            st.error(f"이메일 전송 실패: {email_result}")
 
 
 #4. Excel Processing Constants and Functions
@@ -989,7 +932,7 @@ if is_admin_input:
                             for user_match_info in matched_users:
                                 real_email = user_match_info['email']
                                 df_matched = user_match_info['data']
-                                result = send_email(real_email, df_matched, sender, sender_pw, date_str=reservation_date_excel) # 추출된 날짜 사용
+                                result = send_email(real_email, df_matched, sender, sender_pw, date_str=reservation_date_str) # 추출된 날짜 사용
                                 if result is True:
                                     st.success(f"**{user_match_info['name']}** ({real_email}) 전송 완료")
                                 else:
@@ -1016,7 +959,7 @@ if is_admin_input:
                                                 doctor_name = row.get('예약의사', '')
                                                 treatment_details = row.get('진료내역', '')
                                                 create_calendar_event(service, row['환자명'], row['진료번호'], row.get('시트', ''), 
-                                                    reservation_date_str=reservation_date_excel, reservation_time_str=row.get('예약시간'), doctor_name=doctor_name, treatment_details=treatment_details)
+                                                    reservation_date_str=reservation_date_str, reservation_time_str=row.get('예약시간'), doctor_name=doctor_name, treatment_details=treatment_details)
                                         st.success(f"**{user_name}**님의 캘린더에 일정을 추가했습니다.")
                                     except Exception as e:
                                         st.error(f"**{user_name}**님의 캘린더 일정 추가 실패: {e}")
