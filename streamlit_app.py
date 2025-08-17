@@ -695,19 +695,22 @@ if os.path.exists(pdf_file_path):
 else:
     st.warning(f"⚠️ {pdf_display_name} 파일을 찾을 수 없습니다. (경로: {pdf_file_path})")
 
-# 로그인 폼
-with st.form("login_form"):
-    st.subheader("로그인")
-    user_name = st.text_input("사용자 이름")
-    password = st.text_input("비밀번호", type="password")
-    
-    login_button = st.form_submit_button("로그인")
+# 사용자 이름 입력 필드
+user_name = st.text_input("사용자 이름을 입력하세요 (예시: 홍길동)")
+
+# Admin 계정 확인 로직
+is_admin_input = (user_name.strip().lower() == "admin")
+
+# 비밀번호 입력 필드
+password = st.text_input("비밀번호", type="password")
+
+login_button = st.button("로그인")
 
 if login_button:
     if not user_name or not password:
         st.error("사용자 이름과 비밀번호를 모두 입력해주세요.")
-    elif user_name.strip().lower() == "admin":
-        if password == "1243": # 실제 관리자 비밀번호로 변경하세요
+    elif is_admin_input:
+        if password == "your_admin_password": # 실제 관리자 비밀번호로 변경하세요
             st.session_state.logged_in_as_admin = True
             st.session_state.current_user_name = "admin"
             st.success("관리자 계정으로 로그인되었습니다.")
