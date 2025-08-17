@@ -947,64 +947,62 @@ if is_admin_input:
                                 # Check for user-specific Google Calendar credentials
                                 creds = load_google_creds_from_firebase(user_safe_key)
                                 
-                                if creds and creds.valid and not creds.expired:
-                                    try:
-                                        service = build('calendar', 'v3', credentials=creds)
-                                        if not df_matched.empty:
-                                            for _, row in df_matched.iterrows():
-                                                # create_calendar_event 호출 시 날짜, 시간, 의사 이름 인자 전달 (수정)
-                                                # 엑셀 파일에 '예약의사' 컬럼이 있다고 가정합니다.
-                                                doctor_name = row.get('예약의사', '')
-                                                treatment_details = row.get('진료내역', '')
-                                                reservation_date_str = row.get('예약일시', '')
-                                                reservation_time_str = row.get('예약시간', '')
+if creds and creds.valid and not creds.expired:
+    try:
+        service = build('calendar', 'v3', credentials=creds)
+        if not df_matched.empty:
+            for _, row in df_matched.iterrows():
+                # create_calendar_event 호출 시 날짜, 시간, 의사 이름 인자 전달
+                doctor_name = row.get('예약의사', '')
+                treatment_details = row.get('진료내역', '')
+                reservation_date_str = row.get('예약일시', '')
+                reservation_time_str = row.get('예약시간', '')
 
-                                                if reservation_date_str and reservation_time_str:
-                                                    try:
-                                                        # 날짜와 시간을 합쳐서 'YYYY-MM-DD HH:MM' 형식의 문자열로 만듭니다.
-                                                        date_time_str = f"{reservation_date_str} {reservation_time_str}"
-            
-                                                        # 이 문자열을 datetime 객체로 변환합니다.
-                                                        event_start_dt = pd.to_datetime(date_time_str)
+                if reservation_date_str and reservation_time_str:
+                    try:
+                        # 날짜와 시간을 합쳐서 'YYYY-MM-DD HH:MM' 형식의 문자열로 만듭니다.
+                        date_time_str = f"{reservation_date_str} {reservation_time_str}"
+                        
+                        # 이 문자열을 datetime 객체로 변환합니다.
+                        event_start_dt = pd.to_datetime(date_time_str)
+                        
+                        create_calendar_event(service, row['환자명'], row['진료번호'], row.get('시트', ''),
+                            event_start_dt.strftime('%Y-%m-%d'), event_start_dt.strftime('%H:%M'), doctor_name=doctor_name, treatment_details=treatment_details)
+                    except Exception as e:
+                        st.error(f"캘린더 이벤트 생성 중 오류 발생: {e}")
+            st.success(f"**{user_name}**님의 캘린더에 일정을 추가했습니다.")
+    except Exception as e:
+        st.error(f"**{user_name}**님의 캘린더 일정 추가 실패: {e}")
+else:
+    # If credentials are not found, send an email with the authorization link
+    client_config = {
+        "web": {
+            "client_id": st.secrets["google_calendar"]["client_id"],
+            "client_secret": st.secrets["google_calendar"]["client_secret"],
+            "redirect_uris": [st.secrets["google_calendar"]["redirect_uri"]],
+            "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+            "token_uri": "https://oauth2.googleapis.com/token",
+            "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs"
+        }
+    }
+    flow = InstalledAppFlow.from_client_config(client_config, SCOPES, redirect_uri=st.secrets["google_calendar"]["redirect_uri"])
+    auth_url, _ = flow.authorization_url(prompt='consent')
+    
+    custom_message = f"""
+        안녕하세요, {user_name}님.<br><br>
+        환자 내원 확인 시스템의 구글 캘린더 연동을 위해 인증이 필요합니다.<br>
+        아래 링크를 클릭하여 권한을 부여해주세요.<br><br>
+        **<a href="{auth_url}">Google Calendar 인증 링크</a>**<br><br>
+        감사합니다.
+    """
+    sender = st.secrets["gmail"]["sender"]
+    sender_pw = st.secrets["gmail"]["app_password"]
+    result = send_email(user_email, pd.DataFrame(), sender, sender_pw, custom_message=custom_message)
 
-                                                
-
-
-                                                create_calendar_event(service, row['환자명'], row['진료번호'], row.get('시트', ''), 
-                                                    event_start_dt.strftime('%Y-%m-%d'), event_start_dt.strftime('%H:%M'), doctor_name=doctor_name, treatment_details=treatment_details)
-                                        st.success(f"**{user_name}**님의 캘린더에 일정을 추가했습니다.")
-                                    except Exception as e:
-                                        st.error(f"**{user_name}**님의 캘린더 일정 추가 실패: {e}")
-                                else:
-                                    # If credentials are not found, send an email with the authorization link
-                                    client_config = {
-                                        "web": {
-                                            "client_id": st.secrets["google_calendar"]["client_id"],
-                                            "client_secret": st.secrets["google_calendar"]["client_secret"],
-                                            "redirect_uris": [st.secrets["google_calendar"]["redirect_uri"]],
-                                            "auth_uri": "https://accounts.google.com/o/oauth2/auth",
-                                            "token_uri": "https://oauth2.googleapis.com/token",
-                                            "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs"
-                                        }
-                                    }
-                                    flow = InstalledAppFlow.from_client_config(client_config, SCOPES, redirect_uri=st.secrets["google_calendar"]["redirect_uri"])
-                                    auth_url, _ = flow.authorization_url(prompt='consent')
-                                    
-                                    custom_message = f"""
-                                        안녕하세요, {user_name}님.<br><br>
-                                        환자 내원 확인 시스템의 구글 캘린더 연동을 위해 인증이 필요합니다.<br>
-                                        아래 링크를 클릭하여 권한을 부여해주세요.<br><br>
-                                        **<a href="{auth_url}">Google Calendar 인증 링크</a>**<br><br>
-                                        감사합니다.
-                                    """
-                                    sender = st.secrets["gmail"]["sender"]
-                                    sender_pw = st.secrets["gmail"]["app_password"]
-                                    result = send_email(user_email, pd.DataFrame(), sender, sender_pw, custom_message=custom_message)
-
-                                    if result is True:
-                                        st.success(f"**{user_name}**님 ({user_email})께 캘린더 권한 설정을 위한 메일 전송 완료!")
-                                    else:
-                                        st.error(f"**{user_name}**님 ({user_email})께 메일 전송 실패: {result}")
+    if result is True:
+        st.success(f"**{user_name}**님 ({user_email})께 캘린더 권한 설정을 위한 메일 전송 완료!")
+    else:
+        st.error(f"**{user_name}**님 ({user_email})께 메일 전송 실패: {result}")
                                 
                 else:
                     st.info("엑셀 파일 처리 완료. 매칭된 환자가 없습니다.")
