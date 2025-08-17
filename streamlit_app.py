@@ -960,12 +960,12 @@ if is_admin_input:
                                                 reservation_time_str = row.get('예약시간', '')
 
                                                 if reservation_date_str and reservation_time_str:
-                                                try:
-                                                    # 날짜와 시간을 합쳐서 'YYYY-MM-DD HH:MM' 형식의 문자열로 만듭니다.
-                                                    date_time_str = f"{reservation_date_str} {reservation_time_str}"
+                                                    try:
+                                                        # 날짜와 시간을 합쳐서 'YYYY-MM-DD HH:MM' 형식의 문자열로 만듭니다.
+                                                        date_time_str = f"{reservation_date_str} {reservation_time_str}"
             
-                                                    # 이 문자열을 datetime 객체로 변환합니다.
-                                                    event_start_dt = pd.to_datetime(date_time_str)
+                                                        # 이 문자열을 datetime 객체로 변환합니다.
+                                                        event_start_dt = pd.to_datetime(date_time_str)
 
                                                 
 
