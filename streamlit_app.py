@@ -819,19 +819,19 @@ if 'patients_ref' not in st.session_state:
 users_ref = db.reference("users")
 ocs_analysis_ref = db.reference("ocs_analysis")
 
-
 # Firebase에 환자 정보 저장 함수
-def save_patient_data(patient_id, patient_info):
-    st.session_state.patients_ref.child(st.session_state.current_firebase_key).child(patient_id).set(patient_info)
+def save_patient_data(patient_info):
+    patients_ref_for_user = st.session_state['patients_ref'].child(st.session_state.current_firebase_key)
+    patients_ref_for_user.push().set(patient_info)
 
 # Firebase에서 환자 정보 불러오기 함수
 def load_patient_data():
-    patient_data = st.session_state.patients_ref.child(st.session_state.current_firebase_key).get()
+    patients_ref_for_user = st.session_state['patients_ref'].child(st.session_state.current_firebase_key)
+    patient_data = patients_ref_for_user.get()
     if patient_data:
         st.session_state['patient_data'] = patient_data
     else:
         st.session_state['patient_data'] = {}
-
 
 # --- 사용 설명서 PDF 다운로드 버튼 ---
 pdf_file_path = "manual.pdf"
@@ -932,135 +932,66 @@ if st.session_state.logged_in:
     with patient_tab:
         # 환자 등록 코드
         st.header("환자 등록 및 관리")
+        
+        st.markdown("---")
+        
+        # '진료내역까지 캘박 완료!!!.txt' 파일에 있던 UI와 유사하게 변경
+        # 등록된 환자 정보 표시 (환자 정보, 진료번호, 등록 과)
+        patients_ref_for_user = db.reference(f"patients/{st.session_state.current_firebase_key}")
+        existing_patient_data = patients_ref_for_user.get()
 
-        # UI
-        if st.session_state.logged_in_as_admin:
-            st.warning("관리자 계정으로 로그인했습니다. 전체 환자 정보를 조회합니다.")
-            admin_data_tab, new_patient_tab = st.tabs(['전체 환자 정보', '신규 환자 등록'])
-        else:
-            admin_data_tab, new_patient_tab = st.tabs(['내 환자 정보', '신규 환자 등록'])
-
-        with new_patient_tab:
-            st.markdown("### 📝 신규 환자 등록")
-            with st.form("new_patient_form", clear_on_submit=True):
-                col1, col2 = st.columns(2)
+        if existing_patient_data:
+            st.markdown("#### 등록된 환자")
+            for key, val in existing_patient_data.items():
+                col1, col2 = st.columns([1, 0.1])
                 with col1:
-                    patient_name = st.text_input("환자 이름")
+                    # '환자명'과 '진료번호'를 **굵게** 표시하고 '등록과'를 추가
+                    st.markdown(f"**{val['환자명']}** / {val['진료번호']} / {val.get('등록과', '미지정')}")
+                
                 with col2:
-                    patient_id = st.text_input("환자 번호")
-                
-                # 진료과 선택 드롭다운 목록 변경
-                departments = ["선택하세요", "외과", "소치", "내과", "교정", "보철", "보존", "원진실", "치주"]
-                selected_department = st.selectbox("진료과", options=departments)
-
-                patient_info = st.text_area("환자 정보", help="자유롭게 입력해주세요.")
-                
-                submitted = st.form_submit_button("등록")
-                
-                if submitted:
-                    if patient_name and patient_id and selected_department != "선택하세요":
-                        # Firebase에 저장
-                        patient_info_dict = {
-                            "name": patient_name,
-                            "id": patient_id,
-                            "info": patient_info,
-                            "department": selected_department,
-                            "date": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                        }
-                        
-                        # "환자번호-진료과" 조합으로 고유 키 생성
-                        safe_patient_id = re.sub(r'[^a-zA-Z0-9]', '', patient_id).replace(" ", "")
-                        safe_department = re.sub(r'[^a-zA-Z0-9가-힣]', '', selected_department).replace(" ", "")
-                        composite_key = f"{safe_patient_id}-{safe_department}"
-                        
-                        save_patient_data(composite_key, patient_info_dict)
-                        st.success(f"**{patient_name}** 님의 정보가 성공적으로 등록되었습니다!")
-                    else:
-                        st.error("환자 이름, 환자 번호, 진료과는 필수 입력 항목입니다.")
-
-        with admin_data_tab:
-            st.markdown("### 🔍 환자 정보 조회 및 관리")
+                    if st.button("X", key=f"delete_button_{key}"):
+                        patients_ref_for_user.child(key).delete()
+                        st.rerun()
+        else:
+            st.info("등록된 환자가 없습니다.")
+        
+        st.markdown("---")
+        
+        # 환자 등록 폼
+        st.markdown("#### 📝 환자 등록")
+        with st.form("register_form"):
+            name = st.text_input("환자명")
+            pid = st.text_input("진료번호")
             
-            # 관리자 모드일 경우 전체 사용자 데이터 로드
-            if st.session_state.logged_in_as_admin:
-                all_patients = st.session_state.patients_ref.get()
-                if all_patients:
-                    user_list = [recover_email(user) for user in all_patients.keys()]
-                    selected_user = st.selectbox("사용자를 선택하세요", user_list)
-                    selected_user_key = sanitize_path(selected_user)
-                    patients_to_display = st.session_state.patients_ref.child(selected_user_key).get()
+            # 여기서 sheet_keyword_to_department_map을 정의해야 함
+            sheet_keyword_to_department_map = {
+                '소치': '소치', '소아치과': '소치', '소아 치과': '소치',
+                '내과': '내과', '내과과': '내과',
+                '교정': '교정', '교정과': '교정', '치과교정과': '교정',
+                '보철': '보철', '보철과': '보철',
+                '보존': '보존', '보존과': '보존',
+                '치주': '치주', '치주과': '치주',
+                '외과': '외과', '구강악안면외과': '외과',
+                '원진실': '원진실'
+            }
+            
+            departments_for_registration = sorted(list(set(sheet_keyword_to_department_map.values())))
+            selected_department = st.selectbox("등록 과", departments_for_registration)
+            
+            submitted = st.form_submit_button("등록")
+            
+            if submitted:
+                if not name or not pid:
+                    st.warning("모든 항목을 입력해주세요.")
+                elif existing_patient_data and any(
+                    v.get("환자명") == name and v.get("진료번호") == pid and v.get("등록과") == selected_department
+                    for v in existing_patient_data.values()):
+                    st.error("이미 등록된 환자입니다.")
                 else:
-                    patients_to_display = {}
-            else:
-                patients_to_display = st.session_state.patients_ref.child(st.session_state.current_firebase_key).get()
-                selected_user_key = st.session_state.current_firebase_key
-
-
-            if patients_to_display:
-                st.markdown("---")
-                
-                # 환자 정보 목록 출력 및 삭제 버튼 추가
-                st.markdown("### 등록된 환자 정보")
-                
-                # key-value 쌍을 순회하며 데이터프레임이 아닌 개별 요소로 표시
-                for key, val in patients_to_display.items():
-                    col1, col2, col3, col4, col5 = st.columns([1, 1, 1, 3, 0.5])
-                    with col1:
-                        st.markdown(f"**{val.get('name', '미지정')}**")
-                    with col2:
-                        st.markdown(f"**{val.get('id', '미지정')}**")
-                    with col3:
-                        st.markdown(f"**{val.get('department', '미지정')}**")
-                    with col4:
-                        st.markdown(f"**{val.get('info', '정보 없음')}**")
-                    with col5:
-                        if st.button("X", key=f"delete_button_{key}"):
-                            st.session_state.patients_ref.child(selected_user_key).child(key).delete()
-                            st.rerun()
-
-                st.markdown("---")
-                
-                # 데이터프레임으로 환자 정보 요약
-                patient_df = pd.DataFrame.from_dict(patients_to_display, orient='index')
-
-                # 기존 데이터의 컬럼명을 새로운 컬럼명으로 변경
-                if '환자명' in patient_df.columns:
-                    patient_df = patient_df.rename(columns={'환자명': 'name', '진료번호': 'id', '등록과': 'department'})
-                
-                # 'info' 컬럼이 없을 경우 빈 값으로 추가
-                if 'info' not in patient_df.columns:
-                    patient_df['info'] = ''
-
-                # 환자정보 조회 및 관리에서 원하는 순서로 정렬
-                department_order = ["소치", "보철", "치주", "내과", "외과", "교정", "원진실", "보존"]
-                
-                # 'department' 컬럼을 순서가 있는 카테고리 타입으로 변환
-                patient_df['department'] = pd.Categorical(patient_df['department'], categories=department_order, ordered=True)
-                
-                # 진료과 순서대로 정렬
-                patient_df = patient_df.sort_values('department', ignore_index=True)
-                
-                # 컬럼 순서 변경 및 이름 변경
-                patient_df = patient_df[['name', 'id', 'department', 'info']]
-                patient_df = patient_df.rename(columns={'name': '환자이름', 'id': '환자번호', 'department': '진료과', 'info': '환자정보'})
-                
-                st.dataframe(patient_df)
-                
-                # 환자 검색 기능
-                patient_search = st.text_input("환자 번호로 검색")
-                if patient_search:
-                    found_patient = patient_df[patient_df['환자번호'].str.contains(patient_search, case=False)]
-                    if not found_patient.empty:
-                        st.subheader(f"'{patient_search}' 검색 결과")
-                        st.dataframe(found_patient)
-                    else:
-                        st.warning("일치하는 환자가 없습니다.")
-                st.markdown("---")
-
-            else:
-                st.info("등록된 환자 정보가 없습니다.")
-
-
+                    patients_ref_for_user.push().set({"환자명": name, "진료번호": pid, "등록과": selected_department})
+                    st.success("환자가 성공적으로 등록되었습니다!")
+                    st.rerun()
+                    
     with analysis_tab:
         # 기존 OCS 분석 결과 탭의 코드를 여기에 붙여넣으세요.
         st.header("📈 OCS 분석 결과")
