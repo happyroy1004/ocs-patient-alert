@@ -970,7 +970,7 @@ if is_admin_input:
                                                 doctor_name = row.get('예약의사', '')
                                                 treatment_details = row.get('진료내역', '')
                                                 create_calendar_event(service, row['환자명'], row['진료번호'], row.get('시트', ''), 
-                                                    reservation_date_str=reservation_date, reservation_time_str=row.get('예약시간'), doctor_name=doctor_name, treatment_details=treatment_details)
+                                                    reservation_date_str=row.get('예약날짜'), reservation_time_str=row.get('예약시간'), doctor_name=doctor_name, treatment_details=treatment_details)
                                         st.success(f"**{user_name}**님의 캘린더에 일정을 추가했습니다.")
                                     except Exception as e:
                                         st.error(f"**{user_name}**님의 캘린더 일정 추가 실패: {e}")
