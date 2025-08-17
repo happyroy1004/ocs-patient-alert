@@ -1126,6 +1126,7 @@ if is_admin_input:
                 st.rerun()
             else:
                 st.warning("삭제할 사용자를 선택해주세요.")
+
                 
 #8. Regular User Mode
 # --- 일반 사용자 모드 ---
