@@ -453,9 +453,8 @@ def create_calendar_event(service, patient_name, pid, department, reservation_da
     summary_text = f'내원예정: {patient_name} ({department}, {doctor_name})' if doctor_name else f'내원예정: {patient_name} ({department})'
 
     event = {
-        'summary': summary_text,
         'location': f'진료번호: {pid}',
-        'description': f'환자명: {patient_name}\n진료번호: {pid}\n등록 과: {department}\n진료내역: {treatment_details}',
+        'description': f'환자명: {patient_name}\n진료번호: {pid}\n등록 과: {department}\n진료내역: {treatment_details}\n',
         'start': {
             'dateTime': event_start.isoformat(),
             'timeZone': 'Asia/Seoul',
