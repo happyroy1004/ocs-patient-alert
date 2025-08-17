@@ -429,24 +429,6 @@ def create_calendar_event(service, patient_name, pid, department, reservation_da
     """
     seoul_tz = datetime.timezone(datetime.timedelta(hours=9))
 
-for index, row in patient_df.iterrows():
-try:
-    # 캘린더 이벤트 생성
-    create_calendar_event(
-        service=service,
-        patient_name=row['환자명'],
-        pid=row['진료번호'],
-        department=sheet_name,
-        # 엑셀의 '예약날짜' 컬럼에서 값을 가져와 사용합니다.
-        reservation_date_str=row['예약날짜'],
-        # 엑셀의 '예약시간' 컬럼에서 값을 가져와 사용합니다.
-        reservation_time_str=row['예약시간'],
-        doctor_name=row['예약의사'],
-        treatment_details=row['진료내역']
-        )
-    except Exception as e:
-        st.error(f"'{row['환자명']}' 환자의 캘린더 이벤트 생성 중 오류 발생: {e}")
-    
     # 예약 날짜와 시간을 사용하여 이벤트 시작/종료 시간 설정
     try:
         # 입력 파라미터가 유효한지 먼저 확인합니다.
@@ -495,6 +477,7 @@ try:
         st.warning("구글 캘린더 인증 권한을 다시 확인해주세요.")
     except Exception as e:
         st.error(f"알 수 없는 오류 발생: {e}")
+
 
 #4. Excel Processing Constants and Functions
 # --- 엑셀 처리 관련 상수 및 함수 ---
