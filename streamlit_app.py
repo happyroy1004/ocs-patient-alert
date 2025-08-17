@@ -997,6 +997,10 @@ if st.session_state.logged_in:
                 # 기존 데이터의 컬럼명을 새로운 컬럼명으로 변경
                 if '환자명' in patient_df.columns:
                     patient_df = patient_df.rename(columns={'환자명': 'name', '진료번호': 'id', '등록과': 'department'})
+                
+                # 'info' 컬럼이 없을 경우 빈 값으로 추가
+                if 'info' not in patient_df.columns:
+                    patient_df['info'] = ''
 
                 # 환자정보 조회 및 관리에서 원하는 순서로 정렬
                 department_order = ["소치", "보철", "치주", "내과", "외과", "교정", "원진실", "보존"]
