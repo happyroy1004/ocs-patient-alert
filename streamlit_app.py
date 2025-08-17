@@ -1194,7 +1194,7 @@ if st.session_state.logged_in:
             if st.button("이메일 주소 변경"):
                 st.session_state.email_change_mode = True
                 st.rerun()
-�
+
 
 #7. Admin Mode Functionality
 # --- Admin 모드 로그인 처리 ---
