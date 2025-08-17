@@ -820,6 +820,14 @@ if 'patient_data' not in st.session_state:
 if 'patients_ref' not in st.session_state:
     st.session_state['patients_ref'] = db.reference("patients")
 
+# OCS 분석 관련 세션 변수 추가
+if 'df_filtered' not in st.session_state:
+    st.session_state.df_filtered = None
+if 'matching_data_df' not in st.session_state:
+    st.session_state.matching_data_df = None
+if 'reservation_date_excel' not in st.session_state:
+    st.session_state.reservation_date_excel = None
+
 users_ref = db.reference("users")
 ocs_analysis_ref = db.reference("ocs_analysis")
 
@@ -1006,41 +1014,120 @@ if st.session_state.logged_in:
                     
     with analysis_tab:
         st.header("📈 OCS 분석 결과")
+        st.subheader("OCS 파일 업로드")
         
-        all_analysis_data = db.reference("ocs_analysis").get()
-        if all_analysis_data:
-            latest_date_key = sorted([k for k in all_analysis_data.keys() if k != 'latest_file_name'], reverse=True)[0]
-            latest_file_name = all_analysis_data.get('latest_file_name', '분석 파일 이름')
-            analysis_results = all_analysis_data[latest_date_key]
-            
-            st.markdown(f"**<h3 style='text-align: left;'>{latest_file_name} 분석 결과</h3>**", unsafe_allow_html=True)
-            st.markdown("---")
-            
-            if '소치' in analysis_results:
-                st.subheader("소아치과 현황 (단타)")
-                st.info(f"오전: **{analysis_results['소치']['오전']}명**")
-                st.info(f"오후: **{analysis_results['소치']['오후']}명**")
-            else:
-                st.warning("소아치과 데이터가 엑셀 파일에 없습니다.")
-            st.markdown("---")
-            
-            if '보존' in analysis_results:
-                st.subheader("보존과 현황 (단타)")
-                st.info(f"오전: **{analysis_results['보존']['오전']}명**")
-                st.info(f"오후: **{analysis_results['보존']['오후']}명**")
-            else:
-                st.warning("보존과 데이터가 엑셀 파일에 없습니다.")
-            st.markdown("---")
+        uploaded_file = st.file_uploader("암호화된 OCS 엑셀 파일을 업로드하세요.", type=['xlsx'])
+        excel_password = st.text_input("엑셀 파일 비밀번호를 입력하세요", type="password")
+        
+        if uploaded_file and excel_password:
+            try:
+                # 파일 복호화
+                file_buffer = io.BytesIO(uploaded_file.getvalue())
+                decrypted_file = io.BytesIO()
+                
+                office_file = msoffcrypto.OfficeFile(file_buffer)
+                office_file.load_key(password=excel_password)
+                office_file.decrypt(decrypted_file)
+                
+                # Pandas를 사용하여 데이터프레임으로 불러오기
+                df_excel = pd.read_excel(decrypted_file, engine='openpyxl')
+                st.success("파일이 성공적으로 복호화 및 분석되었습니다.")
+                
+                # 세션에 데이터 저장
+                st.session_state.df_excel = df_excel
+                st.session_state.last_processed_file_name = uploaded_file.name
+                
+                # 예약일 추출 (셀의 위치를 직접 지정)
+                reservation_date_excel_cell = df_excel.iloc[3, 0] # E4 셀
+                reservation_date_excel = str(reservation_date_excel_cell)
+                st.session_state.reservation_date_excel = reservation_date_excel
+                st.info(f"분석 대상일: **{reservation_date_excel}**")
+                
+                # 데이터 분석 및 매칭
+                patient_data_from_db = patients_ref_for_user.get()
+                if patient_data_from_db:
+                    registered_patients_df = pd.DataFrame.from_dict(patient_data_from_db, orient='index')
+                    
+                    # OCS 진료번호 컬럼이 숫자형일 경우 문자열로 변환
+                    df_excel['진료번호'] = df_excel['진료번호'].astype(str)
+                    
+                    # 환자명과 진료번호로 매칭
+                    matching_data_df = pd.merge(registered_patients_df, df_excel, how='inner', on=['환자명', '진료번호'])
+                    st.session_state.matching_data_df = matching_data_df
+                    
+                    # Firebase에 분석 결과 저장
+                    analysis_results = {
+                        "latest_file_name": uploaded_file.name,
+                        "timestamp": datetime.datetime.now().isoformat()
+                    }
+                    
+                    ocs_analysis_ref.child(datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")).set(analysis_results)
+                    
+                else:
+                    st.warning("등록된 환자가 없어 매칭을 진행할 수 없습니다.")
+                    st.session_state.matching_data_df = pd.DataFrame()
 
-            if '교정' in analysis_results:
-                st.subheader("교정과 현황 (Bonding)")
-                st.info(f"오전: **{analysis_results['교정']['오전']}명**")
-                st.info(f"오후: **{analysis_results['교정']['오후']}명**")
-            else:
-                st.warning("교정과 데이터가 엑셀 파일에 없습니다.")
+            except Exception as e:
+                st.error(f"예상치 못한 오류 발생: {e}")
+                
+        # 분석 결과 및 메일 발송 UI
+        if st.session_state.matching_data_df is not None:
+            
             st.markdown("---")
+            st.subheader("✅ 매칭된 환자 명단")
+            
+            if not st.session_state.matching_data_df.empty:
+                st.write(st.session_state.matching_data_df[['환자명', '진료번호', '등록과']].to_html(index=False), unsafe_allow_html=True)
+                
+                st.markdown("---")
+                st.subheader("📧 매칭된 환자에게 메일 보내기")
+                
+                if st.button("매칭 환자에게 메일 보내기"):
+                    if not st.session_state.found_user_email:
+                        st.error("메일을 보내기 전에 '이메일 주소 관리'에서 본인 이메일을 먼저 등록해주세요.")
+                    else:
+                        try:
+                            gmail_address = st.session_state.found_user_email
+                            app_password = st.secrets["email"]["app_password"]
+                            
+                            # Gmail SMTP 설정
+                            smtp = smtplib.SMTP('smtp.gmail.com', 587)
+                            smtp.starttls()
+                            smtp.login(gmail_address, app_password)
+                            
+                            for index, row in st.session_state.matching_data_df.iterrows():
+                                to_email = row.get('이메일') # 엑셀 파일에 이메일 컬럼이 있을 경우
+                                if to_email and is_valid_email(to_email):
+                                    msg = MIMEMultipart("alternative")
+                                    msg["Subject"] = f"진료 예약 알림 - {st.session_state.reservation_date_excel}"
+                                    msg["From"] = gmail_address
+                                    msg["To"] = to_email
+                                    
+                                    # 이메일 본문
+                                    html_content = f"""
+                                    <html>
+                                        <body>
+                                            <p>안녕하세요, {row['환자명']}님.</p>
+                                            <p>내일 **{st.session_state.reservation_date_excel}**에 진료 예약이 있습니다. 잊지 마시고 내원해주세요.</p>
+                                            <p>감사합니다.</p>
+                                        </body>
+                                    </html>
+                                    """
+                                    msg.attach(MIMEText(html_content, "html"))
+                                    smtp.sendmail(gmail_address, to_email, msg.as_string())
+                            
+                            smtp.quit()
+                            st.success("매칭된 모든 환자에게 메일을 성공적으로 발송했습니다!")
+                            
+                        except Exception as e:
+                            st.error(f"메일 발송 중 오류가 발생했습니다: {e}")
+                            st.warning("1. '이메일 주소 관리'에서 본인 이메일이 정확한지 확인해주세요.")
+                            st.warning("2. 'secrets.toml' 파일에 SMTP 설정(이메일 앱 비밀번호)이 올바르게 입력되었는지 확인해주세요.")
+                            
+            else:
+                st.info("매칭된 환자가 없습니다.")
         else:
-            st.info("💡 분석 결과가 없습니다. 엑셀 파일을 업로드하면 표시됩니다.")
+            st.info("💡 분석 결과가 없습니다. 엑셀 파일을 업로드하고 비밀번호를 입력하면 분석 결과와 함께 메일 발송 기능이 활성화됩니다.")
         
     st.subheader("비밀번호 수정")
     new_password = st.text_input("새로운 비밀번호를 입력하세요", type="password")
@@ -1091,6 +1178,7 @@ if st.session_state.logged_in:
             if st.button("이메일 주소 변경"):
                 st.session_state.email_change_mode = True
                 st.rerun()
+
 
 #7. Admin Mode Functionality
 # --- Admin 모드 로그인 처리 ---
