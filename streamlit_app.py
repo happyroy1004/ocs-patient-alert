@@ -418,63 +418,53 @@ def get_google_calendar_service(user_id_safe):
         # Clear invalid credentials from Firebase
         db.reference(f"users/{user_id_safe}/google_creds").delete()
         return None
-        
-import datetime
-import streamlit as st
-import pandas as pd
 
-def create_calendar_event(processed_sheets_dfs, service, sender, password):
+def create_calendar_event(service, patient_name, pid, department, reservation_date_str, reservation_time_str, doctor_name, treatment_details):
     """
-    엑셀 데이터프레임에서 정보를 추출하여 캘린더 이벤트를 생성하고 이메일을 전송하는 통합 함수
+    Google Calendar에 이벤트를 생성합니다. 예약 날짜와 시간을 기반으로 30분 일정을 만들고 의사 이름과 진료내역을 추가합니다.
     """
-    st.info("엑셀 데이터 기반으로 캘린더 이벤트 생성 및 이메일 전송을 시작합니다.")
+    seoul_tz = datetime.timezone(datetime.timedelta(hours=9))
 
-    for sheet_name, df in processed_sheets_dfs.items():
-        st.subheader(f"시트: {sheet_name}")
-
-        required_cols = ['진료번호', '예약날짜', '예약시간', '환자명', '예약의사', '진료내역']
+    # 예약 날짜와 시간을 사용하여 이벤트 시작/종료 시간 설정
+    try:
+        date_time_str = f"{reservation_date_str} {reservation_time_str}"
         
-        if not all(col in df.columns for col in required_cols):
-            missing_cols = [col for col in required_cols if col not in df.columns]
-            st.error(f"'{sheet_name}' 시트에 필수 컬럼({', '.join(missing_cols)})이 누락되었습니다. 이 시트를 건너뜁니다.")
-            continue
+        # Naive datetime 객체 생성 후 한국 시간대(KST)로 로컬라이즈
+        naive_start = datetime.datetime.strptime(date_time_str, "%Y-%m-%d %H:%M")
+        event_start = naive_start.replace(tzinfo=seoul_tz)
+        event_end = event_start + datetime.timedelta(minutes=30)
         
-        patient_df = df[df['진료번호'].str.strip() != '']
-        patient_df = patient_df[~patient_df['진료번호'].astype(str).str.contains('<', case=False, na=False)]
+    except ValueError as e:
+        # 날짜 형식 파싱 실패 시 현재 시간 사용 (예외 처리)
+        st.warning(f"'{patient_name}' 환자의 날짜/시간 형식 파싱 실패: {e}. 현재 시간으로 일정을 추가합니다.")
+        event_start = datetime.datetime.now(seoul_tz)
+        event_end = event_start + datetime.timedelta(minutes=30)
+    
+    # 캘린더 이벤트 요약(summary)을 새로운 형식으로 변경
+    summary_text = f'내원예정: {patient_name} ({department}, {doctor_name})' if doctor_name else f'내원예정: {patient_name} ({department})'
 
-        if patient_df.empty:
-            st.warning(f"'{sheet_name}' 시트에 처리할 환자 데이터가 없습니다.")
-            continue
-        
-        email_df = patient_df[required_cols]
-
-        for index, row in patient_df.iterrows():
-            try:
-                # 엑셀의 '예약날짜'와 '예약시간'을 함수가 요구하는 event_date_str, event_time_str에 매핑하여 전달
-                create_calendar_event(
-                    service=service,
-                    patient_name=row['환자명'],
-                    pid=row['진료번호'],
-                    department=sheet_name,
-                    event_date_str=row['예약날짜'],
-                    event_time_str=row['예약시간']
-                )
-            except Exception as e:
-                st.error(f"'{row['환자명']}' 환자의 캘린더 이벤트 생성 중 오류 발생: {e}")
-        
-        st.info(f"'{sheet_name}' 시트의 환자 목록을 이메일로 전송합니다.")
-        email_result = send_email(
-            receiver=st.session_state.found_user_email,
-            rows=email_df,
-            sender=sender,
-            password=password,
-            date_str=datetime.datetime.now().strftime("%Y-%m-%d")
-        )
-        if email_result is True:
-            st.success(f"'{sheet_name}' 시트의 환자 내원 알림 이메일이 {st.session_state.found_user_email} (으)로 전송되었습니다.")
-        else:
-            st.error(f"이메일 전송 실패: {email_result}")
-
+    event = {
+        'summary': summary_text,
+        'location': f'진료번호: {pid}',
+        'description': f'환자명: {patient_name}\n진료번호: {pid}\n등록 과: {department}\n진료내역: {treatment_details}',
+        'start': {
+            'dateTime': event_start.isoformat(),
+            'timeZone': 'Asia/Seoul',
+        },
+        'end': {
+            'dateTime': event_end.isoformat(),
+            'timeZone': 'Asia/Seoul',
+        },
+    }
+    
+    try:
+        event = service.events().insert(calendarId='primary', body=event).execute()
+        st.success(f"'{patient_name}' 환자 내원 일정이 캘린더에 추가되었습니다.")
+    except HttpError as error:
+        st.error(f"캘린더 이벤트 생성 중 오류 발생: {error}")
+        st.warning("구글 캘린더 인증 권한을 다시 확인해주세요.")
+    except Exception as e:
+        st.error(f"알 수 없는 오류 발생: {e}")
 
 #4. Excel Processing Constants and Functions
 # --- 엑셀 처리 관련 상수 및 함수 ---
@@ -966,8 +956,22 @@ if is_admin_input:
                                                 # 엑셀 파일에 '예약의사' 컬럼이 있다고 가정합니다.
                                                 doctor_name = row.get('예약의사', '')
                                                 treatment_details = row.get('진료내역', '')
+                                                reservation_date_str = row.get('예약일시', '')
+                                                reservation_time_str = row.get('예약시간', '')
+
+                                                if reservation_date_str and reservation_time_str:
+                                                try:
+                                                    # 날짜와 시간을 합쳐서 'YYYY-MM-DD HH:MM' 형식의 문자열로 만듭니다.
+                                                    date_time_str = f"{reservation_date_str} {reservation_time_str}"
+            
+                                                    # 이 문자열을 datetime 객체로 변환합니다.
+                                                    event_start_dt = pd.to_datetime(date_time_str)
+
+                                                
+
+
                                                 create_calendar_event(service, row['환자명'], row['진료번호'], row.get('시트', ''), 
-                                                    reservation_date_str=reservation_date_excel, reservation_time_str=row.get('예약시간'), doctor_name=doctor_name, treatment_details=treatment_details)
+                                                    event_start_dt.strftime('%Y-%m-%d'), event_start_dt.strftime('%H:%M'), doctor_name=doctor_name, treatment_details=treatment_details)
                                         st.success(f"**{user_name}**님의 캘린더에 일정을 추가했습니다.")
                                     except Exception as e:
                                         st.error(f"**{user_name}**님의 캘린더 일정 추가 실패: {e}")
@@ -1136,7 +1140,6 @@ if is_admin_input:
                 st.rerun()
             else:
                 st.warning("삭제할 사용자를 선택해주세요.")
-                
                 
 #8. Regular User Mode
 # --- 일반 사용자 모드 ---
