@@ -704,34 +704,36 @@ password_input = st.text_input("비밀번호를 입력하세요", type="password
 # Admin 계정 확인 로직
 is_admin_input = (user_name.strip().lower() == "admin")
 
-# user_name과 password_input이 모두 입력되었을 때 기존 사용자 검색
-if user_name and password_input and not is_admin_input and not st.session_state.email_change_mode:
+# user_name이 입력되었을 때 기존 사용자 검색
+if user_name and not is_admin_input and not st.session_state.email_change_mode:
     all_users_meta = users_ref.get()
-    matched_users_by_name = []
+    matched_user = None
     if all_users_meta:
         for safe_key, user_info in all_users_meta.items():
-            # 이름과 비밀번호가 모두 일치하는 사용자 찾기
-            if user_info and user_info.get("name") == user_name and user_info.get("password") == password_input:
-                matched_users_by_name.append({"safe_key": safe_key, "email": user_info.get("email", ""), "name": user_info.get("name", "")})
-
-    if len(matched_users_by_name) == 1:
-        st.session_state.found_user_email = matched_users_by_name[0]["email"]
-        st.session_state.user_id_input_value = matched_users_by_name[0]["email"]
-        st.session_state.current_firebase_key = matched_users_by_name[0]["safe_key"]
+            if user_info and user_info.get("name") == user_name:
+                matched_user = {"safe_key": safe_key, "email": user_info.get("email", ""), "name": user_info.get("name", ""), "password": user_info.get("password")}
+                break
+    
+    if matched_user:
+        if password_input == matched_user.get("password"):
+            st.session_state.found_user_email = matched_user["email"]
+            st.session_state.user_id_input_value = matched_user["email"]
+            st.session_state.current_firebase_key = matched_user["safe_key"]
+            st.session_state.current_user_name = user_name
+            st.info(f"**{user_name}**님으로 로그인되었습니다. 이메일 주소: **{st.session_state.found_user_email}**")
+        else:
+            st.error("비밀번호가 일치하지 않습니다. 다시 확인해주세요.")
+            st.session_state.found_user_email = ""
+            st.session_state.user_id_input_value = ""
+            st.session_state.current_firebase_key = ""
+            st.session_state.current_user_name = ""
+    else:
+        # 신규 사용자임을 안내하고 등록 절차로 진행
+        st.info(f"'{user_name}'님은 새로운 사용자입니다. 아래에 이메일 주소를 입력하여 등록을 완료하세요.")
+        st.session_state.found_user_email = ""
+        st.session_state.user_id_input_value = ""
+        st.session_state.current_firebase_key = ""
         st.session_state.current_user_name = user_name
-        st.info(f"**{user_name}**님으로 로그인되었습니다. 이메일 주소: **{st.session_state.found_user_email}**")
-    elif len(matched_users_by_name) > 1:
-        st.warning("동일한 이름의 사용자가 여러 명 있습니다. 정확한 이메일 주소를 입력해주세요.")
-        st.session_state.found_user_email = ""
-        st.session_state.user_id_input_value = ""
-        st.session_state.current_firebase_key = ""
-        st.session_state.current_user_name = ""
-    elif user_name:
-        st.error("사용자 이름 또는 비밀번호가 일치하지 않습니다.")
-        st.session_state.found_user_email = ""
-        st.session_state.user_id_input_value = ""
-        st.session_state.current_firebase_key = ""
-        st.session_state.current_user_name = ""
 
 # 이메일 입력 필드
 if not is_admin_input:
@@ -770,6 +772,7 @@ if not is_admin_input:
                     # 신규 사용자 등록 시 비밀번호 추가
                     st.session_state.current_firebase_key = new_firebase_key
                     st.session_state.found_user_email = new_email
+                    # 초기 비밀번호를 '1234'로 설정합니다.
                     users_ref.child(new_firebase_key).set({"name": st.session_state.current_user_name, "email": new_email, "password": "1234"})
                     st.success(f"새로운 사용자 정보가 등록되었습니다: {st.session_state.current_user_name} ({new_email})")
                 else:
@@ -798,7 +801,7 @@ if not is_admin_input:
                     st.success("🎉 비밀번호가 성공적으로 변경되었습니다!")
                 except Exception as e:
                     st.error(f"비밀번호 변경 중 오류가 발생했습니다: {e}")
-
+                    
 #7. Admin Mode Functionality
 # --- Admin 모드 로그인 처리 ---
 if is_admin_input:
