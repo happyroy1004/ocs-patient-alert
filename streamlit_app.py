@@ -702,6 +702,22 @@ from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 import base64
 from openpyxl import utils
+import openpyxl
+
+# Firebase 초기화
+if not firebase_admin._apps:
+    try:
+        firebase_credentials_json_str = st.secrets["firebase"]["FIREBASE_SERVICE_ACCOUNT_JSON"]
+        firebase_credentials_dict = json.loads(firebase_credentials_json_str)
+
+        cred = credentials.Certificate(firebase_credentials_dict)
+        firebase_admin.initialize_app(cred, {
+            'databaseURL': st.secrets["firebase"]["database_url"]
+        })
+    except Exception as e:
+        st.error(f"Firebase 초기화 오류: {e}")
+        st.info("secrets.toml 파일의 Firebase 설정(FIREBASE_SERVICE_ACCOUNT_JSON 또는 database_url)을 [firebase] 섹션 아래에 올바르게 작성했는지 확인해주세요.")
+        st.stop()
 
 # Firebase-safe 경로 변환 함수
 def sanitize_path(email):
@@ -794,8 +810,23 @@ if 'found_user_email' not in st.session_state:
     st.session_state.found_user_email = ""
 if 'user_id_input_value' not in st.session_state:
     st.session_state.user_id_input_value = ""
+if 'patient_data' not in st.session_state:
+    st.session_state['patient_data'] = {}
+if 'patients_ref' not in st.session_state:
+    st.session_state['patients_ref'] = db.reference("patients")
 
-users_ref = db.reference("users")
+# Firestore에 환자 정보 저장 함수
+def save_patient_data(patient_id, patient_info):
+    st.session_state.patients_ref.child(st.session_state.current_firebase_key).child(patient_id).set(patient_info)
+
+# Firestore에서 환자 정보 불러오기 함수
+def load_patient_data():
+    patient_data = st.session_state.patients_ref.child(st.session_state.current_firebase_key).get()
+    if patient_data:
+        st.session_state['patient_data'] = patient_data
+    else:
+        st.session_state['patient_data'] = {}
+
 
 # --- 사용 설명서 PDF 다운로드 버튼 ---
 pdf_file_path = "manual.pdf"
@@ -897,32 +928,7 @@ if st.session_state.logged_in:
         # 환자 등록 코드
         st.header("환자 등록 및 관리")
 
-        # 세션 상태 초기화
-        if 'patient_data' not in st.session_state:
-            st.session_state['patient_data'] = {}
-        if 'patients_ref' not in st.session_state:
-            st.session_state['patients_ref'] = db.reference("patients")
-
-        # ------------------------------------
-        # Functions
-        # ------------------------------------
-
-        # Firestore에 환자 정보 저장 함수
-        def save_patient_data(patient_id, patient_info):
-            st.session_state.patients_ref.child(st.session_state.current_firebase_key).child(patient_id).set(patient_info)
-
-        # Firestore에서 환자 정보 불러오기 함수
-        def load_patient_data():
-            patient_data = st.session_state.patients_ref.child(st.session_state.current_firebase_key).get()
-            if patient_data:
-                st.session_state['patient_data'] = patient_data
-            else:
-                st.session_state['patient_data'] = {}
-
-        # ------------------------------------
         # UI
-        # ------------------------------------
-        
         if st.session_state.logged_in_as_admin:
             st.warning("관리자 계정으로 로그인했습니다. 전체 환자 정보를 조회합니다.")
             admin_data_tab, new_patient_tab = st.tabs(['전체 환자 정보', '신규 환자 등록'])
@@ -1052,6 +1058,7 @@ if st.session_state.logged_in:
             if st.button("이메일 주소 변경"):
                 st.session_state.email_change_mode = True
                 st.rerun()
+                
 #7. Admin Mode Functionality
 # --- Admin 모드 로그인 처리 ---
 if is_admin_input:
