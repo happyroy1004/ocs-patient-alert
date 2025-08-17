@@ -931,6 +931,8 @@ if is_admin_input:
                                         
                                         matched_row_copy = excel_row.copy()
                                         matched_row_copy["시트"] = sheet_name_excel_raw
+                                        # ✨ 수정된 부분: 엑셀 시트명에서 추출한 '등록과' 정보를 DataFrame에 명시적으로 추가합니다.
+                                        matched_row_copy["등록과"] = excel_sheet_department
                                         matched_rows_for_user.append(matched_row_copy)
                                         break
                                 
@@ -1007,7 +1009,7 @@ if is_admin_input:
                                             for _, row in df_matched.iterrows():
                                                 patient_name = row.get('환자명', '')
                                                 patient_pid = row.get('진료번호', '')
-                                                department = row.get('등록과', '')
+                                                department = row.get('등록과', '') # 이제 이 값이 올바르게 채워집니다.
                                                 doctor_name = row.get('예약의사', '')
                                                 treatment_details = row.get('진료내역', '')
                                                 
@@ -1035,7 +1037,7 @@ if is_admin_input:
                                                         full_datetime_str,
                                                         '%Y-%m-%d %H:%M'
                                                     )
-                                                    st.write(f"✅ {patient_name} 환자: '-' 형식 파싱 성공 -> {reservation_datetime}")
+
 
                                                 except ValueError as e:
                                                     st.error(f"❌ {patient_name} 환자의 날짜/시간 형식 파싱 최종 실패: {e}. 일정 추가를 건너뜁니다.")
