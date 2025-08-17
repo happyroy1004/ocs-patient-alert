@@ -423,7 +423,7 @@ import datetime
 import streamlit as st
 import pandas as pd
 
-def create_calendar_and_send_email_from_excel(processed_sheets_dfs, service, sender, password):
+def create_calendar_event(processed_sheets_dfs, service, sender, password):
     """
     엑셀 데이터프레임에서 정보를 추출하여 캘린더 이벤트를 생성하고 이메일을 전송하는 통합 함수
     """
