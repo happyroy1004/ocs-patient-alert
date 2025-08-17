@@ -678,7 +678,7 @@ if 'google_creds' not in st.session_state:
     st.session_state['google_creds'] = {}
 
 users_ref = db.reference("users")
-# 6. User and Admin Login and User Management (통합)
+#6. User and Admin Login and User Management (통합)
 import os
 import streamlit as st
 import pandas as pd
@@ -948,12 +948,16 @@ if st.session_state.logged_in:
                 with col2:
                     patient_name = st.text_input("환자 이름")
                 
+                # 진료과 선택 드롭다운 추가
+                departments = ["선택하세요", "소아치과", "보존과", "교정과", "구강외과", "치주과"]
+                selected_department = st.selectbox("진료과", options=departments)
+
                 patient_info = st.text_area("환자 정보", help="자유롭게 입력해주세요.")
                 
                 submitted = st.form_submit_button("등록")
                 
                 if submitted:
-                    if patient_id and patient_name:
+                    if patient_id and patient_name and selected_department != "선택하세요":
                         # Firebase-safe key 생성
                         safe_patient_id = re.sub(r'[^a-zA-Z0-9]', '', patient_id).replace(" ", "")
                         
@@ -961,13 +965,14 @@ if st.session_state.logged_in:
                         patient_info_dict = {
                             "name": patient_name,
                             "info": patient_info,
+                            "department": selected_department, # 진료과 추가
                             "date": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                         }
                         
                         save_patient_data(safe_patient_id, patient_info_dict)
                         st.success(f"**{patient_name}** 님의 정보가 성공적으로 등록되었습니다!")
                     else:
-                        st.error("환자 이름과 고유번호는 필수 입력 항목입니다.")
+                        st.error("환자 이름, 고유번호, 진료과는 필수 입력 항목입니다.")
 
         with admin_data_tab:
             st.markdown("### 🔍 환자 정보 조회 및 관리")
