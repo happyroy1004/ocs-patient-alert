@@ -678,6 +678,7 @@ if 'google_creds' not in st.session_state:
     st.session_state['google_creds'] = {}
 
 users_ref = db.reference("users")
+
 # 6. User and Admin Login and User Management (통합)
 import os
 import streamlit as st
@@ -819,11 +820,11 @@ users_ref = db.reference("users")
 ocs_analysis_ref = db.reference("ocs_analysis")
 
 
-# Firestore에 환자 정보 저장 함수
+# Firebase에 환자 정보 저장 함수
 def save_patient_data(patient_id, patient_info):
     st.session_state.patients_ref.child(st.session_state.current_firebase_key).child(patient_id).set(patient_info)
 
-# Firestore에서 환자 정보 불러오기 함수
+# Firebase에서 환자 정보 불러오기 함수
 def load_patient_data():
     patient_data = st.session_state.patients_ref.child(st.session_state.current_firebase_key).get()
     if patient_data:
@@ -961,16 +962,18 @@ if st.session_state.logged_in:
                         # Firebase에 저장
                         patient_info_dict = {
                             "name": patient_name,
-                            "id": patient_id, # 환자 번호 저장
+                            "id": patient_id,
                             "info": patient_info,
                             "department": selected_department,
                             "date": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                         }
                         
-                        # 고유 키는 환자번호로 사용
+                        # "환자번호-진료과" 조합으로 고유 키 생성
                         safe_patient_id = re.sub(r'[^a-zA-Z0-9]', '', patient_id).replace(" ", "")
+                        safe_department = re.sub(r'[^a-zA-Z0-9가-힣]', '', selected_department).replace(" ", "")
+                        composite_key = f"{safe_patient_id}-{safe_department}"
                         
-                        save_patient_data(safe_patient_id, patient_info_dict)
+                        save_patient_data(composite_key, patient_info_dict)
                         st.success(f"**{patient_name}** 님의 정보가 성공적으로 등록되었습니다!")
                     else:
                         st.error("환자 이름, 환자 번호, 진료과는 필수 입력 항목입니다.")
@@ -990,8 +993,34 @@ if st.session_state.logged_in:
                     patients_to_display = {}
             else:
                 patients_to_display = st.session_state.patients_ref.child(st.session_state.current_firebase_key).get()
+                selected_user_key = st.session_state.current_firebase_key
+
 
             if patients_to_display:
+                st.markdown("---")
+                
+                # 환자 정보 목록 출력 및 삭제 버튼 추가
+                st.markdown("### 등록된 환자 정보")
+                
+                # key-value 쌍을 순회하며 데이터프레임이 아닌 개별 요소로 표시
+                for key, val in patients_to_display.items():
+                    col1, col2, col3, col4, col5 = st.columns([1, 1, 1, 3, 0.5])
+                    with col1:
+                        st.markdown(f"**{val.get('name', '미지정')}**")
+                    with col2:
+                        st.markdown(f"**{val.get('id', '미지정')}**")
+                    with col3:
+                        st.markdown(f"**{val.get('department', '미지정')}**")
+                    with col4:
+                        st.markdown(f"**{val.get('info', '정보 없음')}**")
+                    with col5:
+                        if st.button("X", key=f"delete_button_{key}"):
+                            st.session_state.patients_ref.child(selected_user_key).child(key).delete()
+                            st.rerun()
+
+                st.markdown("---")
+                
+                # 데이터프레임으로 환자 정보 요약
                 patient_df = pd.DataFrame.from_dict(patients_to_display, orient='index')
 
                 # 기존 데이터의 컬럼명을 새로운 컬럼명으로 변경
@@ -1017,7 +1046,8 @@ if st.session_state.logged_in:
                 
                 st.dataframe(patient_df)
                 
-                patient_search = st.text_input("고유번호로 환자 검색")
+                # 환자 검색 기능
+                patient_search = st.text_input("환자 번호로 검색")
                 if patient_search:
                     found_patient = patient_df[patient_df['환자번호'].str.contains(patient_search, case=False)]
                     if not found_patient.empty:
@@ -1025,6 +1055,7 @@ if st.session_state.logged_in:
                         st.dataframe(found_patient)
                     else:
                         st.warning("일치하는 환자가 없습니다.")
+                st.markdown("---")
 
             else:
                 st.info("등록된 환자 정보가 없습니다.")
