@@ -679,7 +679,6 @@ if 'google_creds' not in st.session_state:
 
 users_ref = db.reference("users")
 
-
 #6. User and Admin Login and User Management
 # --- 사용 설명서 PDF 다운로드 버튼 추가 ---
 pdf_file_path = "manual.pdf"
@@ -696,138 +695,93 @@ if os.path.exists(pdf_file_path):
 else:
     st.warning(f"⚠️ {pdf_display_name} 파일을 찾을 수 없습니다. (경로: {pdf_file_path})")
 
-# 로그인 관련 세션 상태 초기화
-if 'logged_in' not in st.session_state:
-    st.session_state.logged_in = False
-if 'user_name' not in st.session_state:
-    st.session_state.user_name = None
-if 'password' not in st.session_state:
-    st.session_state.password = "1234" # 초기 비밀번호 설정
-if 'logged_in_as_admin' not in st.session_state:
-    st.session_state.logged_in_as_admin = False
+# 사용자 이름 입력 필드
+user_name = st.text_input("사용자 이름을 입력하세요 (예시: 홍길동)")
 
-# 로그인 폼
-if not st.session_state.logged_in:
-    st.subheader("로그인")
-    user_name = st.text_input("사용자 이름을 입력하세요 (예시: 홍길동)")
+if user_name:
+    password = st.text_input("비밀번호를 입력하세요", type="password")
     
-    # Admin 계정 확인 변수 정의 (로그인 상태와 관계없이 항상 정의되도록 수정)
+    # Admin 계정 확인 로직
     is_admin_input = (user_name.strip().lower() == "admin")
 
-    # 이메일 입력 필드
-    if not is_admin_input:
-        if st.session_state.email_change_mode or not st.session_state.get('found_user_email'):
-            user_id_input = st.text_input("아이디를 입력하세요 (예시: example@gmail.com)", value=st.session_state.get('user_id_input_value', ''))
-            if user_id_input != st.session_state.get('user_id_input_value', ''):
-                st.session_state.user_id_input_value = user_id_input
+    # user_name과 password가 모두 입력되었을 때 로그인 시도
+    if password and not is_admin_input:
+        all_users_meta = users_ref.get()
+        matched_users_by_name = []
+        if all_users_meta:
+            for safe_key, user_info in all_users_meta.items():
+                if user_info and user_info.get("name") == user_name:
+                    matched_users_by_name.append({
+                        "safe_key": safe_key,
+                        "email": user_info.get("email", ""),
+                        "name": user_info.get("name", ""),
+                        "password": user_info.get("password", "")
+                    })
+
+        if len(matched_users_by_name) == 1:
+            user_info = matched_users_by_name[0]
+            if user_info['password'] == password: # 실제 구현 시 해싱된 비밀번호를 비교해야 합니다.
+                st.session_state.found_user_email = user_info["email"]
+                st.session_state.user_id_input_value = user_info["email"]
+                st.session_state.current_firebase_key = user_info["safe_key"]
+                st.session_state.current_user_name = user_name
+                st.session_state.login_success = True
+                st.session_state.user_password = password
+                st.success(f"**{user_name}**님으로 로그인되었습니다.")
+            else:
+                st.error("비밀번호가 일치하지 않습니다.")
+                st.session_state.login_success = False
+        elif len(matched_users_by_name) > 1:
+            st.warning("동일한 이름의 사용자가 여러 명 있습니다. 정확한 이메일과 비밀번호를 입력해주세요.")
+            st.session_state.login_success = False
         else:
-            st.text_input("아이디 (등록된 이메일)", value=st.session_state.found_user_email, disabled=True)
-            if st.button("이메일 주소 변경"):
-                st.session_state.email_change_mode = True
-                st.rerun()
-
-    user_input_password = st.text_input("비밀번호를 입력하세요", type="password")
-
-    # 로그인 버튼
-    if st.button("로그인"):
-        if is_admin_input and user_input_password == st.session_state.password: # Admin도 비밀번호로 로그인
-            st.session_state.logged_in = True
-            st.session_state.user_name = "admin"
-            st.session_state.logged_in_as_admin = True
-            st.success("Admin으로 로그인되었습니다.")
+            st.info("새로운 사용자이거나 등록되지 않은 이름입니다. 새로운 이메일과 비밀번호를 입력해주세요.")
+            st.session_state.found_user_email = ""
+            st.session_state.user_id_input_value = ""
+            st.session_state.current_firebase_key = ""
+            st.session_state.current_user_name = ""
+            st.session_state.login_success = False
+            
+# 이메일 입력 필드
+if not is_admin_input:
+    if st.session_state.email_change_mode or not st.session_state.found_user_email:
+        user_id_input = st.text_input("아이디를 입력하세요 (예시: example@gmail.com)", value=st.session_state.user_id_input_value)
+        if user_id_input != st.session_state.user_id_input_value:
+            st.session_state.user_id_input_value = user_id_input
+    else:
+        st.text_input("아이디 (등록된 이메일)", value=st.session_state.found_user_email, disabled=True)
+        if st.button("이메일 주소 변경"):
+            st.session_state.email_change_mode = True
             st.rerun()
 
-        # 비밀번호 확인 로직
-        elif user_name and user_input_password == st.session_state.password:
-            # 기존 사용자 검색
-            all_users_meta = users_ref.get()
-            matched_users_by_name = []
-            if all_users_meta:
-                for safe_key, user_info in all_users_meta.items():
-                    if user_info and user_info.get("name") == user_name:
-                        matched_users_by_name.append({"safe_key": safe_key, "email": user_info.get("email", ""), "name": user_info.get("name", "")})
+# 이메일 변경 모드일 때 변경 완료 버튼 표시
+if st.session_state.email_change_mode:
+    if st.button("이메일 주소 변경 완료"):
+        if is_valid_email(st.session_state.user_id_input_value):
+            st.session_state.email_change_mode = False
+            old_firebase_key = st.session_state.current_firebase_key
+            new_email = st.session_state.user_id_input_value
+            new_firebase_key = sanitize_path(new_email)
 
-            if len(matched_users_by_name) == 1:
-                st.session_state.found_user_email = matched_users_by_name[0]["email"]
-                st.session_state.user_id_input_value = matched_users_by_name[0]["email"]
-                st.session_state.current_firebase_key = matched_users_by_name[0]["safe_key"]
-                st.session_state.current_user_name = user_name
-                st.session_state.logged_in = True
-                st.success(f"**{user_name}**님, 환영합니다!")
-                st.rerun()
-            elif len(matched_users_by_name) > 1:
-                st.warning("동일한 이름의 사용자가 여러 명 있습니다. 정확한 이메일 주소를 입력해주세요.")
-                st.session_state.found_user_email = ""
-                st.session_state.user_id_input_value = ""
-                st.session_state.current_firebase_key = ""
-                st.session_state.current_user_name = ""
+            if old_firebase_key and old_firebase_key != new_firebase_key:
+                users_ref.child(new_firebase_key).update({"name": st.session_state.current_user_name, "email": new_email})
+                old_patient_data = db.reference(f"patients/{old_firebase_key}").get()
+                if old_patient_data:
+                    db.reference(f"patients/{new_firebase_key}").set(old_patient_data)
+                    db.reference(f"patients/{old_firebase_key}").delete()
+                users_ref.child(old_firebase_key).delete()
+                st.session_state.current_firebase_key = new_firebase_key
+                st.session_state.found_user_email = new_email
+                st.success(f"이메일 주소가 **{new_email}**로 성공적으로 변경되었습니다.")
+            elif not old_firebase_key:
+                st.session_state.current_firebase_key = new_firebase_key
+                st.session_state.found_user_email = new_email
+                st.success(f"새로운 사용자 정보가 등록되었습니다: {st.session_state.current_user_name} ({new_email})")
             else:
-                st.info("새로운 사용자이거나 등록되지 않은 이름입니다. 이메일 주소를 입력해주세요.")
-                st.session_state.found_user_email = ""
-                st.session_state.user_id_input_value = ""
-                st.session_state.current_firebase_key = ""
-                st.session_state.current_user_name = ""
+                st.success("이메일 주소 변경사항이 없습니다.")
+            st.rerun()
         else:
-            st.error("사용자 이름 또는 비밀번호가 올바르지 않습니다.")
-
-# 로그인 성공 후
-if st.session_state.logged_in:
-    st.markdown("---")
-    st.subheader(f"환자 내원 확인 시스템 ({st.session_state.user_name}님)")
-
-    # 비밀번호 변경 기능 추가
-    with st.expander("비밀번호 변경"):
-        new_password = st.text_input("새 비밀번호", type="password")
-        confirm_password = st.text_input("새 비밀번호 확인", type="password")
-
-        if st.button("비밀번호 변경 완료"):
-            if new_password and new_password == confirm_password:
-                st.session_state.password = new_password
-                st.success("비밀번호가 성공적으로 변경되었습니다. 다음 로그인부터 새로운 비밀번호를 사용하세요.")
-            else:
-                st.error("새 비밀번호와 확인 비밀번호가 일치하지 않거나 비어있습니다.")
-
-    # 이메일 입력 필드 및 변경 로직
-    if not st.session_state.get("logged_in_as_admin"):
-        if st.session_state.get("email_change_mode") or not st.session_state.get("found_user_email"):
-            user_id_input = st.text_input("아이디를 입력하세요 (예시: example@gmail.com)", value=st.session_state.get("user_id_input_value", ""))
-            if user_id_input != st.session_state.get("user_id_input_value", ""):
-                st.session_state.user_id_input_value = user_id_input
-        else:
-            st.text_input("아이디 (등록된 이메일)", value=st.session_state.get("found_user_email", ""), disabled=True)
-            if st.button("이메일 주소 변경"):
-                st.session_state.email_change_mode = True
-                st.rerun()
-
-    # 이메일 변경 모드일 때 변경 완료 버튼 표시
-    if st.session_state.get("email_change_mode"):
-        if st.button("이메일 주소 변경 완료"):
-            if is_valid_email(st.session_state.get("user_id_input_value")):
-                st.session_state.email_change_mode = False
-                old_firebase_key = st.session_state.get("current_firebase_key")
-                new_email = st.session_state.get("user_id_input_value")
-                new_firebase_key = sanitize_path(new_email)
-
-                if old_firebase_key and old_firebase_key != new_firebase_key:
-                    users_ref.child(new_firebase_key).update({"name": st.session_state.get("current_user_name"), "email": new_email})
-                    old_patient_data = db.reference(f"patients/{old_firebase_key}").get()
-                    if old_patient_data:
-                        db.reference(f"patients/{new_firebase_key}").set(old_patient_data)
-                        db.reference(f"patients/{old_firebase_key}").delete()
-                    users_ref.child(old_firebase_key).delete()
-                    st.session_state.current_firebase_key = new_firebase_key
-                    st.session_state.found_user_email = new_email
-                    st.success(f"이메일 주소가 **{new_email}**로 성공적으로 변경되었습니다.")
-                elif not old_firebase_key:
-                    st.session_state.current_firebase_key = new_firebase_key
-                    st.session_state.found_user_email = new_email
-                    st.success(f"새로운 사용자 정보가 등록되었습니다: {st.session_state.current_user_name} ({new_email})")
-                else:
-                    st.success("이메일 주소 변경사항이 없습니다.")
-                st.rerun()
-            else:
-                st.error("올바른 이메일 주소 형식이 아닙니다.")
-
+            st.error("올바른 이메일 주소 형식이 아닙니다.")
 
 #7. Admin Mode Functionality
 # --- Admin 모드 로그인 처리 ---
