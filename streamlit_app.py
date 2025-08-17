@@ -807,7 +807,7 @@ if is_admin_input:
     st.session_state.found_user_email = "admin"
     st.session_state.current_user_name = "admin"
     
-    # 두 개의 탭 생성 (추가)
+    # 두 개의 탭 생성
     excel_processor_tab, analysis_tab = st.tabs(['💻 Excel File Processor', '📈 OCS 분석 결과'])
     
     with excel_processor_tab:
@@ -829,12 +829,8 @@ if is_admin_input:
                 xl_object, raw_file_io = load_excel(uploaded_file, password)
                 excel_data_dfs, styled_excel_bytes = process_excel_file_and_style(raw_file_io)
 
-                # Firebase에 OCS 분석 결과 영구 저장 (가장 최신값으로 덮어쓰기)
-                professors_dict = {
-                    '소치': ['김현태', '장기택', '김정욱', '현홍근', '김영재', '신터전', '송지수'],
-                    '보존': ['이인복', '금기연', '이우철', '유연지', '서덕규', '이창하', '김선영', '손원준']
-                }
-                analysis_results = run_analysis(excel_data_dfs, professors_dict)
+                # Firebase에 OCS 분석 결과 영구 저장
+                analysis_results = run_analysis(excel_data_dfs, PROFESSORS_DICT)
                 
                 # 'yyyy-mm-dd' 형식의 키 생성
                 today_date_str = datetime.datetime.now().strftime("%Y-%m-%d")
@@ -930,7 +926,7 @@ if is_admin_input:
                             for user_match_info in matched_users:
                                 real_email = user_match_info['email']
                                 df_matched = user_match_info['data']
-                                result = send_email(real_email, df_matched, sender, sender_pw, date_str=reservation_date_excel) # 추출된 날짜 사용
+                                result = send_email(real_email, df_matched, sender, sender_pw, date_str=today_date_str) # 추출된 날짜 사용
                                 if result is True:
                                     st.success(f"**{user_match_info['name']}** ({real_email}) 전송 완료")
                                 else:
@@ -947,63 +943,59 @@ if is_admin_input:
                                 # Check for user-specific Google Calendar credentials
                                 creds = load_google_creds_from_firebase(user_safe_key)
                                 
-if creds and creds.valid and not creds.expired:
-    try:
-        service = build('calendar', 'v3', credentials=creds)
-        if not df_matched.empty:
-            for _, row in df_matched.iterrows():
-                # create_calendar_event 호출 시 날짜, 시간, 의사 이름 인자 전달
-                doctor_name = row.get('예약의사', '')
-                treatment_details = row.get('진료내역', '')
-                reservation_date_str = row.get('예약일시', '')
-                reservation_time_str = row.get('예약시간', '')
+                                if creds and creds.valid and not creds.expired:
+                                    try:
+                                        service = build('calendar', 'v3', credentials=creds)
+                                        if not df_matched.empty:
+                                            for _, row in df_matched.iterrows():
+                                                doctor_name = row.get('예약의사', '')
+                                                treatment_details = row.get('진료내역', '')
+                                                reservation_date_str = row.get('예약일시', '')
+                                                reservation_time_str = row.get('예약시간', '')
+                                                
+                                                if reservation_date_str and reservation_time_str:
+                                                    try:
+                                                        date_time_str = f"{reservation_date_str} {reservation_time_str}"
+                                                        event_start_dt = pd.to_datetime(date_time_str)
+                                                        
+                                                        create_calendar_event(service, row['환자명'], row['진료번호'], row.get('시트', ''),
+                                                            event_start_dt.strftime('%Y-%m-%d'), event_start_dt.strftime('%H:%M'), doctor_name=doctor_name, treatment_details=treatment_details)
+                                                    except Exception as e:
+                                                        st.error(f"캘린더 이벤트 생성 중 오류 발생: {e}")
+                                            st.success(f"**{user_name}**님의 캘린더에 일정을 추가했습니다.")
+                                    except Exception as e:
+                                        st.error(f"**{user_name}**님의 캘린더 일정 추가 실패: {e}")
+                                else:
+                                    # If credentials are not found, send an email with the authorization link
+                                    client_config = {
+                                        "web": {
+                                            "client_id": st.secrets["google_calendar"]["client_id"],
+                                            "client_secret": st.secrets["google_calendar"]["client_secret"],
+                                            "redirect_uris": [st.secrets["google_calendar"]["redirect_uri"]],
+                                            "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+                                            "token_uri": "https://oauth2.googleapis.com/token",
+                                            "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs"
+                                        }
+                                    }
+                                    flow = InstalledAppFlow.from_client_config(client_config, SCOPES, redirect_uri=st.secrets["google_calendar"]["redirect_uri"])
+                                    auth_url, _ = flow.authorization_url(prompt='consent')
+                                    
+                                    custom_message = f"""
+                                        안녕하세요, {user_name}님.<br><br>
+                                        환자 내원 확인 시스템의 구글 캘린더 연동을 위해 인증이 필요합니다.<br>
+                                        아래 링크를 클릭하여 권한을 부여해주세요.<br><br>
+                                        **<a href="{auth_url}">Google Calendar 인증 링크</a>**<br><br>
+                                        감사합니다.
+                                    """
+                                    sender = st.secrets["gmail"]["sender"]
+                                    sender_pw = st.secrets["gmail"]["app_password"]
+                                    result = send_email(user_email, pd.DataFrame(), sender, sender_pw, custom_message=custom_message)
 
-                if reservation_date_str and reservation_time_str:
-                    try:
-                        # 날짜와 시간을 합쳐서 'YYYY-MM-DD HH:MM' 형식의 문자열로 만듭니다.
-                        date_time_str = f"{reservation_date_str} {reservation_time_str}"
-                        
-                        # 이 문자열을 datetime 객체로 변환합니다.
-                        event_start_dt = pd.to_datetime(date_time_str)
-                        
-                        create_calendar_event(service, row['환자명'], row['진료번호'], row.get('시트', ''),
-                            event_start_dt.strftime('%Y-%m-%d'), event_start_dt.strftime('%H:%M'), doctor_name=doctor_name, treatment_details=treatment_details)
-                    except Exception as e:
-                        st.error(f"캘린더 이벤트 생성 중 오류 발생: {e}")
-            st.success(f"**{user_name}**님의 캘린더에 일정을 추가했습니다.")
-    except Exception as e:
-        st.error(f"**{user_name}**님의 캘린더 일정 추가 실패: {e}")
-else:
-    # If credentials are not found, send an email with the authorization link
-    client_config = {
-        "web": {
-            "client_id": st.secrets["google_calendar"]["client_id"],
-            "client_secret": st.secrets["google_calendar"]["client_secret"],
-            "redirect_uris": [st.secrets["google_calendar"]["redirect_uri"]],
-            "auth_uri": "https://accounts.google.com/o/oauth2/auth",
-            "token_uri": "https://oauth2.googleapis.com/token",
-            "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs"
-        }
-    }
-    flow = InstalledAppFlow.from_client_config(client_config, SCOPES, redirect_uri=st.secrets["google_calendar"]["redirect_uri"])
-    auth_url, _ = flow.authorization_url(prompt='consent')
-    
-    custom_message = f"""
-        안녕하세요, {user_name}님.<br><br>
-        환자 내원 확인 시스템의 구글 캘린더 연동을 위해 인증이 필요합니다.<br>
-        아래 링크를 클릭하여 권한을 부여해주세요.<br><br>
-        **<a href="{auth_url}">Google Calendar 인증 링크</a>**<br><br>
-        감사합니다.
-    """
-    sender = st.secrets["gmail"]["sender"]
-    sender_pw = st.secrets["gmail"]["app_password"]
-    result = send_email(user_email, pd.DataFrame(), sender, sender_pw, custom_message=custom_message)
-
-    if result is True:
-        st.success(f"**{user_name}**님 ({user_email})께 캘린더 권한 설정을 위한 메일 전송 완료!")
-    else:
-        st.error(f"**{user_name}**님 ({user_email})께 메일 전송 실패: {result}")
-                                
+                                    if result is True:
+                                        st.success(f"**{user_name}**님 ({user_email})께 캘린더 권한 설정을 위한 메일 전송 완료!")
+                                    else:
+                                        st.error(f"**{user_name}**님 ({user_email})께 메일 전송 실패: {result}")
+                                        
                 else:
                     st.info("엑셀 파일 처리 완료. 매칭된 환자가 없습니다.")
                     
@@ -1023,7 +1015,7 @@ else:
     with analysis_tab:
         st.header("📈 OCS 분석 결과")
 
-    # Firebase에서 최신 OCS 분석 결과 로드
+        # Firebase에서 최신 OCS 분석 결과 로드
         all_analysis_data = db.reference("ocs_analysis").get()
         if all_analysis_data:
             latest_date = sorted(all_analysis_data.keys(), reverse=True)[0]
@@ -1034,111 +1026,113 @@ else:
             st.markdown("---")
             
             # 소아치과 현황
-            if '소치' in analysis_results:
-                st.subheader("소아치과 현황 (단타)")
-                st.info(f"오전: **{analysis_results['소치']['오전']}명**")
-                st.info(f"오후: **{analysis_results['소치']['오후']}명**")
+            if DEPARTMENTS['소치'] in analysis_results:
+                st.subheader(f"{DEPARTMENTS['소치']} 현황 (단타)")
+                st.info(f"오전: **{analysis_results[DEPARTMENTS['소치']]['오전']}명**")
+                st.info(f"오후: **{analysis_results[DEPARTMENTS['소치']]['오후']}명**")
             else:
-                st.warning("소아치과 데이터가 엑셀 파일에 없습니다.")
+                st.warning(f"{DEPARTMENTS['소치']} 데이터가 엑셀 파일에 없습니다.")
             st.markdown("---")
             
             # 보존과 현황
-            if '보존' in analysis_results:
-                st.subheader("보존과 현황 (단타)")
-                st.info(f"오전: **{analysis_results['보존']['오전']}명**")
-                st.info(f"오후: **{analysis_results['보존']['오후']}명**")
+            if DEPARTMENTS['보존'] in analysis_results:
+                st.subheader(f"{DEPARTMENTS['보존']} 현황 (단타)")
+                st.info(f"오전: **{analysis_results[DEPARTMENTS['보존']]['오전']}명**")
+                st.info(f"오후: **{analysis_results[DEPARTMENTS['보존']]['오후']}명**")
             else:
-                st.warning("보존과 데이터가 엑셀 파일에 없습니다.")
+                st.warning(f"{DEPARTMENTS['보존']} 데이터가 엑셀 파일에 없습니다.")
             st.markdown("---")
 
             # 교정과 현황 (Bonding)
-            if '교정' in analysis_results:
-                st.subheader("교정과 현황 (Bonding)")
-                st.info(f"오전: **{analysis_results['교정']['오전']}명**")
-                st.info(f"오후: **{analysis_results['교정']['오후']}명**")
+            if DEPARTMENTS['교정'] in analysis_results:
+                st.subheader(f"{DEPARTMENTS['교정']} 현황 (Bonding)")
+                st.info(f"오전: **{analysis_results[DEPARTMENTS['교정']]['오전']}명**")
+                st.info(f"오후: **{analysis_results[DEPARTMENTS['교정']]['오후']}명**")
             else:
-                st.warning("교정과 데이터가 엑셀 파일에 없습니다.")
+                st.warning(f"{DEPARTMENTS['교정']} 데이터가 엑셀 파일에 없습니다.")
             st.markdown("---")
         else:
             st.info("💡 분석 결과가 없습니다. 엑셀 파일을 업로드하면 표시됩니다.")
 
+st.markdown("---")
+st.subheader("🛠️ Administer password")
+admin_password_input = st.text_input("관리자 비밀번호를 입력하세요", type="password", key="admin_password")
+
+try:
+    secret_admin_password = st.secrets["admin"]["password"]
+except KeyError:
+    secret_admin_password = None
+    st.error("⚠️ secrets.toml 파일에 'admin.password' 설정이 없습니다. 개발자에게 문의하세요.")
+    
+if admin_password_input and admin_password_input == secret_admin_password:
+    st.session_state.admin_password_correct = True
+    st.success("관리자 권한이 활성화되었습니다.")
+elif admin_password_input and admin_password_input != secret_admin_password:
+    st.error("비밀번호가 틀렸습니다.")
+    st.session_state.admin_password_correct = False
+    
+if st.session_state.admin_password_correct:
     st.markdown("---")
-    st.subheader("🛠️ Administer password")
-    admin_password_input = st.text_input("관리자 비밀번호를 입력하세요", type="password", key="admin_password")
-
-    try:
-        secret_admin_password = st.secrets["admin"]["password"]
-    except KeyError:
-        secret_admin_password = None
-        st.error("⚠️ secrets.toml 파일에 'admin.password' 설정이 없습니다. 개발자에게 문의하세요.")
+    st.subheader("📦 메일 발송")
     
-    if admin_password_input and admin_password_input == secret_admin_password:
-        st.session_state.admin_password_correct = True
-        st.success("관리자 권한이 활성화되었습니다.")
-    elif admin_password_input and admin_password_input != secret_admin_password:
-        st.error("비밀번호가 틀렸습니다.")
-        st.session_state.admin_password_correct = False
+    all_users_meta = users_ref.get()
+    user_list_for_dropdown = [f"{user_info.get('name', '이름 없음')} ({user_info.get('email', '이메일 없음')})" 
+                                for user_info in (all_users_meta.values() if all_users_meta else [])]
     
-    if st.session_state.admin_password_correct:
-        st.markdown("---")
-        st.subheader("📦 메일 발송")
-        
-        all_users_meta = users_ref.get()
-        user_list_for_dropdown = [f"{user_info.get('name', '이름 없음')} ({user_info.get('email', '이메일 없음')})" 
-                                        for user_info in (all_users_meta.values() if all_users_meta else [])]
-        
-        select_all_users_button = st.button("모든 사용자 선택/해제", key="select_all_btn")
-        if select_all_users_button:
-            st.session_state.select_all_users = not st.session_state.select_all_users
+    select_all_users_button = st.button("모든 사용자 선택/해제", key="select_all_btn")
+    if 'select_all_users' not in st.session_state:
+        st.session_state.select_all_users = False
+    if select_all_users_button:
+        st.session_state.select_all_users = not st.session_state.select_all_users
 
-        default_selection = user_list_for_dropdown if st.session_state.select_all_users else []
+    default_selection = user_list_for_dropdown if st.session_state.select_all_users else []
 
-        selected_users_for_mail = st.multiselect("보낼 사용자 선택", user_list_for_dropdown, default=default_selection, key="mail_multiselect")
-        
-        custom_message = st.text_area("보낼 메일 내용", height=200)
-        if st.button("메일 보내기"):
-            if custom_message:
-                sender = st.secrets["gmail"]["sender"]
-                sender_pw = st.secrets["gmail"]["app_password"]
-                
-                email_list = []
-                if selected_users_for_mail:
-                    for user_str in selected_users_for_mail:
-                        match = re.search(r'\((.*?)\)', user_str)
-                        if match:
-                            email_list.append(match.group(1))
-                
-                if email_list:
-                    with st.spinner("메일 전송 중..."):
-                        for email in email_list:
-                            result = send_email(email, pd.DataFrame(), sender, sender_pw, custom_message=custom_message)
-                            if result is True:
-                                st.success(f"{email}로 메일 전송 완료!")
-                            else:
-                                st.error(f"{email}로 메일 전송 실패: {result}")
-                else:
-                    st.warning("메일 내용을 입력했으나, 선택된 사용자가 없습니다. 전송이 진행되지 않았습니다.")
-            else:
-                st.warning("메일 내용을 입력해주세요.")
-        
-        st.markdown("---")
-        st.subheader("🗑️ 사용자 삭제")
-        users_to_delete = st.multiselect("삭제할 사용자 선택", user_list_for_dropdown, key="delete_user_multiselect")
-        if st.button("선택한 사용자 삭제"):
-            if users_to_delete:
-                for user_to_del_str in users_to_delete:
-                    match = re.search(r'\((.*?)\)', user_to_del_str)
+    selected_users_for_mail = st.multiselect("보낼 사용자 선택", user_list_for_dropdown, default=default_selection, key="mail_multiselect")
+    
+    custom_message = st.text_area("보낼 메일 내용", height=200)
+    if st.button("메일 보내기"):
+        if custom_message:
+            sender = st.secrets["gmail"]["sender"]
+            sender_pw = st.secrets["gmail"]["app_password"]
+            
+            email_list = []
+            if selected_users_for_mail:
+                for user_str in selected_users_for_mail:
+                    match = re.search(r'\((.*?)\)', user_str)
                     if match:
-                        email_to_del = match.group(1)
-                        safe_key_to_del = sanitize_path(email_to_del)
-                        
-                        db.reference(f"users/{safe_key_to_del}").delete()
-                        db.reference(f"patients/{safe_key_to_del}").delete()
-                st.success(f"사용자 {user_to_del_str} 삭제 완료.")
-                st.rerun()
+                        email_list.append(match.group(1))
+            
+            if email_list:
+                with st.spinner("메일 전송 중..."):
+                    for email in email_list:
+                        result = send_email(email, pd.DataFrame(), sender, sender_pw, custom_message=custom_message)
+                        if result is True:
+                            st.success(f"{email}로 메일 전송 완료!")
+                        else:
+                            st.error(f"{email}로 메일 전송 실패: {result}")
             else:
-                st.warning("삭제할 사용자를 선택해주세요.")
-                
+                st.warning("메일 내용을 입력했으나, 선택된 사용자가 없습니다. 전송이 진행되지 않았습니다.")
+        else:
+            st.warning("메일 내용을 입력해주세요.")
+    
+    st.markdown("---")
+    st.subheader("🗑️ 사용자 삭제")
+    users_to_delete = st.multiselect("삭제할 사용자 선택", user_list_for_dropdown, key="delete_user_multiselect")
+    if st.button("선택한 사용자 삭제"):
+        if users_to_delete:
+            for user_to_del_str in users_to_delete:
+                match = re.search(r'\((.*?)\)', user_to_del_str)
+                if match:
+                    email_to_del = match.group(1)
+                    safe_key_to_del = sanitize_path(email_to_del)
+                    
+                    db.reference(f"users/{safe_key_to_del}").delete()
+                    db.reference(f"patients/{safe_key_to_del}").delete()
+            st.success("사용자 삭제 완료.") # 모든 삭제 작업 후 한 번만 메시지 표시
+            st.rerun()
+        else:
+            st.warning("삭제할 사용자를 선택해주세요.")
+            
 #8. Regular User Mode
 # --- 일반 사용자 모드 ---
 else:
