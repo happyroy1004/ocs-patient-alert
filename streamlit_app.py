@@ -678,6 +678,8 @@ if 'google_creds' not in st.session_state:
     st.session_state['google_creds'] = {}
 
 users_ref = db.reference("users")
+
+
 #6. User and Admin Login and User Management
 # --- 사용 설명서 PDF 다운로드 버튼 추가 ---
 pdf_file_path = "manual.pdf"
@@ -825,6 +827,7 @@ if st.session_state.logged_in:
                 st.rerun()
             else:
                 st.error("올바른 이메일 주소 형식이 아닙니다.")
+
 
 #7. Admin Mode Functionality
 # --- Admin 모드 로그인 처리 ---
