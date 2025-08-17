@@ -421,40 +421,22 @@ def get_google_calendar_service(user_id_safe):
 
 def create_calendar_event(service, patient_name, pid, department, reservation_datetime, doctor_name, treatment_details):
     """
-    Google Calendar에 이벤트를 생성합니다. reservation_datetime 객체를 사용합니다.
+    Google Calendar에 단일 이벤트를 생성합니다.
     """
     seoul_tz = datetime.timezone(datetime.timedelta(hours=9))
 
-    # 이미 datetime 객체로 변환되었기 때문에 그대로 사용합니다.
+    # reservation_datetime 객체를 사용합니다.
     event_start = reservation_datetime.replace(tzinfo=seoul_tz)
     event_end = event_start + datetime.timedelta(minutes=30)
     
-    event = {
-        'summary': f"{department} {patient_name} ({pid}) - {doctor_name} 예약",
-        'location': '연세대학교 치과대학병원',
-        'description': f"진료내역: {treatment_details}",
-        'start': {
-            'dateTime': event_start.isoformat(),
-            'timeZone': 'Asia/Seoul',
-        },
-        'end': {
-            'dateTime': event_end.isoformat(),
-            'timeZone': 'Asia/Seoul',
-        },
-    }
-
-    try:
-        event = service.events().insert(calendarId='primary', body=event).execute()
-        # st.success(f"'{patient_name}' 환자의 캘린더 일정이 추가되었습니다: {event.get('htmlLink')}")
-    except HttpError as error:
-        st.error(f"'{patient_name}' 환자의 캘린더 일정 추가 실패: {error}")
-    
-    # 캘린더 이벤트 요약(summary)을 새로운 형식으로 변경
+    # 두 개의 요약(summary) 정보를 하나로 합칩니다.
     summary_text = f'내원예정: {patient_name} ({department}, {doctor_name})' if doctor_name else f'내원예정: {patient_name} ({department})'
-
+    
+    # 캘린더 이벤트에 필요한 모든 정보를 한 번에 정의합니다.
     event = {
-        'location': f'진료번호: {pid}',
-        'description': f'환자명: {patient_name}\n진료번호: {pid}\n등록 과: {department}\n진료내역: {treatment_details}\n',
+        'summary': summary_text,
+        'location': '연세대학교 치과대학병원',
+        'description': f"환자명: {patient_name}\n진료번호: {pid}\n등록 과: {department}\n진료내역: {treatment_details}",
         'start': {
             'dateTime': event_start.isoformat(),
             'timeZone': 'Asia/Seoul',
@@ -464,16 +446,15 @@ def create_calendar_event(service, patient_name, pid, department, reservation_da
             'timeZone': 'Asia/Seoul',
         },
     }
-    
+
     try:
         event = service.events().insert(calendarId='primary', body=event).execute()
-        st.success(f"'{patient_name}' 환자 내원 일정이 캘린더에 추가되었습니다.")
+        st.success(f"'{patient_name}' 환자의 캘린더 일정이 추가되었습니다.")
     except HttpError as error:
         st.error(f"캘린더 이벤트 생성 중 오류 발생: {error}")
         st.warning("구글 캘린더 인증 권한을 다시 확인해주세요.")
     except Exception as e:
         st.error(f"알 수 없는 오류 발생: {e}")
-
 #4. Excel Processing Constants and Functions
 # --- 엑셀 처리 관련 상수 및 함수 ---
 sheet_keyword_to_department_map = {
