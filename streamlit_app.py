@@ -942,9 +942,9 @@ if is_admin_input:
                                 if not df_matched.empty:
                                     for _, row in df_matched.iterrows():
                                         # 매칭된 데이터프레임에서 날짜/시간 정보를 다시 가져와 처리
-                                        reservation_date = row.get('예약일시', '')
-                                        reservation_time = row.get('예약시간', '').strip()
-                                        full_datetime_str = f"{reservation_date} {reservation_time}"
+                                        reservation_date = str(row.get('예약일시', '')).strip()
+                                        reservation_time = str(row.get('예약시간', '')).strip()
+                                        full_datetime_str = f"{reservation_date} {reservation_time}".strip()
 
                                         try:
                                             # 날짜와 시간을 결합하여 datetime 객체를 생성합니다.
@@ -996,29 +996,42 @@ if is_admin_input:
                                                     st.warning(f"⚠️ {patient_name} 환자의 날짜/시간 데이터가 비어 있습니다. 일정 추가를 건너뜁니다.")
                                                     continue
                                                 
-                                                # 데이터 유형을 먼저 확인하고, 문자열로 변환할 때 작은따옴표와 공백을 모두 제거
-                                                reservation_date = str(row.get('예약일시')).lstrip("'").strip()
-                                                reservation_time = str(row.get('예약시간')).lstrip("'").strip()
-
                                                 try:
-                                                    # '/' 형식을 먼저 시도합니다.
-                                                    reservation_datetime = datetime.datetime.strptime(
-                                                        f"{reservation_date} {reservation_time}",
-                                                        '%Y/%m/%d %H:%M'
-                                                    )
-                                                    st.write(f"✅ {patient_name} 환자: '/' 형식 파싱 성공 -> {reservation_datetime}")
+                                                    # 데이터 유형에 따라 다르게 처리
+                                                    reservation_date = row.get('예약일시')
+                                                    reservation_time = row.get('예약시간')
+                                                    
+                                                    if isinstance(reservation_date, datetime.datetime) and isinstance(reservation_time, datetime.time):
+                                                        # pandas가 이미 datetime 객체로 읽어온 경우
+                                                        reservation_datetime = datetime.datetime.combine(reservation_date.date(), reservation_time)
+                                                        st.write(f"✅ {patient_name} 환자: pandas datetime 객체 파싱 성공 -> {reservation_datetime}")
+                                                    else:
+                                                        # 데이터가 datetime 객체가 아닐 경우 문자열로 변환하고 처리
+                                                        # str() 변환 시 작은따옴표와 공백을 모두 제거
+                                                        date_str = str(reservation_date).lstrip("'").strip()
+                                                        time_str = str(reservation_time).lstrip("'").strip()
+                                                        
+                                                        # 날짜와 시간을 합치고, 여러 공백을 하나의 공백으로 대체합니다.
+                                                        full_datetime_str = re.sub(r'\s+', ' ', f"{date_str} {time_str}").strip()
+                                                        
+                                                        # '/' 형식을 먼저 시도합니다.
+                                                        try:
+                                                            reservation_datetime = datetime.datetime.strptime(
+                                                                full_datetime_str,
+                                                                '%Y/%m/%d %H:%M'
+                                                            )
+                                                            st.write(f"✅ {patient_name} 환자: '/' 형식 파싱 성공 -> {reservation_datetime}")
+                                                        except ValueError:
+                                                            # 실패하면 '-' 형식을 시도합니다.
+                                                            reservation_datetime = datetime.datetime.strptime(
+                                                                full_datetime_str,
+                                                                '%Y-%m-%d %H:%M'
+                                                            )
+                                                            st.write(f"✅ {patient_name} 환자: '-' 형식 파싱 성공 -> {reservation_datetime}")
 
-                                                except ValueError:
-                                                    # 실패하면 '-' 형식을 시도합니다.
-                                                    try:
-                                                        reservation_datetime = datetime.datetime.strptime(
-                                                            f"{reservation_date} {reservation_time}",
-                                                            '%Y-%m-%d %H:%M'
-                                                        )
-                                                        st.write(f"✅ {patient_name} 환자: '-' 형식 파싱 성공 -> {reservation_datetime}")
-                                                    except ValueError as e:
-                                                        st.error(f"❌ {patient_name} 환자의 날짜/시간 형식 파싱 실패: {e}. 일정 추가를 건너뜁니다.")
-                                                        continue # 다음 행으로 넘어감
+                                                except ValueError as e:
+                                                    st.error(f"❌ {patient_name} 환자의 날짜/시간 형식 파싱 최종 실패: {e}. 일정 추가를 건너뜁니다.")
+                                                    continue # 다음 행으로 넘어감
 
                                                 doctor_name = row.get('예약의사', '')
                                                 treatment_details = row.get('진료내역', '')
@@ -1210,6 +1223,7 @@ if is_admin_input:
                 st.rerun()
             else:
                 st.warning("삭제할 사용자를 선택해주세요.")
+                
 #8. Regular User Mode
 # --- 일반 사용자 모드 ---
 else:
