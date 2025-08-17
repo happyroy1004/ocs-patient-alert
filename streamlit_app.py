@@ -935,23 +935,24 @@ if st.session_state.logged_in:
         
         st.markdown("---")
         
-        # '진료내역까지 캘박 완료!!!.txt' 파일에 있던 UI와 유사하게 변경
         # 등록된 환자 정보 표시 (환자 정보, 진료번호, 등록 과)
         patients_ref_for_user = db.reference(f"patients/{st.session_state.current_firebase_key}")
         existing_patient_data = patients_ref_for_user.get()
 
         if existing_patient_data:
             st.markdown("#### 등록된 환자")
+            # 반응형 3단 레이아웃
+            columns = st.columns([1, 1, 1])
+            col_idx = 0
+            
             for key, val in existing_patient_data.items():
-                col1, col2 = st.columns([1, 0.1])
-                with col1:
-                    # '환자명'과 '진료번호'를 **굵게** 표시하고 '등록과'를 추가
+                with columns[col_idx]:
+                    # 원래 레이아웃으로 변경
                     st.markdown(f"**{val.get('환자명', '미정')}** / {val.get('진료번호', '미정')} / {val.get('등록과', '미정')}")
-                
-                with col2:
                     if st.button("X", key=f"delete_button_{key}"):
                         patients_ref_for_user.child(key).delete()
                         st.rerun()
+                col_idx = (col_idx + 1) % 3
         else:
             st.info("등록된 환자가 없습니다.")
         
@@ -1089,6 +1090,7 @@ if st.session_state.logged_in:
             if st.button("이메일 주소 변경"):
                 st.session_state.email_change_mode = True
                 st.rerun()
+
 
 
 #7. Admin Mode Functionality
