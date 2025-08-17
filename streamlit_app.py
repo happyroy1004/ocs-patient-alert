@@ -436,7 +436,7 @@ def create_calendar_event(service, patient_name, pid, department, reservation_da
     event = {
         'summary': summary_text,
         'location': pid,
-        'description': f"환자명: {patient_name}\n진료번호: {pid}\n등록 과: {department}\n진료내역: {treatment_details}\n",
+        'description': f"{treatment_details}\n",
         'start': {
             'dateTime': event_start.isoformat(),
             'timeZone': 'Asia/Seoul',
