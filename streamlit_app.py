@@ -901,12 +901,7 @@ if is_admin_input:
                             for _, excel_row in df_sheet.iterrows():
                                 excel_patient_name = excel_row["환자명"].strip()
                                 excel_patient_pid = excel_row["진료번호"].strip().zfill(8)
-                                reservation_date = excel_row.get('예약일시', '')
-                                reservation_time = excel_row.get('예약시간', '').strip()
-
-                                # 날짜와 시간을 하나의 문자열로 결합합니다.
-                                full_datetime_str = f"{reservation_date} {reservation_time}"
-
+                                
                                 for registered_patient in registered_patients_data:
                                     if (registered_patient["환자명"] == excel_patient_name and
                                             registered_patient["진료번호"] == excel_patient_pid and
@@ -935,12 +930,36 @@ if is_admin_input:
                             for user_match_info in matched_users:
                                 real_email = user_match_info['email']
                                 df_matched = user_match_info['data']
-                                result = send_email(real_email, df_matched, sender, sender_pw, date_str=full_datetime_str) # 추출된 날짜 사용
-                                if result is True:
-                                    st.success(f"**{user_match_info['name']}** ({real_email}) 전송 완료")
+                                
+                                if not df_matched.empty:
+                                    for _, row in df_matched.iterrows():
+                                        # 매칭된 데이터프레임에서 날짜/시간 정보를 다시 가져와 처리
+                                        reservation_date = row.get('예약일시', '')
+                                        reservation_time = row.get('예약시간', '').strip()
+                                        full_datetime_str = f"{reservation_date} {reservation_time}"
+
+                                        try:
+                                            # 날짜와 시간을 결합하여 datetime 객체를 생성합니다.
+                                            datetime_obj = datetime.datetime.strptime(full_datetime_str, '%Y/%m/%d %H:%M')
+                                            
+                                            # 이메일에 사용할 날짜 형식
+                                            date_str_to_email = datetime_obj.strftime("%Y년 %m월 %d일 %H시 %M분")
+                                            
+                                            result = send_email(real_email, df_matched, sender, sender_pw, date_str=date_str_to_email)
+                                            if result is True:
+                                                st.success(f"**{user_match_info['name']}** ({real_email}) 전송 완료")
+                                            else:
+                                                st.error(f"**{user_match_info['name']}** ({real_email}) 전송 실패: {result}")
+                                        except ValueError as e:
+                                            st.error(f"'{row.get('환자명', '')}' 환자의 날짜/시간 형식 파싱 실패: {e}. 메일 전송에 기본 날짜 정보를 사용합니다.")
+                                            result = send_email(real_email, df_matched, sender, sender_pw, date_str="일정 정보 없음")
+                                            if result is True:
+                                                st.success(f"**{user_match_info['name']}** ({real_email}) 전송 완료 (날짜 정보 없이)")
+                                            else:
+                                                st.error(f"**{user_match_info['name']}** ({real_email}) 전송 실패: {result}")
                                 else:
-                                    st.error(f"**{user_match_info['name']}** ({real_email}) 전송 실패: {result}")
-                    
+                                    st.warning(f"**{user_match_info['name']}**님에게 보낼 매칭 데이터가 없습니다.")
+
                     with calendar_col:
                         if st.button("Google Calendar 일정 추가"):
                             for user_match_info in matched_users:
@@ -957,12 +976,42 @@ if is_admin_input:
                                         service = build('calendar', 'v3', credentials=creds)
                                         if not df_matched.empty:
                                             for _, row in df_matched.iterrows():
-                                                # create_calendar_event 호출 시 날짜, 시간, 의사 이름 인자 전달 (수정)
-                                                # 엑셀 파일에 '예약의사' 컬럼이 있다고 가정합니다.
+                                                # 날짜와 시간을 가져와 앞뒤 공백을 제거합니다.
+                                                reservation_date = row.get('예약일시', '').strip()
+                                                reservation_time = row.get('예약시간', '').strip()
+
+                                                try:
+                                                    # 날짜 또는 시간 데이터가 비어 있는지 확인
+                                                    if not reservation_date or not reservation_time:
+                                                        raise ValueError("날짜 또는 시간 데이터가 비어 있습니다.")
+
+                                                    # 결합하여 datetime 객체 생성
+                                                    reservation_datetime = datetime.datetime.strptime(
+                                                        f"{reservation_date} {reservation_time}",
+                                                        '%Y/%m/%d %H:%M'
+                                                    )
+                                                    st.write(f"✅ {row.get('환자명', '')} 환자: 날짜/시간 파싱 성공 -> {reservation_datetime}")
+
+                                                except ValueError as e:
+                                                    st.warning(f"❌ {row.get('환자명', '')} 환자의 날짜/시간 형식 파싱 실패: {e}. 현재 시간으로 일정을 추가합니다.")
+                                                    reservation_datetime = datetime.datetime.now()
+
                                                 doctor_name = row.get('예약의사', '')
                                                 treatment_details = row.get('진료내역', '')
-                                                create_calendar_event(service, excel_patient_name, excel_patient_pid, excel_sheet_department, full_datetime_str, doctor_name, treatment_details)
-                                        st.success(f"**{user_name}**님의 캘린더에 일정을 추가했습니다.")
+
+                                                # datetime 객체 하나만 전달
+                                                create_calendar_event(
+                                                    service,
+                                                    row.get('환자명', ''),
+                                                    row.get('진료번호', ''),
+                                                    row.get('등록과', ''),
+                                                    reservation_datetime,
+                                                    doctor_name,
+                                                    treatment_details
+                                                )
+
+                                            st.success(f"**{user_name}**님의 캘린더에 일정을 추가했습니다.")
+                                        
                                     except Exception as e:
                                         st.error(f"**{user_name}**님의 캘린더 일정 추가 실패: {e}")
                                 else:
@@ -1015,42 +1064,49 @@ if is_admin_input:
     with analysis_tab:
         st.header("📈 OCS 분석 결과")
 
-    # Firebase에서 최신 OCS 분석 결과 로드
+        # Firebase에서 최신 OCS 분석 결과 로드
         all_analysis_data = db.reference("ocs_analysis").get()
         if all_analysis_data:
-            latest_date = sorted(all_analysis_data.keys(), reverse=True)[0]
-            latest_file_name = db.reference("ocs_analysis/latest_file_name").get()
-            analysis_results = all_analysis_data[latest_date]
-            
-            st.markdown(f"**<h3 style='text-align: left;'>{latest_file_name} 분석 결과</h3>**", unsafe_allow_html=True)
-            st.markdown("---")
-            
-            # 소아치과 현황
-            if '소치' in analysis_results:
-                st.subheader("소아치과 현황 (단타)")
-                st.info(f"오전: **{analysis_results['소치']['오전']}명**")
-                st.info(f"오후: **{analysis_results['소치']['오후']}명**")
-            else:
-                st.warning("소아치과 데이터가 엑셀 파일에 없습니다.")
-            st.markdown("---")
-            
-            # 보존과 현황
-            if '보존' in analysis_results:
-                st.subheader("보존과 현황 (단타)")
-                st.info(f"오전: **{analysis_results['보존']['오전']}명**")
-                st.info(f"오후: **{analysis_results['보존']['오후']}명**")
-            else:
-                st.warning("보존과 데이터가 엑셀 파일에 없습니다.")
-            st.markdown("---")
+            latest_date_ref = db.reference("ocs_analysis/latest_date")
+            latest_file_name_ref = db.reference("ocs_analysis/latest_file_name")
+            latest_result_ref = db.reference("ocs_analysis/latest_result")
 
-            # 교정과 현황 (Bonding)
-            if '교정' in analysis_results:
-                st.subheader("교정과 현황 (Bonding)")
-                st.info(f"오전: **{analysis_results['교정']['오전']}명**")
-                st.info(f"오후: **{analysis_results['교정']['오후']}명**")
+            latest_date = latest_date_ref.get()
+            latest_file_name = latest_file_name_ref.get()
+            analysis_results = latest_result_ref.get()
+            
+            if latest_date and latest_file_name and analysis_results:
+                st.markdown(f"**<h3 style='text-align: left;'>{latest_file_name} 분석 결과</h3>**", unsafe_allow_html=True)
+                st.markdown("---")
+                
+                # 소아치과 현황
+                if '소치' in analysis_results:
+                    st.subheader("소아치과 현황 (단타)")
+                    st.info(f"오전: **{analysis_results['소치']['오전']}명**")
+                    st.info(f"오후: **{analysis_results['소치']['오후']}명**")
+                else:
+                    st.warning("소아치과 데이터가 엑셀 파일에 없습니다.")
+                st.markdown("---")
+                
+                # 보존과 현황
+                if '보존' in analysis_results:
+                    st.subheader("보존과 현황 (단타)")
+                    st.info(f"오전: **{analysis_results['보존']['오전']}명**")
+                    st.info(f"오후: **{analysis_results['보존']['오후']}명**")
+                else:
+                    st.warning("보존과 데이터가 엑셀 파일에 없습니다.")
+                st.markdown("---")
+
+                # 교정과 현황 (Bonding)
+                if '교정' in analysis_results:
+                    st.subheader("교정과 현황 (Bonding)")
+                    st.info(f"오전: **{analysis_results['교정']['오전']}명**")
+                    st.info(f"오후: **{analysis_results['교정']['오후']}명**")
+                else:
+                    st.warning("교정과 데이터가 엑셀 파일에 없습니다.")
+                st.markdown("---")
             else:
-                st.warning("교정과 데이터가 엑셀 파일에 없습니다.")
-            st.markdown("---")
+                st.info("💡 분석 결과가 없습니다. 엑셀 파일을 업로드하면 표시됩니다.")
         else:
             st.info("💡 분석 결과가 없습니다. 엑셀 파일을 업로드하면 표시됩니다.")
 
