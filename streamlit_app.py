@@ -715,7 +715,13 @@ if user_name and not is_admin_input and not st.session_state.email_change_mode:
                 break
     
     if matched_user:
-        if password_input == matched_user.get("password"):
+        # 비밀번호 정보가 없는 경우 '1234'를 기본값으로 설정
+        user_password = matched_user.get("password", "1234")
+        if password_input == user_password:
+            # 로그인 성공 시, 비밀번호가 없었다면 '1234'로 업데이트
+            if "password" not in matched_user:
+                users_ref.child(matched_user["safe_key"]).update({"password": "1234"})
+            
             st.session_state.found_user_email = matched_user["email"]
             st.session_state.user_id_input_value = matched_user["email"]
             st.session_state.current_firebase_key = matched_user["safe_key"]
@@ -801,7 +807,6 @@ if not is_admin_input:
                     st.success("🎉 비밀번호가 성공적으로 변경되었습니다!")
                 except Exception as e:
                     st.error(f"비밀번호 변경 중 오류가 발생했습니다: {e}")
-                    
 #7. Admin Mode Functionality
 # --- Admin 모드 로그인 처리 ---
 if is_admin_input:
