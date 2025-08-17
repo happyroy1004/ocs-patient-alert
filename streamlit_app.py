@@ -493,6 +493,7 @@ professors_dict = {
 
 # 엑셀 시트 데이터 처리 (교수님/비교수님, 시간/의사별 정렬)
 def process_sheet_v8(df, professors_list, sheet_key):
+    df = df.drop(columns=['예약일시'], errors='ignore')
     if '예약의사' not in df.columns or '예약시간' not in df.columns:
         st.error(f"시트 처리 오류: '예약의사' 또는 '예약시간' 컬럼이 DataFrame에 없습니다.")
         return pd.DataFrame(columns=['진료번호', '예약시간', '환자명', '예약의사', '진료내역'])
@@ -500,10 +501,7 @@ def process_sheet_v8(df, professors_list, sheet_key):
     df = df.sort_values(by=['예약의사', '예약시간'])
     professors = df[df['예약의사'].isin(professors_list)]
     non_professors = df[~df['예약의사'].isin(professors_list)]
-    reservation_date_excel = excel_row.get('예약일시', '')
-    reservation_time_excel = excel_row.get('예약시간', '')
-    df = df.drop(columns=['예약일시'], errors='ignore')
-    
+
     if sheet_key != '보철':
         non_professors = non_professors.sort_values(by=['예약시간', '예약의사'])
     else:
@@ -903,6 +901,8 @@ if is_admin_input:
                             for _, excel_row in df_sheet.iterrows():
                                 excel_patient_name = excel_row["환자명"].strip()
                                 excel_patient_pid = excel_row["진료번호"].strip().zfill(8)
+                                reservation_date_excel = excel_row.get('예약일시', '')
+                                reservation_time_excel = excel_row.get('예약시간', '')
                                 
                                 for registered_patient in registered_patients_data:
                                     if (registered_patient["환자명"] == excel_patient_name and
@@ -958,8 +958,7 @@ if is_admin_input:
                                                 # 엑셀 파일에 '예약의사' 컬럼이 있다고 가정합니다.
                                                 doctor_name = row.get('예약의사', '')
                                                 treatment_details = row.get('진료내역', '')
-                                                create_calendar_event(service, row['환자명'], row['진료번호'], row.get('시트', ''), 
-                                                   reservation_date_excel, reservation_time_excel, doctor_name=doctor_name, treatment_details=treatment_details)
+                                                create_calendar_event(service, patient_name, pid, department, reservation_date_excel, reservation_time_excel, doctor_name, treatment_details)
                                         st.success(f"**{user_name}**님의 캘린더에 일정을 추가했습니다.")
                                     except Exception as e:
                                         st.error(f"**{user_name}**님의 캘린더 일정 추가 실패: {e}")
