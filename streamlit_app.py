@@ -707,7 +707,7 @@ if login_button:
     if not user_name or not password:
         st.error("사용자 이름과 비밀번호를 모두 입력해주세요.")
     elif user_name.strip().lower() == "admin":
-        if password == "your_admin_password": # 실제 관리자 비밀번호로 변경하세요
+        if password == "1243": # 실제 관리자 비밀번호로 변경하세요
             st.session_state.logged_in_as_admin = True
             st.session_state.current_user_name = "admin"
             st.success("관리자 계정으로 로그인되었습니다.")
@@ -718,11 +718,12 @@ if login_button:
         # Firebase에서 사용자 이름으로 검색
         all_users_meta = users_ref.get()
         found_user = None
+        current_firebase_key = None
         if all_users_meta:
             for uid_safe, user_info in all_users_meta.items():
                 if user_info and user_info.get("name") == user_name:
                     found_user = user_info
-                    st.session_state.current_firebase_key = uid_safe
+                    current_firebase_key = uid_safe
                     break
         
         if found_user:
@@ -730,6 +731,7 @@ if login_button:
             if 'password' in found_user and found_user['password'] == password:
                 st.session_state.user_logged_in = True
                 st.session_state.current_user_name = user_name
+                st.session_state.current_firebase_key = current_firebase_key
                 st.session_state.found_user_email = found_user.get("email", "")
                 st.success(f"**{user_name}**님, 환영합니다!")
                 st.rerun()
@@ -738,9 +740,9 @@ if login_button:
         else:
             # 신규 사용자
             if password == "1234":
-                st.session_state.new_user_name = user_name
                 st.session_state.is_new_user = True
-                st.success(f"**{user_name}**님, 새로운 사용자이시군요! 이메일 주소를 입력해주세요.")
+                st.session_state.new_user_name = user_name
+                st.success(f"**{user_name}**님, 새로운 사용자이시군요! 아래에 이메일 주소를 입력해주세요.")
                 st.rerun()
             else:
                 st.error("등록되지 않은 사용자 이름이거나 초기 비밀번호가 틀렸습니다.")
@@ -765,7 +767,7 @@ if st.session_state.get('is_new_user', False):
             st.rerun()
         else:
             st.error("올바른 이메일 주소 형식이 아닙니다.")
-
+            
 # 로그인된 경우에만 나머지 UI 표시
 if st.session_state.get('user_logged_in', False):
     st.markdown("---")
@@ -779,7 +781,7 @@ if st.session_state.get('user_logged_in', False):
         st.session_state.email_change_mode = True
         st.rerun()
 
-    if st.session_state.email_change_mode:
+    if st.session_state.get('email_change_mode', False):
         new_email = st.text_input("새로운 이메일 주소", value=st.session_state.found_user_email)
         if st.button("이메일 변경 완료"):
             if is_valid_email(new_email):
