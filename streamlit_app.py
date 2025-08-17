@@ -979,7 +979,7 @@ if st.session_state.logged_in:
         st.markdown("---")
         
         # 환자 등록 폼
-        st.markdown("#### 📝 환자 등록")
+        st.markdown("#### � 환자 등록")
         with st.form("register_form"):
             name = st.text_input("환자명")
             pid = st.text_input("진료번호")
@@ -1038,8 +1038,20 @@ if st.session_state.logged_in:
                 st.session_state.last_processed_file_name = uploaded_file.name
                 
                 # 예약일 추출 (셀의 위치를 직접 지정)
-                reservation_date_excel_cell = df_excel.iloc[3, 0] # E4 셀
-                reservation_date_excel = str(reservation_date_excel_cell)
+                # 'E4' 셀의 값을 가져오기 위해 openpyxl을 사용
+                decrypted_file.seek(0)
+                workbook = openpyxl.load_workbook(decrypted_file)
+                sheet = workbook.active
+                
+                # E4 셀 값 가져오기
+                reservation_date_excel_cell = sheet['E4'].value
+                
+                # 날짜 형식을 문자열로 변환
+                if isinstance(reservation_date_excel_cell, datetime.datetime) or isinstance(reservation_date_excel_cell, datetime.date):
+                    reservation_date_excel = reservation_date_excel_cell.strftime("%Y년 %m월 %d일")
+                else:
+                    reservation_date_excel = str(reservation_date_excel_cell)
+                    
                 st.session_state.reservation_date_excel = reservation_date_excel
                 st.info(f"분석 대상일: **{reservation_date_excel}**")
                 
@@ -1082,8 +1094,12 @@ if st.session_state.logged_in:
                 st.markdown("---")
                 st.subheader("📧 매칭된 환자에게 메일 보내기")
                 
+                # 메일 보내기 버튼
                 if st.button("매칭 환자에게 메일 보내기"):
-                    if not st.session_state.found_user_email:
+                    # 예약일 변수 존재 여부 확인
+                    if not st.session_state.get('reservation_date_excel'):
+                         st.warning("먼저 OCS 파일을 업로드하고 분석을 완료해주세요.")
+                    elif not st.session_state.found_user_email:
                         st.error("메일을 보내기 전에 '이메일 주소 관리'에서 본인 이메일을 먼저 등록해주세요.")
                     else:
                         try:
@@ -1178,7 +1194,7 @@ if st.session_state.logged_in:
             if st.button("이메일 주소 변경"):
                 st.session_state.email_change_mode = True
                 st.rerun()
-
+�
 
 #7. Admin Mode Functionality
 # --- Admin 모드 로그인 처리 ---
