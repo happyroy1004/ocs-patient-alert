@@ -708,8 +708,8 @@ if not st.session_state.logged_in:
     st.subheader("로그인")
     user_name = st.text_input("사용자 이름을 입력하세요 (예시: 홍길동)")
     user_input_password = st.text_input("비밀번호를 입력하세요", type="password")
-
-    # Admin 계정 확인 로직
+    
+    # Admin 계정 확인 변수 정의
     is_admin_input = (user_name.strip().lower() == "admin")
 
     # 로그인 버튼
