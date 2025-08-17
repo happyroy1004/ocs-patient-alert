@@ -132,14 +132,43 @@ def process_excel_file_and_style(file_io):
         return None, None
     
 # OCS 분석 함수
-# OCS 분석 함수
 def run_analysis(df_dict, professors_dict):
     analysis_results = {}
+
+    # 딕셔너리로 시트 이름과 부서 맵핑 정의
+    sheet_department_map = {
+        '소치': '소치',
+        '소아치과': '소치',
+        '소아 치과': '소치',
+        '보존': '보존',
+        '보존과': '보존',
+        '치과보존과': '보존',
+        '교정': '교정',
+        '교정과': '교정',
+        '치과교정과': '교정'
+    }
+
+    # 맵핑된 데이터프레임을 저장할 딕셔너리
+    mapped_dfs = {}
+    for sheet_name, df in df_dict.items():
+        # 공백 제거 및 소문자 변환
+        processed_sheet_name = sheet_name.replace(" ", "").lower()
+        
+        # 맵핑 딕셔너리에서 부서 이름 찾기
+        for key, dept in sheet_department_map.items():
+            if processed_sheet_name == key.replace(" ", "").lower():
+                mapped_dfs[dept] = df
+                break
+
     
     # 소아치과 분석
-    if '소치' in df_dict:
-        df = df_dict['소치']
+    if '소치' in mapped_dfs:
+        df = mapped_dfs['소치']
         non_professors_df = df[~df['예약의사'].isin(professors_dict.get('소치', []))]
+        
+        # 🐛 오류 수정: '예약시간'을 문자열로 비교하기 전 유효하지 않은 값 필터링
+        non_professors_df['예약시간'] = non_professors_df['예약시간'].astype(str).str.strip()
+        non_professors_df = non_professors_df[non_professors_df['예약시간'] != 'nan']
         
         # 오류 수정: '예약시간'을 문자열로 비교
         non_professors_df['예약시간'] = non_professors_df['예약시간'].astype(str).str.strip()
@@ -152,13 +181,20 @@ def run_analysis(df_dict, professors_dict):
         afternoon_patients = non_professors_df[
             non_professors_df['예약시간'] >= '13:00'
         ].shape[0]
-        
+
+        # ⚠️ 계산된 값에서 1을 빼는 로직 추가
+        if afternoon_patients > 0:
+            afternoon_patients -= 1
         analysis_results['소치'] = {'오전': morning_patients, '오후': afternoon_patients}
 
     # 보존과 분석
-    if '보존' in df_dict:
-        df = df_dict['보존']
+    if '보존' in mapped_dfs:
+        df = mapped_dfs['보존']
         non_professors_df = df[~df['예약의사'].isin(professors_dict.get('보존', []))]
+        
+        # 🐛 오류 수정: '예약시간'을 문자열로 비교하기 전 유효하지 않은 값 필터링
+        non_professors_df['예약시간'] = non_professors_df['예약시간'].astype(str).str.strip()
+        non_professors_df = non_professors_df[non_professors_df['예약시간'] != 'nan']
         
         # 오류 수정: '예약시간'을 문자열로 비교
         non_professors_df['예약시간'] = non_professors_df['예약시간'].astype(str).str.strip()
@@ -171,12 +207,14 @@ def run_analysis(df_dict, professors_dict):
         afternoon_patients = non_professors_df[
             non_professors_df['예약시간'] >= '12:50'
         ].shape[0]
-        
+# ⚠️ 계산된 값에서 1을 빼는 로직 추가
+        if afternoon_patients > 0:
+            afternoon_patients -= 1
         analysis_results['보존'] = {'오전': morning_patients, '오후': afternoon_patients}
 
     # 교정과 분석 (Bonding)
-    if '교정' in df_dict:
-        df = df_dict['교정']
+    if '교정' in mapped_dfs:
+        df = mapped_dfs['교정']
         bonding_patients_df = df[
             df['진료내역'].str.contains('bonding|본딩', case=False, na=False) &
             ~df['진료내역'].str.contains('debonding', case=False, na=False)
@@ -1192,16 +1230,5 @@ else:
                     patients_ref_for_user.push().set({"환자명": name, "진료번호": pid, "등록과": selected_department})
                     st.success(f"{name} ({pid}) [{selected_department}] 환자 등록 완료")
                     
-                    if st.session_state.google_calendar_service:
-                        # Manual registration does not have reservation date/time.
-                        # The function will use the current time as a fallback.
-                        create_calendar_event_for_manual_registration(
-                            st.session_state.google_calendar_service,
-                            name,
-                            pid,
-                            selected_department,
-                            "수동 등록",
-                            st.session_state.found_user_email
-                        )
 
                     st.rerun()
