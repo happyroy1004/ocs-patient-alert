@@ -980,6 +980,7 @@ if is_admin_input:
                                                 patient_pid = row.get('진료번호', '')
                                                 department = row.get('등록과', '')
                                                 
+                                                # NaN (비어있는 값)을 확인하고 처리
                                                 is_date_na = pd.isna(row.get('예약일시'))
                                                 is_time_na = pd.isna(row.get('예약시간'))
                                                 
@@ -987,8 +988,9 @@ if is_admin_input:
                                                     st.warning(f"⚠️ {patient_name} 환자의 날짜/시간 데이터가 비어 있습니다. 일정 추가를 건너뜁니다.")
                                                     continue
                                                 
-                                                reservation_date = str(row.get('예약일시', '')).strip()
-                                                reservation_time = str(row.get('예약시간', '')).strip()
+                                                # 작은따옴표와 공백을 모두 제거합니다.
+                                                reservation_date = str(row.get('예약일시', '')).lstrip("'").strip()
+                                                reservation_time = str(row.get('예약시간', '')).lstrip("'").strip()
 
                                                 try:
                                                     # '/' 형식을 먼저 시도합니다.
