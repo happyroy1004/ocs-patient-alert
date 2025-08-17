@@ -418,6 +418,10 @@ def get_google_calendar_service(user_id_safe):
         # Clear invalid credentials from Firebase
         db.reference(f"users/{user_id_safe}/google_creds").delete()
         return None
+        
+import datetime
+from googleapiclient.errors import HttpError
+import streamlit as st
 
 def create_calendar_event(service, patient_name, pid, department, reservation_date_str, reservation_time_str, doctor_name, treatment_details):
     """
