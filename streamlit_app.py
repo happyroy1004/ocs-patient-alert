@@ -678,7 +678,6 @@ if 'google_creds' not in st.session_state:
     st.session_state['google_creds'] = {}
 
 users_ref = db.reference("users")
-
 # 6. User and Admin Login and User Management (통합)
 import os
 import streamlit as st
@@ -715,7 +714,7 @@ def recover_email(safe_id: str) -> str:
 
 # 이메일 주소 유효성 검사 함수
 def is_valid_email(email):
-    return re.match(r"[^@]+@[^@]+\.[^@]+", email)
+    return re.match(r"[^@]+@[^@]+\.[^@]+", email) is not None
 
 # Firebase에서 Google Calendar 인증 정보 불러오기
 def load_google_creds_from_firebase(user_id_safe):
@@ -895,9 +894,104 @@ if st.session_state.logged_in:
     patient_tab, analysis_tab = st.tabs(['환자 등록', '📈 OCS 분석 결과'])
     
     with patient_tab:
-        # 기존 환자 등록 탭의 코드를 여기에 붙여넣으세요.
+        # 환자 등록 코드
         st.header("환자 등록 및 관리")
-        st.write("여기에 '진료내역까지 캘박 완료!!!.txt' 파일에 해당하는 기존 탭 코드를 붙여넣으세요.")
+
+        # 세션 상태 초기화
+        if 'patient_data' not in st.session_state:
+            st.session_state['patient_data'] = {}
+        if 'patients_ref' not in st.session_state:
+            st.session_state['patients_ref'] = db.reference("patients")
+
+        # ------------------------------------
+        # Functions
+        # ------------------------------------
+
+        # Firestore에 환자 정보 저장 함수
+        def save_patient_data(patient_id, patient_info):
+            st.session_state.patients_ref.child(st.session_state.current_firebase_key).child(patient_id).set(patient_info)
+
+        # Firestore에서 환자 정보 불러오기 함수
+        def load_patient_data():
+            patient_data = st.session_state.patients_ref.child(st.session_state.current_firebase_key).get()
+            if patient_data:
+                st.session_state['patient_data'] = patient_data
+            else:
+                st.session_state['patient_data'] = {}
+
+        # ------------------------------------
+        # UI
+        # ------------------------------------
+        
+        if st.session_state.logged_in_as_admin:
+            st.warning("관리자 계정으로 로그인했습니다. 전체 환자 정보를 조회합니다.")
+            admin_data_tab, new_patient_tab = st.tabs(['전체 환자 정보', '신규 환자 등록'])
+        else:
+            admin_data_tab, new_patient_tab = st.tabs(['내 환자 정보', '신규 환자 등록'])
+
+        with new_patient_tab:
+            st.markdown("### 📝 신규 환자 등록")
+            with st.form("new_patient_form", clear_on_submit=True):
+                col1, col2 = st.columns(2)
+                with col1:
+                    patient_id = st.text_input("환자 고유번호", help="자동으로 환자 이름으로 생성됩니다. 특수문자는 제거됩니다.")
+                with col2:
+                    patient_name = st.text_input("환자 이름")
+                
+                patient_info = st.text_area("환자 정보", help="자유롭게 입력해주세요.")
+                
+                submitted = st.form_submit_button("등록")
+                
+                if submitted:
+                    if patient_id and patient_name:
+                        # Firebase-safe key 생성
+                        safe_patient_id = re.sub(r'[^a-zA-Z0-9]', '', patient_id).replace(" ", "")
+                        
+                        # Firebase에 저장
+                        patient_info_dict = {
+                            "name": patient_name,
+                            "info": patient_info,
+                            "date": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                        }
+                        
+                        save_patient_data(safe_patient_id, patient_info_dict)
+                        st.success(f"**{patient_name}** 님의 정보가 성공적으로 등록되었습니다!")
+                    else:
+                        st.error("환자 이름과 고유번호는 필수 입력 항목입니다.")
+
+        with admin_data_tab:
+            st.markdown("### 🔍 환자 정보 조회 및 관리")
+            
+            # 관리자 모드일 경우 전체 사용자 데이터 로드
+            if st.session_state.logged_in_as_admin:
+                all_patients = st.session_state.patients_ref.get()
+                if all_patients:
+                    user_list = [recover_email(user) for user in all_patients.keys()]
+                    selected_user = st.selectbox("사용자를 선택하세요", user_list)
+                    selected_user_key = sanitize_path(selected_user)
+                    patients_to_display = st.session_state.patients_ref.child(selected_user_key).get()
+                else:
+                    patients_to_display = {}
+            else:
+                patients_to_display = st.session_state.patients_ref.child(st.session_state.current_firebase_key).get()
+
+            if patients_to_display:
+                patient_df = pd.DataFrame.from_dict(patients_to_display, orient='index')
+                patient_df.index.name = '고유번호'
+                st.dataframe(patient_df)
+                
+                patient_search = st.text_input("고유번호로 환자 검색")
+                if patient_search:
+                    found_patient = patient_df[patient_df.index.str.contains(patient_search, case=False)]
+                    if not found_patient.empty:
+                        st.subheader(f"'{patient_search}' 검색 결과")
+                        st.dataframe(found_patient)
+                    else:
+                        st.warning("일치하는 환자가 없습니다.")
+
+            else:
+                st.info("등록된 환자 정보가 없습니다.")
+
 
     with analysis_tab:
         # 기존 OCS 분석 결과 탭의 코드를 여기에 붙여넣으세요.
@@ -927,53 +1021,37 @@ if st.session_state.logged_in:
         
         # 이메일 입력/변경 필드
         if st.session_state.email_change_mode or not st.session_state.found_user_email:
+            st.info("이메일 주소를 등록해주세요.")
             user_id_input = st.text_input("아이디를 입력하세요 (예: example@gmail.com)", value=st.session_state.user_id_input_value)
             
             # user_id_input의 변경을 감지하여 세션 상태 업데이트
             if user_id_input != st.session_state.user_id_input_value:
                 st.session_state.user_id_input_value = user_id_input
             
-            if st.session_state.email_change_mode:
-                if st.button("이메일 주소 변경 완료"):
-                    if is_valid_email(st.session_state.user_id_input_value):
-                        new_email = st.session_state.user_id_input_value
-                        new_firebase_key = sanitize_path(new_email)
-                        
-                        if st.session_state.current_firebase_key != new_firebase_key:
-                            # Firebase 데이터 업데이트 로직
-                            users_ref.child(new_firebase_key).set({
-                                "name": st.session_state.current_user_name,
-                                "email": new_email,
-                                "password": password_input # 로그인 시 사용한 비밀번호
-                            })
-                            
-                            # 기존 환자 데이터 이동
-                            old_patient_data = db.reference(f"patients/{st.session_state.current_firebase_key}").get()
-                            if old_patient_data:
-                                db.reference(f"patients/{new_firebase_key}").set(old_patient_data)
-                            
-                            # 기존 사용자 및 환자 데이터 삭제
-                            users_ref.child(st.session_state.current_firebase_key).delete()
-                            db.reference(f"patients/{st.session_state.current_firebase_key}").delete()
-                            
-                            # 세션 상태 업데이트
-                            st.session_state.current_firebase_key = new_firebase_key
-                            st.session_state.found_user_email = new_email
-                            st.session_state.email_change_mode = False
-                            st.success(f"이메일 주소가 **{new_email}**로 성공적으로 변경되었습니다. 변경된 이메일로 다시 로그인해주세요.")
-                            time.sleep(2)
-                            st.session_state.logged_in = False
-                            st.rerun()
-                        else:
-                            st.error("기존 이메일과 동일한 주소입니다.")
+            if st.button("이메일 주소 등록"):
+                if is_valid_email(st.session_state.user_id_input_value):
+                    new_email = st.session_state.user_id_input_value
+                    new_firebase_key = sanitize_path(new_email)
+                    
+                    if st.session_state.current_firebase_key:
+                        users_ref.child(st.session_state.current_firebase_key).update({"email": new_email})
                     else:
-                        st.error("올바른 이메일 주소 형식이 아닙니다.")
+                        users_ref.child(new_firebase_key).set({
+                            "name": st.session_state.current_user_name,
+                            "email": new_email,
+                            "password": password_input # 로그인 시 사용한 비밀번호
+                        })
+                    
+                    st.session_state.found_user_email = new_email
+                    st.success(f"이메일 주소가 **{new_email}**로 성공적으로 등록되었습니다.")
+                    st.rerun()
+                else:
+                    st.error("올바른 이메일 주소 형식이 아닙니다.")
         else:
             st.text_input("등록된 이메일", value=st.session_state.found_user_email, disabled=True)
             if st.button("이메일 주소 변경"):
                 st.session_state.email_change_mode = True
                 st.rerun()
-                
 #7. Admin Mode Functionality
 # --- Admin 모드 로그인 처리 ---
 if is_admin_input:
