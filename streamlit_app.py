@@ -799,27 +799,7 @@ if not is_admin_input:
             else:
                 st.error("올바른 이메일 주소 형식이 아닙니다.")
 
-    # --- 비밀번호 변경 기능 추가 ---
-    if st.session_state.get("found_user_email"):
-        st.divider()
-        st.header("🔑 비밀번호 변경")
-        
-        new_password = st.text_input("새 비밀번호를 입력하세요", type="password", key="new_password_input")
-        confirm_password = st.text_input("새 비밀번호를 다시 입력하세요", type="password", key="confirm_password_input")
-        
-        if st.button("비밀번호 변경"):
-            if not new_password or not confirm_password:
-                st.error("새 비밀번호와 확인용 비밀번호를 모두 입력해주세요.")
-            elif new_password != confirm_password:
-                st.error("새 비밀번호가 일치하지 않습니다. 다시 확인해주세요.")
-            else:
-                try:
-                    # Firebase 데이터베이스의 비밀번호 업데이트
-                    users_ref.child(st.session_state.current_firebase_key).update({"password": new_password})
-                    st.success("🎉 비밀번호가 성공적으로 변경되었습니다!")
-                except Exception as e:
-                    st.error(f"비밀번호 변경 중 오류가 발생했습니다: {e}")
-                    
+
 #7. Admin Mode Functionality
 # --- Admin 모드 로그인 처리 ---
 if is_admin_input:
@@ -1282,3 +1262,25 @@ else:
                     
 
                     st.rerun()
+                    
+    # --- 비밀번호 변경 기능 추가 ---
+    if st.session_state.get("found_user_email"):
+        st.divider()
+        st.header("🔑 비밀번호 변경")
+        
+        new_password = st.text_input("새 비밀번호를 입력하세요", type="password", key="new_password_input")
+        confirm_password = st.text_input("새 비밀번호를 다시 입력하세요", type="password", key="confirm_password_input")
+        
+        if st.button("비밀번호 변경"):
+            if not new_password or not confirm_password:
+                st.error("새 비밀번호와 확인용 비밀번호를 모두 입력해주세요.")
+            elif new_password != confirm_password:
+                st.error("새 비밀번호가 일치하지 않습니다. 다시 확인해주세요.")
+            else:
+                try:
+                    # Firebase 데이터베이스의 비밀번호 업데이트
+                    users_ref.child(st.session_state.current_firebase_key).update({"password": new_password})
+                    st.success("🎉 비밀번호가 성공적으로 변경되었습니다!")
+                except Exception as e:
+                    st.error(f"비밀번호 변경 중 오류가 발생했습니다: {e}")
+                    
