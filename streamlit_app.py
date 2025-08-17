@@ -812,6 +812,8 @@ if st.session_state.logged_in:
                 st.rerun()
             else:
                 st.error("올바른 이메일 주소 형식이 아닙니다.")
+
+
 #7. Admin Mode Functionality
 # --- Admin 모드 로그인 처리 ---
 if is_admin_input:
