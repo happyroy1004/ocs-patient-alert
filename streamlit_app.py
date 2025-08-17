@@ -836,6 +836,19 @@ if is_admin_input:
             try:
                 xl_object, raw_file_io = load_excel(uploaded_file, password)
                 excel_data_dfs, styled_excel_bytes = process_excel_file_and_style(raw_file_io)
+                
+                # --- 엑셀 파일 이름에서 예약 날짜 정보 추출 (추가) ---
+                # 'ocs_0812' -> 8월 12일 -> 2024-08-12
+                date_match = re.search(r'_(\d{2})(\d{2})', file_name)
+                reservation_date_excel = None
+                if date_match:
+                    month_str = date_match.group(1)
+                    day_str = date_match.group(2)
+                    current_year = datetime.datetime.now().year
+                    reservation_date_excel = f"{current_year}-{month_str}-{day_str}"
+                else:
+                    st.warning("엑셀 파일 이름에서 예약 날짜를 추출할 수 없습니다. 캘린더 일정은 현재 날짜로 설정됩니다.")
+                    reservation_date_excel = datetime.datetime.now().strftime("%Y-%m-%d")
 
                 # Firebase에 OCS 분석 결과 영구 저장 (가장 최신값으로 덮어쓰기)
                 professors_dict = {
@@ -987,7 +1000,7 @@ if is_admin_input:
                                                 patient_name = row.get('환자명', '')
                                                 patient_pid = row.get('진료번호', '')
                                                 department = row.get('등록과', '')
-
+                                                
                                                 # 날짜/시간 데이터를 가져와서 유효성 검사
                                                 reservation_date_raw = row.get('예약일시')
                                                 reservation_time_raw = row.get('예약시간')
@@ -996,22 +1009,23 @@ if is_admin_input:
                                                 is_date_invalid = pd.isna(reservation_date_raw) or str(reservation_date_raw).strip() == ""
                                                 is_time_invalid = pd.isna(reservation_time_raw) or str(reservation_time_raw).strip() == ""
 
-                                                date_str_to_parse = ""
-                                                time_str_to_parse = ""
-                                                
-                                                if not is_date_invalid:
-                                                    date_str_to_parse = str(reservation_date_raw).strip()
-                                                else:
-                                                    # 날짜가 없는 경우 오늘 날짜를 기본값으로 사용
-                                                    date_str_to_parse = datetime.date.today().strftime('%Y/%m/%d')
-                                                
-                                                if not is_time_invalid:
-                                                    time_str_to_parse = str(reservation_time_raw).strip()
-                                                else:
+                                                if is_time_invalid:
                                                     st.warning(f"⚠️ {patient_name} 환자의 시간 데이터가 비어 있습니다. 일정 추가를 건너뜁니다.")
                                                     continue
 
-                                                full_datetime_str = f"{date_str_to_parse} {time_str_to_parse}"
+                                                date_str_to_parse = ""
+                                                time_str_to_parse = str(reservation_time_raw).strip()
+                                                
+                                                if not is_date_invalid:
+                                                    # 날짜가 있는 경우, 먼저 str() 변환하고 strip()으로 공백 제거
+                                                    date_str_to_parse = str(reservation_date_raw).strip()
+                                                else:
+                                                    # 날짜가 없는 경우, 파일명에서 추출한 날짜를 사용
+                                                    st.info(f"💡 {patient_name} 환자의 날짜 데이터가 비어있어, 파일명에서 추출한 날짜를 사용합니다.")
+                                                    date_str_to_parse = reservation_date_excel
+                                                
+                                                # 날짜와 시간을 합치고, 여러 공백을 하나의 공백으로 대체합니다.
+                                                full_datetime_str = re.sub(r'\s+', ' ', f"{date_str_to_parse} {time_str_to_parse}").strip()
                                                 
                                                 try:
                                                     # '/' 형식을 먼저 시도
@@ -1023,11 +1037,16 @@ if is_admin_input:
 
                                                 except ValueError:
                                                     # 실패하면 '-' 형식을 시도
-                                                    reservation_datetime = datetime.datetime.strptime(
-                                                        full_datetime_str,
-                                                        '%Y-%m-%d %H:%M'
-                                                    )
-                                                    st.write(f"✅ {patient_name} 환자: '-' 형식 파싱 성공 -> {reservation_datetime}")
+                                                    try:
+                                                        reservation_datetime = datetime.datetime.strptime(
+                                                            full_datetime_str,
+                                                            '%Y-%m-%d %H:%M'
+                                                        )
+                                                        st.write(f"✅ {patient_name} 환자: '-' 형식 파싱 성공 -> {reservation_datetime}")
+
+                                                    except ValueError as e:
+                                                        st.error(f"❌ {patient_name} 환자의 날짜/시간 형식 파싱 최종 실패: {e}. 일정 추가를 건너뜁니다.")
+                                                        continue # 다음 행으로 넘어감
 
                                                 doctor_name = row.get('예약의사', '')
                                                 treatment_details = row.get('진료내역', '')
