@@ -906,9 +906,6 @@ if is_admin_input:
 
                                 # 날짜와 시간을 하나의 문자열로 결합합니다.
                                 full_datetime_str = f"{reservation_date} {reservation_time}"
-                                reservation_datetime = datetime.datetime.strptime(full_datetime_str, '%Y/%m/%d %H:%M')
-                                reservation_date_part = reservation_datetime.date()  # 예: 2025-08-04
-                                reservation_time_part = reservation_datetime.time()  # 예: 10:00:00
 
                                 for registered_patient in registered_patients_data:
                                     if (registered_patient["환자명"] == excel_patient_name and
@@ -938,7 +935,7 @@ if is_admin_input:
                             for user_match_info in matched_users:
                                 real_email = user_match_info['email']
                                 df_matched = user_match_info['data']
-                                result = send_email(real_email, df_matched, sender, sender_pw, date_str=reservation_datetime) # 추출된 날짜 사용
+                                result = send_email(real_email, df_matched, sender, sender_pw, date_str=full_datetime_str) # 추출된 날짜 사용
                                 if result is True:
                                     st.success(f"**{user_match_info['name']}** ({real_email}) 전송 완료")
                                 else:
@@ -964,7 +961,7 @@ if is_admin_input:
                                                 # 엑셀 파일에 '예약의사' 컬럼이 있다고 가정합니다.
                                                 doctor_name = row.get('예약의사', '')
                                                 treatment_details = row.get('진료내역', '')
-                                                create_calendar_event(service, excel_patient_name, excel_patient_pid, excel_sheet_department, reservation_date_part, reservation_time_part, doctor_name, treatment_details)
+                                                create_calendar_event(service, excel_patient_name, excel_patient_pid, excel_sheet_department, reservation_date, reservation_time, doctor_name, treatment_details)
                                         st.success(f"**{user_name}**님의 캘린더에 일정을 추가했습니다.")
                                     except Exception as e:
                                         st.error(f"**{user_name}**님의 캘린더 일정 추가 실패: {e}")
