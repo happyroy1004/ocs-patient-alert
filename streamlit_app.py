@@ -501,7 +501,7 @@ professors_dict = {
 }
 
 # 엑셀 시트 데이터 처리 (교수님/비교수님, 시간/의사별 정렬)
-def process_sheet_v8(df, professors_list, sheet_key)
+def process_sheet_v8(df, professors_list, sheet_key) : 
     if '예약의사' not in df.columns or '예약시간' not in df.columns:
         st.error(f"시트 처리 오류: '예약의사' 또는 '예약시간' 컬럼이 DataFrame에 없습니다.")
         return pd.DataFrame(columns=['진료번호', '예약시간', '환자명', '예약의사', '진료내역'])
