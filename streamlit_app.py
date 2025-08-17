@@ -678,7 +678,7 @@ if 'google_creds' not in st.session_state:
     st.session_state['google_creds'] = {}
 
 users_ref = db.reference("users")
-#6. User and Admin Login and User Management (통합)
+# 6. User and Admin Login and User Management (통합)
 import os
 import streamlit as st
 import pandas as pd
@@ -944,12 +944,12 @@ if st.session_state.logged_in:
             with st.form("new_patient_form", clear_on_submit=True):
                 col1, col2 = st.columns(2)
                 with col1:
-                    patient_id = st.text_input("환자 고유번호", help="자동으로 환자 이름으로 생성됩니다. 특수문자는 제거됩니다.")
-                with col2:
                     patient_name = st.text_input("환자 이름")
+                with col2:
+                    patient_id = st.text_input("환자 번호")
                 
-                # 진료과 선택 드롭다운 추가
-                departments = ["선택하세요", "소아치과", "보존과", "교정과", "구강외과", "치주과"]
+                # 진료과 선택 드롭다운 목록 변경
+                departments = ["선택하세요", "외과", "소치", "내과", "교정", "보철", "보존", "원진실", "치주"]
                 selected_department = st.selectbox("진료과", options=departments)
 
                 patient_info = st.text_area("환자 정보", help="자유롭게 입력해주세요.")
@@ -957,22 +957,23 @@ if st.session_state.logged_in:
                 submitted = st.form_submit_button("등록")
                 
                 if submitted:
-                    if patient_id and patient_name and selected_department != "선택하세요":
-                        # Firebase-safe key 생성
-                        safe_patient_id = re.sub(r'[^a-zA-Z0-9]', '', patient_id).replace(" ", "")
-                        
+                    if patient_name and patient_id and selected_department != "선택하세요":
                         # Firebase에 저장
                         patient_info_dict = {
                             "name": patient_name,
+                            "id": patient_id, # 환자 번호 저장
                             "info": patient_info,
-                            "department": selected_department, # 진료과 추가
+                            "department": selected_department,
                             "date": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                         }
+                        
+                        # 고유 키는 환자번호로 사용
+                        safe_patient_id = re.sub(r'[^a-zA-Z0-9]', '', patient_id).replace(" ", "")
                         
                         save_patient_data(safe_patient_id, patient_info_dict)
                         st.success(f"**{patient_name}** 님의 정보가 성공적으로 등록되었습니다!")
                     else:
-                        st.error("환자 이름, 고유번호, 진료과는 필수 입력 항목입니다.")
+                        st.error("환자 이름, 환자 번호, 진료과는 필수 입력 항목입니다.")
 
         with admin_data_tab:
             st.markdown("### 🔍 환자 정보 조회 및 관리")
@@ -992,12 +993,25 @@ if st.session_state.logged_in:
 
             if patients_to_display:
                 patient_df = pd.DataFrame.from_dict(patients_to_display, orient='index')
-                patient_df.index.name = '고유번호'
+
+                # 환자정보 조회 및 관리에서 원하는 순서로 정렬
+                department_order = ["소치", "보철", "치주", "내과", "외과", "교정", "원진실", "보존"]
+                
+                # 'department' 컬럼을 순서가 있는 카테고리 타입으로 변환
+                patient_df['department'] = pd.Categorical(patient_df['department'], categories=department_order, ordered=True)
+                
+                # 진료과 순서대로 정렬
+                patient_df = patient_df.sort_values('department', ignore_index=True)
+                
+                # 컬럼 순서 변경 및 이름 변경
+                patient_df = patient_df[['name', 'id', 'department', 'info']]
+                patient_df = patient_df.rename(columns={'name': '환자이름', 'id': '환자번호', 'department': '진료과', 'info': '환자정보'})
+                
                 st.dataframe(patient_df)
                 
                 patient_search = st.text_input("고유번호로 환자 검색")
                 if patient_search:
-                    found_patient = patient_df[patient_df.index.str.contains(patient_search, case=False)]
+                    found_patient = patient_df[patient_df['환자번호'].str.contains(patient_search, case=False)]
                     if not found_patient.empty:
                         st.subheader(f"'{patient_search}' 검색 결과")
                         st.dataframe(found_patient)
