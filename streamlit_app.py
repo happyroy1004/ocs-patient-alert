@@ -946,7 +946,7 @@ if st.session_state.logged_in:
                 col1, col2 = st.columns([1, 0.1])
                 with col1:
                     # '환자명'과 '진료번호'를 **굵게** 표시하고 '등록과'를 추가
-                    st.markdown(f"**{val['환자명']}** / {val['진료번호']} / {val.get('등록과', '미지정')}")
+                    st.markdown(f"**{val.get('환자명', '미정')}** / {val.get('진료번호', '미정')} / {val.get('등록과', '미정')}")
                 
                 with col2:
                     if st.button("X", key=f"delete_button_{key}"):
