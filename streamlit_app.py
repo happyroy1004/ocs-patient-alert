@@ -163,7 +163,7 @@ def run_analysis(df_dict, professors_dict):
     
     # 소아치과 분석
     if '소치' in mapped_dfs:
-        df = mapped_dfs['소치']
+    df = mapped_dfs['소치']
         non_professors_df = df[~df['예약의사'].isin(professors_dict.get('소치', []))]
         
         # 🐛 오류 수정: '예약시간'을 문자열로 비교하기 전 유효하지 않은 값 필터링
@@ -1230,5 +1230,16 @@ else:
                     patients_ref_for_user.push().set({"환자명": name, "진료번호": pid, "등록과": selected_department})
                     st.success(f"{name} ({pid}) [{selected_department}] 환자 등록 완료")
                     
+                    if st.session_state.google_calendar_service:
+                        # Manual registration does not have reservation date/time.
+                        # The function will use the current time as a fallback.
+                        create_calendar_event_for_manual_registration(
+                            st.session_state.google_calendar_service,
+                            name,
+                            pid,
+                            selected_department,
+                            "수동 등록",
+                            st.session_state.found_user_email
+                        )
 
                     st.rerun()
