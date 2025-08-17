@@ -698,50 +698,37 @@ else:
 # 사용자 이름 입력 필드
 user_name = st.text_input("사용자 이름을 입력하세요 (예시: 홍길동)")
 
-if user_name:
-    password = st.text_input("비밀번호를 입력하세요", type="password")
-    
-    # Admin 계정 확인 로직
-    is_admin_input = (user_name.strip().lower() == "admin")
+# Admin 계정 확인 로직
+is_admin_input = (user_name.strip().lower() == "admin")
 
-    # user_name과 password가 모두 입력되었을 때 로그인 시도
-    if password and not is_admin_input:
-        all_users_meta = users_ref.get()
-        matched_users_by_name = []
-        if all_users_meta:
-            for safe_key, user_info in all_users_meta.items():
-                if user_info and user_info.get("name") == user_name:
-                    matched_users_by_name.append({
-                        "safe_key": safe_key,
-                        "email": user_info.get("email", ""),
-                        "name": user_info.get("name", ""),
-                        "password": user_info.get("password", "")
-                    })
+# user_name이 입력되었을 때 기존 사용자 검색
+if user_name and not is_admin_input and not st.session_state.email_change_mode:
+    all_users_meta = users_ref.get()
+    matched_users_by_name = []
+    if all_users_meta:
+        for safe_key, user_info in all_users_meta.items():
+            if user_info and user_info.get("name") == user_name:
+                matched_users_by_name.append({"safe_key": safe_key, "email": user_info.get("email", ""), "name": user_info.get("name", "")})
 
-        if len(matched_users_by_name) == 1:
-            user_info = matched_users_by_name[0]
-            if user_info['password'] == password: # 실제 구현 시 해싱된 비밀번호를 비교해야 합니다.
-                st.session_state.found_user_email = user_info["email"]
-                st.session_state.user_id_input_value = user_info["email"]
-                st.session_state.current_firebase_key = user_info["safe_key"]
-                st.session_state.current_user_name = user_name
-                st.session_state.login_success = True
-                st.session_state.user_password = password
-                st.success(f"**{user_name}**님으로 로그인되었습니다.")
-            else:
-                st.error("비밀번호가 일치하지 않습니다.")
-                st.session_state.login_success = False
-        elif len(matched_users_by_name) > 1:
-            st.warning("동일한 이름의 사용자가 여러 명 있습니다. 정확한 이메일과 비밀번호를 입력해주세요.")
-            st.session_state.login_success = False
-        else:
-            st.info("새로운 사용자이거나 등록되지 않은 이름입니다. 새로운 이메일과 비밀번호를 입력해주세요.")
-            st.session_state.found_user_email = ""
-            st.session_state.user_id_input_value = ""
-            st.session_state.current_firebase_key = ""
-            st.session_state.current_user_name = ""
-            st.session_state.login_success = False
-            
+    if len(matched_users_by_name) == 1:
+        st.session_state.found_user_email = matched_users_by_name[0]["email"]
+        st.session_state.user_id_input_value = matched_users_by_name[0]["email"]
+        st.session_state.current_firebase_key = matched_users_by_name[0]["safe_key"]
+        st.session_state.current_user_name = user_name
+        st.info(f"**{user_name}**님으로 로그인되었습니다. 이메일 주소: **{st.session_state.found_user_email}**")
+    elif len(matched_users_by_name) > 1:
+        st.warning("동일한 이름의 사용자가 여러 명 있습니다. 정확한 이메일 주소를 입력해주세요.")
+        st.session_state.found_user_email = ""
+        st.session_state.user_id_input_value = ""
+        st.session_state.current_firebase_key = ""
+        st.session_state.current_user_name = ""
+    else:
+        st.info("새로운 사용자이거나 등록되지 않은 이름입니다. 이메일 주소를 입력해주세요.")
+        st.session_state.found_user_email = ""
+        st.session_state.user_id_input_value = ""
+        st.session_state.current_firebase_key = ""
+        st.session_state.current_user_name = ""
+
 # 이메일 입력 필드
 if not is_admin_input:
     if st.session_state.email_change_mode or not st.session_state.found_user_email:
