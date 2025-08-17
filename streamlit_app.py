@@ -994,6 +994,10 @@ if st.session_state.logged_in:
             if patients_to_display:
                 patient_df = pd.DataFrame.from_dict(patients_to_display, orient='index')
 
+                # 기존 데이터의 컬럼명을 새로운 컬럼명으로 변경
+                if '환자명' in patient_df.columns:
+                    patient_df = patient_df.rename(columns={'환자명': 'name', '진료번호': 'id', '등록과': 'department'})
+
                 # 환자정보 조회 및 관리에서 원하는 순서로 정렬
                 department_order = ["소치", "보철", "치주", "내과", "외과", "교정", "원진실", "보존"]
                 
@@ -1120,7 +1124,7 @@ if st.session_state.logged_in:
                 st.session_state.email_change_mode = True
                 st.rerun()
 
-                
+
 #7. Admin Mode Functionality
 # --- Admin 모드 로그인 처리 ---
 if is_admin_input:
