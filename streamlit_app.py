@@ -427,6 +427,14 @@ def create_calendar_event(service, patient_name, pid, department, reservation_da
 
     # 예약 날짜와 시간을 사용하여 이벤트 시작/종료 시간 설정
     try:
+        # 입력 파라미터가 유효한지 먼저 확인합니다.
+        if not reservation_date_str or not reservation_time_str:
+            raise ValueError("reservation_date_str 또는 reservation_time_str이 비어 있습니다.")
+        
+        # '예약시간'이 '08:00' 같은 형식인지 확인
+        if ':' not in str(reservation_time_str):
+            raise ValueError(f"시간 형식이 올바르지 않습니다: {reservation_time_str}")
+
         date_time_str = f"{reservation_date_str} {reservation_time_str}"
         
         # Naive datetime 객체 생성 후 한국 시간대(KST)로 로컬라이즈
@@ -434,7 +442,7 @@ def create_calendar_event(service, patient_name, pid, department, reservation_da
         event_start = naive_start.replace(tzinfo=seoul_tz)
         event_end = event_start + datetime.timedelta(minutes=30)
         
-    except ValueError as e:
+    except (ValueError, TypeError) as e:
         # 날짜 형식 파싱 실패 시 현재 시간 사용 (예외 처리)
         st.warning(f"'{patient_name}' 환자의 날짜/시간 형식 파싱 실패: {e}. 현재 시간으로 일정을 추가합니다.")
         event_start = datetime.datetime.now(seoul_tz)
