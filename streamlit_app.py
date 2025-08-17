@@ -350,14 +350,28 @@ def send_email(receiver, rows, sender, password, date_str=None, custom_message=N
     except Exception as e:
         return str(e)
 
-
 #3. Google Calendar API Functions
 # --- Google Calendar API 관련 함수 (수정) ---
 
 # 사용할 스코프 정의. 캘린더 이벤트 생성 권한
 SCOPES = ["https://www.googleapis.com/auth/calendar.events"]
 
-# 수정 코드 (Revised Code)
+# 추가: Firebase에 토큰을 저장하는 함수
+def save_google_creds_to_firebase(user_id_safe, creds):
+    try:
+        token_info = {
+            'token': creds.token,
+            'refresh_token': creds.refresh_token,
+            'token_uri': creds.token_uri,
+            'client_id': creds.client_id,
+            'client_secret': creds.client_secret,
+            'scopes': creds.scopes
+        }
+        db.reference(f'users/{user_id_safe}/google_token').set(token_info)
+    except Exception as e:
+        st.error(f"Failed to save Google credentials to Firebase: {e}")
+
+# 수정된 get_google_calendar_service 함수
 def get_google_calendar_service(user_id_safe):
     """
     사용자별로 Google Calendar 서비스 객체를 반환하거나 인증 URL을 표시합니다. Streamlit 세션 상태와 Firebase를 활용하여 인증 정보를 관리합니다.
@@ -365,106 +379,27 @@ def get_google_calendar_service(user_id_safe):
     creds = st.session_state.get(f"google_creds_{user_id_safe}")
     
     if not creds:
-        creds = load_google_creds_from_firebase(user_id_safe)
-        if creds:
-            st.session_state[f"google_creds_{user_id_safe}"] = creds
+        # Firebase에서 기존 토큰 불러오기
+        token_from_firebase = db.reference(f'users/{user_id_safe}/google_token').get()
+        if token_from_firebase:
+            creds = Credentials.from_authorized_user_info(token_from_firebase, SCOPES)
 
-    # secrets.toml에서 클라이언트 설정 불러오기
-    client_config = {
-        "web": {
-            "client_id": st.secrets["google_calendar"]["client_id"],
-            "client_secret": st.secrets["google_calendar"]["client_secret"],
-            "redirect_uris": [st.secrets["google_calendar"]["redirect_uri"]],
-            "auth_uri": "https://accounts.google.com/o/oauth2/auth",
-            "token_uri": "https://oauth2.googleapis.com/token",
-            "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs"
-        }
-    }
-    
-    # 인증 플로우 생성
-    flow = InstalledAppFlow.from_client_config(client_config, SCOPES, redirect_uri=st.secrets["google_calendar"]["redirect_uri"])
-    
-    if not creds:
-        auth_code = st.query_params.get("code")
-        
-        if auth_code:
-            # 인증 코드를 사용하여 토큰을 교환
-            flow.fetch_token(code=auth_code)
-            creds = flow.credentials
-            st.session_state[f"google_creds_{user_id_safe}"] = creds
-            # Store credentials in Firebase
-            save_google_creds_to_firebase(user_id_safe, creds)
-            st.success("Google Calendar 인증이 완료되었습니다.")
-            st.query_params.clear()
-            st.rerun()
+    if not creds or not creds.valid:
+        if creds and creds.expired and creds.refresh_token:
+            creds.refresh(Request())
         else:
+            flow = InstalledAppFlow.from_client_config(st.secrets["google_calendar"], SCOPES)
             auth_url, _ = flow.authorization_url(prompt='consent')
-            st.warning("Google Calendar 연동을 위해 인증이 필요합니다. 아래 링크를 클릭하여 권한을 부여하세요.")
-            st.markdown(f"**[Google Calendar 인증 링크]({auth_url})**")
-            return None
+            
+            st.markdown(f"**Google Calendar 연동이 필요합니다.** [**여기**]({auth_url})를 클릭하여 권한을 부여하세요.")
+            st.session_state.auth_url = auth_url
+            st.stop()
 
-    if creds.expired and creds.refresh_token:
-        creds.refresh(Request())
-        st.session_state[f"google_creds_{user_id_safe}"] = creds
-        # Update credentials in Firebase
+        # 인증이 완료되면 Firebase에 토큰 저장
         save_google_creds_to_firebase(user_id_safe, creds)
+        st.session_state[f"google_creds_{user_id_safe}"] = creds
 
-    try:
-        service = build('calendar', 'v3', credentials=creds)
-        return service
-    except HttpError as error:
-        st.error(f'Google Calendar 서비스 생성 실패: {error}')
-        st.session_state.pop(f"google_creds_{user_id_safe}", None)
-        # Clear invalid credentials from Firebase
-        db.reference(f"users/{user_id_safe}/google_creds").delete()
-        return None
-
-def create_calendar_event(service, patient_name, pid, department, reservation_date_str, reservation_time_str, doctor_name, treatment_details):
-    """
-    Google Calendar에 이벤트를 생성합니다. 예약 날짜와 시간을 기반으로 30분 일정을 만들고 의사 이름과 진료내역을 추가합니다.
-    """
-    seoul_tz = datetime.timezone(datetime.timedelta(hours=9))
-
-    # 예약 날짜와 시간을 사용하여 이벤트 시작/종료 시간 설정
-    try:
-        date_time_str = f"{reservation_date_str} {reservation_time_str}"
-        
-        # Naive datetime 객체 생성 후 한국 시간대(KST)로 로컬라이즈
-        naive_start = datetime.datetime.strptime(date_time_str, "%Y-%m-%d %H:%M")
-        event_start = naive_start.replace(tzinfo=seoul_tz)
-        event_end = event_start + datetime.timedelta(minutes=30)
-        
-    except ValueError as e:
-        # 날짜 형식 파싱 실패 시 현재 시간 사용 (예외 처리)
-        st.warning(f"'{patient_name}' 환자의 날짜/시간 형식 파싱 실패: {e}. 현재 시간으로 일정을 추가합니다.")
-        event_start = datetime.datetime.now(seoul_tz)
-        event_end = event_start + datetime.timedelta(minutes=30)
-    
-    # 캘린더 이벤트 요약(summary)을 새로운 형식으로 변경
-    summary_text = f'내원예정: {patient_name} ({department}, {doctor_name})' if doctor_name else f'내원예정: {patient_name} ({department})'
-
-    event = {
-        'summary': summary_text,
-        'location': f'진료번호: {pid}',
-        'description': f'환자명: {patient_name}\n진료번호: {pid}\n등록 과: {department}\n진료내역: {treatment_details}',
-        'start': {
-            'dateTime': event_start.isoformat(),
-            'timeZone': 'Asia/Seoul',
-        },
-        'end': {
-            'dateTime': event_end.isoformat(),
-            'timeZone': 'Asia/Seoul',
-        },
-    }
-    
-    try:
-        event = service.events().insert(calendarId='primary', body=event).execute()
-        st.success(f"'{patient_name}' 환자 내원 일정이 캘린더에 추가되었습니다.")
-    except HttpError as error:
-        st.error(f"캘린더 이벤트 생성 중 오류 발생: {error}")
-        st.warning("구글 캘린더 인증 권한을 다시 확인해주세요.")
-    except Exception as e:
-        st.error(f"알 수 없는 오류 발생: {e}")
+    return build('calendar', 'v3', credentials=creds)
 
 #4. Excel Processing Constants and Functions
 # --- 엑셀 처리 관련 상수 및 함수 ---
