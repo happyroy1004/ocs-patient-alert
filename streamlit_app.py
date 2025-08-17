@@ -976,25 +976,38 @@ if is_admin_input:
                                         service = build('calendar', 'v3', credentials=creds)
                                         if not df_matched.empty:
                                             for _, row in df_matched.iterrows():
-                                                # 날짜와 시간을 가져와 앞뒤 공백을 제거합니다.
-                                                reservation_date = row.get('예약일시', '').strip()
-                                                reservation_time = row.get('예약시간', '').strip()
+                                                patient_name = row.get('환자명', '')
+                                                patient_pid = row.get('진료번호', '')
+                                                department = row.get('등록과', '')
+
+                                                # 엑셀에서 날짜와 시간을 가져와 앞뒤 공백을 제거합니다.
+                                                reservation_date = str(row.get('예약일시', '')).strip()
+                                                reservation_time = str(row.get('예약시간', '')).strip()
+
+                                                # 날짜 또는 시간 데이터가 비어 있는지 먼저 확인
+                                                if not reservation_date or not reservation_time:
+                                                    st.warning(f"⚠️ {patient_name} 환자의 날짜/시간 데이터가 비어 있습니다. 일정 추가를 건너뜁니다.")
+                                                    continue
 
                                                 try:
-                                                    # 날짜 또는 시간 데이터가 비어 있는지 확인
-                                                    if not reservation_date or not reservation_time:
-                                                        raise ValueError("날짜 또는 시간 데이터가 비어 있습니다.")
-
-                                                    # 결합하여 datetime 객체 생성
+                                                    # '/' 형식을 먼저 시도합니다.
                                                     reservation_datetime = datetime.datetime.strptime(
                                                         f"{reservation_date} {reservation_time}",
                                                         '%Y/%m/%d %H:%M'
                                                     )
-                                                    st.write(f"✅ {row.get('환자명', '')} 환자: 날짜/시간 파싱 성공 -> {reservation_datetime}")
+                                                    st.write(f"✅ {patient_name} 환자: '/' 형식 파싱 성공 -> {reservation_datetime}")
 
-                                                except ValueError as e:
-                                                    st.warning(f"❌ {row.get('환자명', '')} 환자의 날짜/시간 형식 파싱 실패: {e}. 현재 시간으로 일정을 추가합니다.")
-                                                    reservation_datetime = datetime.datetime.now()
+                                                except ValueError:
+                                                    # 실패하면 '-' 형식을 시도합니다.
+                                                    try:
+                                                        reservation_datetime = datetime.datetime.strptime(
+                                                            f"{reservation_date} {reservation_time}",
+                                                            '%Y-%m-%d %H:%M'
+                                                        )
+                                                        st.write(f"✅ {patient_name} 환자: '-' 형식 파싱 성공 -> {reservation_datetime}")
+                                                    except ValueError as e:
+                                                        st.error(f"❌ {patient_name} 환자의 날짜/시간 형식 파싱 실패: {e}. 일정 추가를 건너뜁니다.")
+                                                        continue # 다음 행으로 넘어감
 
                                                 doctor_name = row.get('예약의사', '')
                                                 treatment_details = row.get('진료내역', '')
@@ -1002,9 +1015,9 @@ if is_admin_input:
                                                 # datetime 객체 하나만 전달
                                                 create_calendar_event(
                                                     service,
-                                                    row.get('환자명', ''),
-                                                    row.get('진료번호', ''),
-                                                    row.get('등록과', ''),
+                                                    patient_name,
+                                                    patient_pid,
+                                                    department,
                                                     reservation_datetime,
                                                     doctor_name,
                                                     treatment_details
