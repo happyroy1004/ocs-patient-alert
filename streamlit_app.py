@@ -692,8 +692,6 @@ if 'current_firebase_key' not in st.session_state:
     st.session_state.current_firebase_key = ""
 if 'current_user_name' not in st.session_state:
     st.session_state.current_user_name = ""
-if 'email_change_mode' not in st.session_state:
-    st.session_state.email_change_mode = False
 
 # --- 사용 설명서 PDF 다운로드 버튼 ---
 pdf_file_path = "manual.pdf"
@@ -715,6 +713,7 @@ with st.container():
     user_name = st.text_input("사용자 이름을 입력하세요 (예: 홍길동)")
     password_input = st.text_input("비밀번호를 입력하세요", type="password")
     
+    # user_name 변수가 정의된 후에 is_admin_input을 정의
     is_admin_input = (user_name.strip().lower() == "admin")
     
     login_button = st.button("로그인")
@@ -757,8 +756,8 @@ if login_button:
                         break
         
         if not found:
-            # 새로운 사용자 등록
-            new_email = ""
+            # 새로운 사용자 등록 로직 (기존과 동일)
+            new_email = "" 
             new_firebase_key = sanitize_path(user_name) if user_name else ""
             if new_firebase_key:
                 users_ref.child(new_firebase_key).set({
@@ -772,25 +771,11 @@ if login_button:
                 st.session_state.current_user_name = user_name
                 st.session_state.logged_in = True
                 st.success(f"새로운 사용자 **{user_name}**이(가) 등록되었습니다. 초기 비밀번호는 **1234**입니다.")
-
 # 로그인 상태에 따라 다른 화면 표시
 if st.session_state.logged_in:
     st.markdown("---")
     st.success("로그인 성공! 이제 나머지 기능을 이용할 수 있습니다.")
     
-    # 두 개의 탭 생성
-    excel_processor_tab, analysis_tab = st.tabs(['💻 Excel File Processor', '📈 OCS 분석 결과'])
-    
-    # --- 엑셀 파일 프로세서 탭의 내용 (여기에 기존 코드를 모두 옮겨주세요) ---
-    with excel_processor_tab:
-        st.header("환자 등록 및 관리")
-        st.write("여기에 '진료내역까지 캘박 완료!!!.txt' 파일에 해당하는 기존 탭 코드를 붙여넣으세요.")
-        
-    # --- OCS 분석 결과 탭의 내용 (여기에 기존 코드를 모두 옮겨주세요) ---
-    with analysis_tab:
-        st.header("OCS 분석 결과")
-        st.write("여기에 기존 OCS 분석 결과를 시각화하는 코드를 붙여넣으세요.")
-        
     # 비밀번호 수정 기능 추가
     st.subheader("비밀번호 수정")
     new_password = st.text_input("새로운 비밀번호를 입력하세요", type="password")
