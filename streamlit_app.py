@@ -429,20 +429,20 @@ def create_calendar_event(service, patient_name, pid, department, reservation_da
     """
     seoul_tz = datetime.timezone(datetime.timedelta(hours=9))
 
-    for index, row in patient_df.iterrows():
-    try:
-        # 캘린더 이벤트 생성
-        create_calendar_event(
-            service=service,
-            patient_name=row['환자명'],
-            pid=row['진료번호'],
-            department=sheet_name,
-            # 엑셀의 '예약날짜' 컬럼에서 값을 가져와 사용합니다.
-            reservation_date_str=row['예약날짜'],
-            # 엑셀의 '예약시간' 컬럼에서 값을 가져와 사용합니다.
-            reservation_time_str=row['예약시간'],
-            doctor_name=row['예약의사'],
-            treatment_details=row['진료내역']
+for index, row in patient_df.iterrows():
+try:
+    # 캘린더 이벤트 생성
+    create_calendar_event(
+        service=service,
+        patient_name=row['환자명'],
+        pid=row['진료번호'],
+        department=sheet_name,
+        # 엑셀의 '예약날짜' 컬럼에서 값을 가져와 사용합니다.
+        reservation_date_str=row['예약날짜'],
+        # 엑셀의 '예약시간' 컬럼에서 값을 가져와 사용합니다.
+        reservation_time_str=row['예약시간'],
+        doctor_name=row['예약의사'],
+        treatment_details=row['진료내역']
         )
     except Exception as e:
         st.error(f"'{row['환자명']}' 환자의 캘린더 이벤트 생성 중 오류 발생: {e}")
