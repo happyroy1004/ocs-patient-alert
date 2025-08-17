@@ -738,6 +738,8 @@ if 'user_password' not in st.session_state:
     st.session_state.user_password = ""
 if 'login_success' not in st.session_state:
     st.session_state.login_success = False
+if 'google_calendar_permission' not in st.session_state:
+    st.session_state.google_calendar_permission = False
 
 # --- User and Admin Login and User Management ---
 # 사용 설명서 PDF 다운로드 버튼 추가
@@ -778,6 +780,7 @@ if user_name and not is_admin_input and not st.session_state.email_change_mode:
                 st.session_state.current_firebase_key = user_firebase_key
                 st.session_state.current_user_name = user_name
                 st.session_state.user_password = password
+                st.session_state.google_calendar_permission = user_info.get("google_calendar_permission", False)
                 st.session_state.login_success = True
                 st.success(f"**{user_name}**님으로 로그인되었습니다. 이메일 주소: **{st.session_state.found_user_email}**")
             else:
@@ -861,7 +864,8 @@ if st.session_state.email_change_mode:
                 users_ref.child(new_firebase_key).update({
                     "name": user_name,
                     "email": new_email,
-                    "password": "1234" # 기본 비밀번호 설정
+                    "password": "1234", # 기본 비밀번호 설정
+                    "google_calendar_permission": False # 기본값 설정
                 })
                 st.session_state.current_firebase_key = new_firebase_key
                 st.session_state.found_user_email = new_email
@@ -871,6 +875,15 @@ if st.session_state.email_change_mode:
         else:
             st.error("올바른 이메일 주소 형식이 아닙니다.")
 
+# Google 캘린더 권한 허용 기능
+if st.session_state.login_success and not st.session_state.google_calendar_permission:
+    if st.button("Google 캘린더 권한 허용"):
+        user_ref = users_ref.child(st.session_state.current_firebase_key)
+        user_ref.update({"google_calendar_permission": True})
+        st.session_state.google_calendar_permission = True
+        st.success("Google 캘린더 연동 권한이 성공적으로 허용되었습니다.")
+        st.rerun()
+        
 #7. Admin Mode Functionality
 # --- Admin 모드 로그인 처리 ---
 if is_admin_input:
