@@ -968,7 +968,7 @@ if is_admin_input:
                                 else:
                                     st.warning(f"**{user_match_info['name']}**님에게 보낼 매칭 데이터가 없습니다.")
 
-with calendar_col:
+                    with calendar_col:
                         if st.button("Google Calendar 일정 추가"):
                             for user_match_info in matched_users:
                                 user_safe_key = user_match_info['safe_key']
