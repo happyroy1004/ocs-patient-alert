@@ -419,7 +419,7 @@ def get_google_calendar_service(user_id_safe):
         db.reference(f"users/{user_id_safe}/google_creds").delete()
         return None
 
-def create_calendar_event(service, patient_name, pid, department, reservation_date_str, reservation_time_str, doctor_name, treatment_details):
+def create_calendar_event(service, patient_name, pid, department, reservation_datetime_str, doctor_name, treatment_details):
     """
     Google Calendar에 이벤트를 생성합니다. 예약 날짜와 시간을 기반으로 30분 일정을 만들고 의사 이름과 진료내역을 추가합니다.
     """
@@ -427,7 +427,7 @@ def create_calendar_event(service, patient_name, pid, department, reservation_da
 
     # 예약 날짜와 시간을 사용하여 이벤트 시작/종료 시간 설정
     try:
-        date_time_str = f"{reservation_date_str} {reservation_time_str}"
+        date_time_str = reservation_datetime_str
         
         # Naive datetime 객체 생성 후 한국 시간대(KST)로 로컬라이즈
         naive_start = datetime.datetime.strptime(date_time_str, "%Y-%m-%d %H:%M")
@@ -961,7 +961,7 @@ if is_admin_input:
                                                 # 엑셀 파일에 '예약의사' 컬럼이 있다고 가정합니다.
                                                 doctor_name = row.get('예약의사', '')
                                                 treatment_details = row.get('진료내역', '')
-                                                create_calendar_event(service, excel_patient_name, excel_patient_pid, excel_sheet_department, reservation_date, reservation_time, doctor_name, treatment_details)
+                                                create_calendar_event(service, patient_name, excel_patient_pid, excel_sheet_department, full_datetime_str, doctor_name, treatment_details)
                                         st.success(f"**{user_name}**님의 캘린더에 일정을 추가했습니다.")
                                     except Exception as e:
                                         st.error(f"**{user_name}**님의 캘린더 일정 추가 실패: {e}")
