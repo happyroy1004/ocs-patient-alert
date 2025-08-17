@@ -679,7 +679,6 @@ if 'google_creds' not in st.session_state:
 
 users_ref = db.reference("users")
 
-
 #6. User and Admin Login and User Management
 # --- 사용 설명서 PDF 다운로드 버튼 추가 ---
 pdf_file_path = "manual.pdf"
@@ -727,7 +726,7 @@ if user_name and password_input and not is_admin_input and not st.session_state.
         st.session_state.user_id_input_value = ""
         st.session_state.current_firebase_key = ""
         st.session_state.current_user_name = ""
-    else:
+    elif user_name:
         st.error("사용자 이름 또는 비밀번호가 일치하지 않습니다.")
         st.session_state.found_user_email = ""
         st.session_state.user_id_input_value = ""
@@ -799,7 +798,6 @@ if not is_admin_input:
                     st.success("🎉 비밀번호가 성공적으로 변경되었습니다!")
                 except Exception as e:
                     st.error(f"비밀번호 변경 중 오류가 발생했습니다: {e}")
-
 
 #7. Admin Mode Functionality
 # --- Admin 모드 로그인 처리 ---
