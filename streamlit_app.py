@@ -903,7 +903,7 @@ if is_admin_input:
                                 excel_patient_pid = excel_row["진료번호"].strip().zfill(8)
                                 reservation_date_excel = excel_row.get('예약일시', '')
                                 reservation_time_excel = excel_row.get('예약시간', '')
-                                
+                                department = excel_row["진료과"].strip()
                                 for registered_patient in registered_patients_data:
                                     if (registered_patient["환자명"] == excel_patient_name and
                                             registered_patient["진료번호"] == excel_patient_pid and
