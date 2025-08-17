@@ -756,32 +756,36 @@ def load_google_creds_from_firebase(user_id_safe):
 
 # Google Calendar API 인증 서비스 함수
 def get_google_calendar_service(user_id_safe):
+    SCOPES = ["https://www.googleapis.com/auth/calendar.events"]
     creds = st.session_state.get(f"google_creds_{user_id_safe}")
     if not creds:
         creds = load_google_creds_from_firebase(user_id_safe)
         if creds:
             st.session_state[f"google_creds_{user_id_safe}"] = creds
 
-    if not creds:
-        client_config = {
-            "web": {
-                "client_id": st.secrets["google_calendar"]["client_id"],
-                "client_secret": st.secrets["google_calendar"]["client_secret"],
-                "redirect_uris": [st.secrets["google_calendar"]["redirect_uri"]],
-                "auth_uri": "https://accounts.google.com/o/oauth2/auth",
-                "token_uri": "https://oauth2.googleapis.com/token",
-                "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs"
+    if not creds or not creds.valid:
+        if creds and creds.expired and creds.refresh_token:
+            try:
+                creds.refresh(Request())
+            except:
+                creds = None
+        
+        if not creds:
+            client_config = {
+                "web": {
+                    "client_id": st.secrets["google_calendar"]["client_id"],
+                    "client_secret": st.secrets["google_calendar"]["client_secret"],
+                    "redirect_uris": [st.secrets["google_calendar"]["redirect_uri"]],
+                    "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+                    "token_uri": "https://oauth2.googleapis.com/token",
+                    "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs"
+                }
             }
-        }
-        flow = InstalledAppFlow.from_client_config(client_config, SCOPES, redirect_uri=st.secrets["google_calendar"]["redirect_uri"])
-        auth_url, _ = flow.authorization_url(prompt='consent')
-        st.warning("Google Calendar 연동을 위해 인증이 필요합니다. 아래 링크를 클릭하여 권한을 부여하세요.")
-        st.markdown(f"**[Google Calendar 인증 링크]({auth_url})**")
-        return None
-
-    if creds.expired and creds.refresh_token:
-        creds.refresh(Request())
-        st.session_state[f"google_creds_{user_id_safe}"] = creds
+            flow = InstalledAppFlow.from_client_config(client_config, SCOPES, redirect_uri=st.secrets["google_calendar"]["redirect_uri"])
+            auth_url, _ = flow.authorization_url(prompt='consent')
+            st.warning("Google Calendar 연동을 위해 인증이 필요합니다. 아래 링크를 클릭하여 권한을 부여하세요.")
+            st.markdown(f"**[Google Calendar 인증 링크]({auth_url})**")
+            return None
 
     try:
         service = build('calendar', 'v3', credentials=creds)
@@ -869,7 +873,6 @@ if login_button:
         if all_users_meta:
             for safe_key, user_info in all_users_meta.items():
                 if user_info and user_info.get("name") == user_name:
-                    # Case 1: 비밀번호가 없는 기존 사용자
                     if "password" not in user_info or user_info.get("password") is None:
                         users_ref.child(safe_key).update({"password": password_input})
                         st.session_state.user_logged_in = True
@@ -880,7 +883,6 @@ if login_button:
                         st.success(f"**{user_name}**님으로 로그인되었으며, 새로운 비밀번호가 설정되었습니다.")
                         found = True
                         break
-                    # Case 2: 비밀번호가 있는 사용자
                     elif user_info.get("password") == password_input:
                         st.session_state.user_logged_in = True
                         st.session_state.found_user_email = user_info.get("email")
@@ -896,7 +898,6 @@ if login_button:
                         break
         
         if not found:
-            # 새로운 사용자 등록
             new_email = ""
             new_firebase_key = sanitize_path(user_name) if user_name else ""
             if new_firebase_key:
@@ -912,7 +913,6 @@ if login_button:
                 st.session_state.logged_in = True
                 st.success(f"새로운 사용자 **{user_name}**이(가) 등록되었습니다. 초기 비밀번호는 **1234**입니다.")
         
-        # Admin 계정 특별 처리
         if is_admin_input and password_input == st.secrets["admin"]["password"]:
             st.session_state.logged_in_as_admin = True
             st.session_state.current_user_name = "admin"
@@ -926,32 +926,44 @@ if st.session_state.logged_in:
     st.markdown("---")
     st.success(f"로그인 성공! ({st.session_state.current_user_name}님)")
 
-    # 탭 생성
     patient_tab, analysis_tab = st.tabs(['환자 등록', '📈 OCS 분석 결과'])
     
     with patient_tab:
-        # 환자 등록 코드
         st.header("환자 등록 및 관리")
         
         st.markdown("---")
         
-        # 등록된 환자 정보 표시 (환자 정보, 진료번호, 등록 과)
         patients_ref_for_user = db.reference(f"patients/{st.session_state.current_firebase_key}")
         existing_patient_data = patients_ref_for_user.get()
 
         if existing_patient_data:
             st.markdown("#### 등록된 환자")
+            
+            # 정렬 순서 정의
+            department_order = ['소치', '보철', '치주', '내과', '외과', '교정', '원진실', '보존']
+            order_map = {dept: i for i, dept in enumerate(department_order)}
+            
+            # 데이터 정렬
+            sorted_patients = sorted(
+                existing_patient_data.items(),
+                key=lambda item: (order_map.get(item[1].get('등록과', '기타'), len(department_order)), item[1].get('환자명', ''))
+            )
+            
             # 반응형 3단 레이아웃
             columns = st.columns([1, 1, 1])
             col_idx = 0
             
-            for key, val in existing_patient_data.items():
+            for key, val in sorted_patients:
                 with columns[col_idx]:
-                    # 원래 레이아웃으로 변경
-                    st.markdown(f"**{val.get('환자명', '미정')}** / {val.get('진료번호', '미정')} / {val.get('등록과', '미정')}")
-                    if st.button("X", key=f"delete_button_{key}"):
-                        patients_ref_for_user.child(key).delete()
-                        st.rerun()
+                    # 박스로 둘러싸인 레이아웃 적용
+                    with st.container(border=True):
+                        info_col, btn_col = st.columns([3, 1])
+                        with info_col:
+                            st.markdown(f"**{val.get('환자명', '미정')}** / {val.get('진료번호', '미정')} / {val.get('등록과', '미정')}")
+                        with btn_col:
+                            if st.button("X", key=f"delete_button_{key}"):
+                                patients_ref_for_user.child(key).delete()
+                                st.rerun()
                 col_idx = (col_idx + 1) % 3
         else:
             st.info("등록된 환자가 없습니다.")
@@ -964,7 +976,6 @@ if st.session_state.logged_in:
             name = st.text_input("환자명")
             pid = st.text_input("진료번호")
             
-            # 여기서 sheet_keyword_to_department_map을 정의해야 함
             sheet_keyword_to_department_map = {
                 '소치': '소치', '소아치과': '소치', '소아 치과': '소치',
                 '내과': '내과', '내과과': '내과',
@@ -994,10 +1005,8 @@ if st.session_state.logged_in:
                     st.rerun()
                     
     with analysis_tab:
-        # 기존 OCS 분석 결과 탭의 코드를 여기에 붙여넣으세요.
         st.header("📈 OCS 분석 결과")
         
-        # Firebase에서 최신 OCS 분석 결과 로드
         all_analysis_data = db.reference("ocs_analysis").get()
         if all_analysis_data:
             latest_date_key = sorted([k for k in all_analysis_data.keys() if k != 'latest_file_name'], reverse=True)[0]
@@ -1007,7 +1016,6 @@ if st.session_state.logged_in:
             st.markdown(f"**<h3 style='text-align: left;'>{latest_file_name} 분석 결과</h3>**", unsafe_allow_html=True)
             st.markdown("---")
             
-            # 소아치과 현황
             if '소치' in analysis_results:
                 st.subheader("소아치과 현황 (단타)")
                 st.info(f"오전: **{analysis_results['소치']['오전']}명**")
@@ -1016,7 +1024,6 @@ if st.session_state.logged_in:
                 st.warning("소아치과 데이터가 엑셀 파일에 없습니다.")
             st.markdown("---")
             
-            # 보존과 현황
             if '보존' in analysis_results:
                 st.subheader("보존과 현황 (단타)")
                 st.info(f"오전: **{analysis_results['보존']['오전']}명**")
@@ -1025,7 +1032,6 @@ if st.session_state.logged_in:
                 st.warning("보존과 데이터가 엑셀 파일에 없습니다.")
             st.markdown("---")
 
-            # 교정과 현황 (Bonding)
             if '교정' in analysis_results:
                 st.subheader("교정과 현황 (Bonding)")
                 st.info(f"오전: **{analysis_results['교정']['오전']}명**")
@@ -1036,14 +1042,12 @@ if st.session_state.logged_in:
         else:
             st.info("💡 분석 결과가 없습니다. 엑셀 파일을 업로드하면 표시됩니다.")
         
-    # 비밀번호 수정 기능 추가
     st.subheader("비밀번호 수정")
     new_password = st.text_input("새로운 비밀번호를 입력하세요", type="password")
     confirm_password = st.text_input("새로운 비밀번호를 다시 입력하세요", type="password")
     
     if st.button("비밀번호 변경"):
         if new_password and new_password == confirm_password:
-            # 관리자 계정 비밀번호는 secrets.toml에서 직접 변경
             if st.session_state.logged_in_as_admin:
                 st.error("관리자 계정 비밀번호는 secrets.toml 파일에서 직접 수정해주세요.")
             else:
@@ -1052,17 +1056,14 @@ if st.session_state.logged_in:
         else:
             st.error("새로운 비밀번호가 일치하지 않습니다.")
             
-    # 이메일 관리 기능 추가 (로그인 후)
     if not st.session_state.logged_in_as_admin:
         st.markdown("---")
         st.subheader("이메일 주소 관리")
         
-        # 이메일 입력/변경 필드
         if st.session_state.email_change_mode or not st.session_state.found_user_email:
             st.info("이메일 주소를 등록해주세요.")
             user_id_input = st.text_input("아이디를 입력하세요 (예: example@gmail.com)", value=st.session_state.user_id_input_value)
             
-            # user_id_input의 변경을 감지하여 세션 상태 업데이트
             if user_id_input != st.session_state.user_id_input_value:
                 st.session_state.user_id_input_value = user_id_input
             
@@ -1077,7 +1078,7 @@ if st.session_state.logged_in:
                         users_ref.child(new_firebase_key).set({
                             "name": st.session_state.current_user_name,
                             "email": new_email,
-                            "password": password_input # 로그인 시 사용한 비밀번호
+                            "password": password_input
                         })
                     
                     st.session_state.found_user_email = new_email
@@ -1090,8 +1091,6 @@ if st.session_state.logged_in:
             if st.button("이메일 주소 변경"):
                 st.session_state.email_change_mode = True
                 st.rerun()
-
-
 
 #7. Admin Mode Functionality
 # --- Admin 모드 로그인 처리 ---
