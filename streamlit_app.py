@@ -1185,6 +1185,31 @@ if is_admin_input:
                 st.rerun()
             else:
                 st.warning("삭제할 사용자를 선택해주세요.")
+
+        if st.button("선택한 사용자 삭제"):
+            if users_to_delete:
+                # 확인 대화 상자 추가
+                st.warning("정말로 선택한 사용자를 삭제하시겠습니까? 이 작업은 되돌릴 수 없습니다.")
+                col1, col2 = st.columns(2)
+                with col1:
+                    if st.button("예, 삭제합니다"):
+                        for user_to_del_str in users_to_delete:
+                            match = re.search(r'\((.*?)\)', user_to_del_str)
+                            if match:
+                                email_to_del = match.group(1)
+                                safe_key_to_del = sanitize_path(email_to_del)
+                                # Firebase Realtime Database에서 데이터 삭제
+                                db.reference(f"users/{safe_key_to_del}").delete()
+                                db.reference(f"patients/{safe_key_to_del}").delete()
+                        
+                        st.success(f"사용자 {', '.join(users_to_delete)} 삭제 완료.")
+                        st.rerun()
+                with col2:
+                    st.button("아니오, 취소합니다")
+            else:
+                st.warning("삭제할 사용자를 선택해주세요.")
+
+
 #8. Regular User Mode
 # --- 일반 사용자 모드 ---
 else:
