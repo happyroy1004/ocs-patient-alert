@@ -1171,20 +1171,6 @@ if is_admin_input:
         st.markdown("---")
         st.subheader("🗑️ 사용자 삭제")
         users_to_delete = st.multiselect("삭제할 사용자 선택", user_list_for_dropdown, key="delete_user_multiselect")
-        if st.button("선택한 사용자 삭제"):
-            if users_to_delete:
-                for user_to_del_str in users_to_delete:
-                    match = re.search(r'\((.*?)\)', user_to_del_str)
-                    if match:
-                        email_to_del = match.group(1)
-                        safe_key_to_del = sanitize_path(email_to_del)
-                        
-                        db.reference(f"users/{safe_key_to_del}").delete()
-                        db.reference(f"patients/{safe_key_to_del}").delete()
-                st.success(f"사용자 {user_to_del_str} 삭제 완료.")
-                st.rerun()
-            else:
-                st.warning("삭제할 사용자를 선택해주세요.")
 
         if st.button("선택한 사용자 삭제"):
             if users_to_delete:
