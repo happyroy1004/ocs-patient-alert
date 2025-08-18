@@ -550,7 +550,7 @@ def process_excel_file_and_style(file_bytes_io):
                 break
 
         if not sheet_key:
-            st.warning(f"시트 '{sheet_name_raw}'을(를) 인식할 수 없습니다. 건너킵니다.")
+            st.warning(f"시트 '{sheet_name_raw}'을(를) 인식할 수 없습니다. 건너뜁니다.")
             continue
 
         ws = wb_raw[sheet_name_raw]
@@ -712,10 +712,10 @@ if user_name and not is_admin_input and not st.session_state.email_change_mode:
                 st.session_state.user_id_input_value = matched_user["email"]
                 st.session_state.current_firebase_key = matched_user["safe_key"]
                 st.session_state.current_user_name = user_name
-                st.info(f"**{user_name}**님으로 로그인되었습니다. 기존 사용자이므로 초기 비밀번호 **1234**가 설정되었습니다.")
+                st.info(f"**{user_name}**님으로 로그인되었습니다. 기존 사용자이므로 초기 비밀번호 1234가 설정되었습니다.")
                 users_ref.child(matched_user["safe_key"]).update({"password": "1234"})
             else:
-                st.error("비밀번호가 일치하지 않습니다. 기존 사용자의 초기 비밀번호는 **'1234'**입니다. 다시 시도해주세요.")
+                st.error("비밀번호가 일치하지 않습니다. 기존 사용자의 초기 비밀번호는 '1234'입니다. 다시 시도해주세요.")
                 st.session_state.found_user_email = ""
                 st.session_state.user_id_input_value = ""
                 st.session_state.current_firebase_key = ""
@@ -1043,37 +1043,7 @@ if is_admin_input:
                                         
                                     except Exception as e:
                                         st.error(f"**{user_name}**님의 캘린더 일정 추가 실패: {e}")
-                                else:
-                                    # If credentials are not found, send an email with the authorization link
-                                    client_config = {
-                                        "web": {
-                                            "client_id": st.secrets["google_calendar"]["client_id"],
-                                            "client_secret": st.secrets["google_calendar"]["client_secret"],
-                                            "redirect_uris": [st.secrets["google_calendar"]["redirect_uri"]],
-                                            "auth_uri": "https://accounts.google.com/o/oauth2/auth",
-                                            "token_uri": "https://oauth2.googleapis.com/token",
-                                            "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs"
-                                        }
-                                    }
-                                    flow = InstalledAppFlow.from_client_config(client_config, SCOPES, redirect_uri=st.secrets["google_calendar"]["redirect_uri"])
-                                    auth_url, _ = flow.authorization_url(prompt='consent')
-                                    
-                                    custom_message = f"""
-                                        안녕하세요, {user_name}님.<br><br>
-                                        환자 내원 확인 시스템의 구글 캘린더 연동을 위해 인증이 필요합니다.<br>
-                                        아래 링크를 클릭하여 권한을 부여해주세요.<br><br>
-                                        **<a href="{auth_url}">Google Calendar 인증 링크</a>**<br><br>
-                                        감사합니다.
-                                    """
-                                    sender = st.secrets["gmail"]["sender"]
-                                    sender_pw = st.secrets["gmail"]["app_password"]
-                                    result = send_email(user_email, pd.DataFrame(), sender, sender_pw, custom_message=custom_message)
 
-                                    if result is True:
-                                        st.success(f"**{user_name}**님 ({user_email})께 캘린더 권한 설정을 위한 메일 전송 완료!")
-                                    else:
-                                        st.error(f"**{user_name}**님 ({user_email})께 메일 전송 실패: {result}")
-                                
                 else:
                     st.info("엑셀 파일 처리 완료. 매칭된 환자가 없습니다.")
                     
