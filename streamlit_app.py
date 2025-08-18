@@ -1184,6 +1184,7 @@ if is_admin_input:
                             if match:
                                 email_to_del = match.group(1)
                                 safe_key_to_del = sanitize_path(email_to_del)
+                                
                                 # Firebase Realtime Database에서 데이터 삭제
                                 db.reference(f"users/{safe_key_to_del}").delete()
                                 db.reference(f"patients/{safe_key_to_del}").delete()
