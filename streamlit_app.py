@@ -1062,14 +1062,14 @@ if is_admin_input:
 
     with analysis_tab:
         st.header("📈 OCS 분석 결과")
-
+    
         # Firebase에서 최신 OCS 분석 결과 로드
         all_analysis_data = db.reference("ocs_analysis").get()
         if all_analysis_data:
             latest_date_ref = db.reference("ocs_analysis/latest_date")
             latest_file_name_ref = db.reference("ocs_analysis/latest_file_name")
             latest_result_ref = db.reference("ocs_analysis/latest_result")
-
+    
             latest_date = latest_date_ref.get()
             latest_file_name = latest_file_name_ref.get()
             analysis_results = latest_result_ref.get()
@@ -1095,7 +1095,7 @@ if is_admin_input:
                 else:
                     st.warning("보존과 데이터가 엑셀 파일에 없습니다.")
                 st.markdown("---")
-
+    
                 # 교정과 현황 (Bonding)
                 if '교정' in analysis_results:
                     st.subheader("교정과 현황 (Bonding)")
@@ -1108,38 +1108,38 @@ if is_admin_input:
                 st.info("💡 분석 결과가 없습니다. 엑셀 파일을 업로드하면 표시됩니다.")
         else:
             st.info("💡 분석 결과가 없습니다. 엑셀 파일을 업로드하면 표시됩니다.")
-
+    
     st.markdown("---")
     st.subheader("🛠️ Administer password")
     admin_password_input = st.text_input("관리자 비밀번호를 입력하세요", type="password", key="admin_password")
-
+    
     try:
         secret_admin_password = st.secrets["admin"]["password"]
     except KeyError:
         secret_admin_password = None
         st.error("⚠️ secrets.toml 파일에 'admin.password' 설정이 없습니다. 개발자에게 문의하세요.")
-    
+        
     if admin_password_input and admin_password_input == secret_admin_password:
         st.session_state.admin_password_correct = True
         st.success("관리자 권한이 활성화되었습니다.")
     elif admin_password_input and admin_password_input != secret_admin_password:
         st.error("비밀번호가 틀렸습니다.")
         st.session_state.admin_password_correct = False
-    
+        
     if st.session_state.admin_password_correct:
         st.markdown("---")
         st.subheader("📦 메일 발송")
         
         all_users_meta = users_ref.get()
-        user_list_for_dropdown = [f"{user_info.get('name', '이름 없음')} ({user_info.get('email', '이메일 없음')})" 
-                                        for user_info in (all_users_meta.values() if all_users_meta else [])]
+        user_list_for_dropdown = [f"{user_info.get('name', '이름 없음')} ({user_info.get('email', '이메일 없음')})"
+                                    for user_info in (all_users_meta.values() if all_users_meta else [])]
         
         select_all_users_button = st.button("모든 사용자 선택/해제", key="select_all_btn")
         if select_all_users_button:
             st.session_state.select_all_users = not st.session_state.select_all_users
-
+    
         default_selection = user_list_for_dropdown if st.session_state.select_all_users else []
-
+    
         selected_users_for_mail = st.multiselect("보낼 사용자 선택", user_list_for_dropdown, default=default_selection, key="mail_multiselect")
         
         custom_message = st.text_area("보낼 메일 내용", height=200)
@@ -1170,32 +1170,51 @@ if is_admin_input:
         
         st.markdown("---")
         st.subheader("🗑️ 사용자 삭제")
-        users_to_delete = st.multiselect("삭제할 사용자 선택", user_list_for_dropdown, key="delete_user_multiselect")
-
-        if st.button("선택한 사용자 삭제"):
-            if users_to_delete:
-                # 확인 대화 상자 추가
-                st.warning("정말로 선택한 사용자를 삭제하시겠습니까? 이 작업은 되돌릴 수 없습니다.")
-                col1, col2 = st.columns(2)
-                with col1:
-                    if st.button("예, 삭제합니다"):
-                        for user_to_del_str in users_to_delete:
-                            match = re.search(r'\((.*?)\)', user_to_del_str)
-                            if match:
-                                email_to_del = match.group(1)
-                                safe_key_to_del = sanitize_path(email_to_del)
-                                
-                                # Firebase Realtime Database에서 데이터 삭제
-                                db.reference(f"users/{safe_key_to_del}").delete()
-                                db.reference(f"patients/{safe_key_to_del}").delete()
-                        
-                        st.success(f"사용자 {', '.join(users_to_delete)} 삭제 완료.")
-                        st.rerun()
-                with col2:
-                    st.button("아니오, 취소합니다")
-            else:
-                st.warning("삭제할 사용자를 선택해주세요.")
-
+        
+        # 세션 상태 초기화
+        if 'delete_confirm' not in st.session_state:
+            st.session_state.delete_confirm = False
+        if 'users_to_delete' not in st.session_state:
+            st.session_state.users_to_delete = []
+    
+        # 삭제 확인 상태에 따라 다른 UI 표시
+        if not st.session_state.delete_confirm:
+            users_to_delete = st.multiselect("삭제할 사용자 선택", user_list_for_dropdown, key="delete_user_multiselect")
+            if st.button("선택한 사용자 삭제"):
+                if users_to_delete:
+                    # 상태 변경 및 선택된 사용자 저장
+                    st.session_state.delete_confirm = True
+                    st.session_state.users_to_delete = users_to_delete
+                    st.rerun()
+                else:
+                    st.warning("삭제할 사용자를 선택해주세요.")
+        else:
+            st.warning("정말로 선택한 사용자를 삭제하시겠습니까? 이 작업은 되돌릴 수 없습니다.")
+            col1, col2 = st.columns(2)
+            with col1:
+                if st.button("예, 삭제합니다"):
+                    for user_to_del_str in st.session_state.users_to_delete:
+                        match = re.search(r'\((.*?)\)', user_to_del_str)
+                        if match:
+                            email_to_del = match.group(1)
+                            safe_key_to_del = sanitize_path(email_to_del)
+                            
+                            # Firebase Realtime Database에서 데이터 삭제
+                            db.reference(f"users/{safe_key_to_del}").delete()
+                            db.reference(f"patients/{safe_key_to_del}").delete()
+                    
+                    st.success(f"사용자 {', '.join(st.session_state.users_to_delete)} 삭제 완료.")
+                    
+                    # 상태 초기화 및 재실행
+                    st.session_state.delete_confirm = False
+                    st.session_state.users_to_delete = []
+                    st.rerun()
+            with col2:
+                if st.button("아니오, 취소합니다"):
+                    # 상태 초기화 및 재실행
+                    st.session_state.delete_confirm = False
+                    st.session_state.users_to_delete = []
+                    st.rerun()
 
 #8. Regular User Mode
 # --- 일반 사용자 모드 ---
