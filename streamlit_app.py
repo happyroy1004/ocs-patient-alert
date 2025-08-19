@@ -867,7 +867,7 @@ if st.session_state.get('login_mode') == 'user_mode' or st.session_state.get('em
                 st.error("올바른 이메일 주소 형식이 아닙니다.")
             
 #7. --- Admin 모드 로그인 처리 ---
-if is_admin_input:
+if st.session_state.get('login_mode') == 'admin_mode':
     st.session_state.logged_in_as_admin = True
     st.session_state.found_user_email = "admin"
     st.session_state.current_user_name = "admin"
