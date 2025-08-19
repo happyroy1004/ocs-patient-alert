@@ -63,6 +63,8 @@ if "current_firebase_key" not in st.session_state:
     st.session_state.current_firebase_key = ""
 if "uploaded_file" not in st.session_state:
     st.session_state.uploaded_file = None
+if "user_role" not in st.session_state: # Add user_role state
+    st.session_state.user_role = ""
 
 def get_user_data(email, password):
     """Firebase에서 사용자 데이터를 조회합니다."""
@@ -238,7 +240,12 @@ if st.session_state.auth_status == "authenticated":
                     st.success("비밀번호가 성공적으로 변경되었습니다.")
                 except Exception as e:
                     st.error(f"비밀번호 변경 중 오류가 발생했습니다: {e}")
-                    
+
+
+#3-1. App Entry Point
+if st.session_state.auth_status == "unauthenticated":
+    st.info("로그인이 필요합니다.")
+    login()
 
 #4. Excel Processing Constants and Functions
 sheet_keyword_to_department_map = {
