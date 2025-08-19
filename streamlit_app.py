@@ -945,6 +945,30 @@ if st.session_state.get('login_mode') == 'admin_mode':
     st.subheader("💻 Excel File Processor")
     uploaded_file = st.file_uploader("암호화된 Excel 파일을 업로드하세요", type=["xlsx", "xlsm"])
     
+    # 엑셀 시트명 키워드와 진료과 매핑 정의 (다양한 표기법을 통합)
+    sheet_keyword_to_department_map = {
+        '치과교정과': '치과교정과',
+        '교정과': '치과교정과',
+        '교정': '치과교정과',
+        '치과 교정과': '치과교정과',
+        '구강내과': '구강내과',
+        '내과': '구강내과',
+        '치과보존과': '치과보존과',
+        '보존과': '치과보존과',
+        '보존': '치과보존과',
+        '치과보철과': '치과보철과',
+        '보철과': '치과보철과',
+        '보철': '치과보철과',
+        '소아치과': '소아치과',
+        '소치': '소아치과',
+        '구강악안면외과': '구강악안면외과',
+        '악외과': '구강악안면외과',
+        '구악외과': '구강악안면외과',
+        '치주과': '치주과',
+        '치주': '치주과',
+        '치주과': '치주과'
+    }
+
     if uploaded_file:
         file_name = uploaded_file.name
         is_daily = is_daily_schedule(file_name)
@@ -1425,5 +1449,3 @@ if st.session_state.get('login_mode') in ['user_mode', 'new_user_registration', 
                             st.success("🎉 비밀번호가 성공적으로 변경되었습니다!")
                         except Exception as e:
                             st.error(f"비밀번호 변경 중 오류가 발생했습니다: {e}")
-
-
