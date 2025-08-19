@@ -1276,19 +1276,52 @@ if st.session_state.get('login_mode') == 'admin_mode':
                                     creds = load_google_creds_from_firebase(res['safe_key'])
                                     if creds and creds.valid and not creds.expired:
                                         service = build('calendar', 'v3', credentials=creds)
-                                        event = {
-                                            'summary': '⭐ 관리자 공지',
-                                            'description': '관리자로부터의 중요 공지 일정입니다. 자세한 내용은 이메일을 확인하세요.',
-                                            'start': {'date': datetime.date.today().isoformat()},
-                                            'end': {'date': datetime.date.today().isoformat()},
-                                        }
-                                        create_static_calendar_event(service, event)
-                                        st.success(f"**{res['name']}**님 캘린더에 공지 일정을 추가했습니다.")
+                                        
+                                        # 레지던트에게 매칭되는 환자 데이터 수집
+                                        found_matched_data = False
+                                        if excel_data_dfs:
+                                            for sheet_name_excel_raw, df_sheet in excel_data_dfs.items():
+                                                excel_sheet_name_lower = sheet_name_excel_raw.strip().lower().replace(' ', '')
+                                                excel_sheet_department = None
+                                                for keyword, department_name in sorted(sheet_keyword_to_department_map.items(), key=lambda item: len(item[0]), reverse=True):
+                                                    if keyword.lower().replace(' ', '') in excel_sheet_name_lower:
+                                                        excel_sheet_department = department_name
+                                                        break
+                                                if not excel_sheet_department:
+                                                    continue
+                                                
+                                                for _, excel_row in df_sheet.iterrows():
+                                                    excel_doctor_name_from_row = str(excel_row.get('예약의사', '')).strip().replace("'", "").replace("‘", "").replace("’", "").strip()
+                                                    if excel_doctor_name_from_row == res['name'] and excel_sheet_department == res['department']:
+                                                        found_matched_data = True
+                                                        
+                                                        # 개별 환자 일정 추가
+                                                        patient_name = excel_row.get('환자명', '이름 없음')
+                                                        pid = excel_row.get('진료번호', '번호 없음')
+                                                        department = res['department']
+                                                        reservation_datetime_str = excel_row.get('예약시간', '')
+                                                        doctor_name = res['name']
+                                                        treatment_details = excel_row.get('진료내역', '정보 없음')
+                                                        
+                                                        # 예약시간을 datetime 객체로 변환
+                                                        try:
+                                                            reservation_datetime = datetime.datetime.strptime(reservation_datetime_str, '%Y-%m-%d %H:%M:%S')
+                                                        except ValueError:
+                                                            st.warning(f"**{res['name']}** 레지던트의 '{patient_name}' 환자 예약시간 형식이 잘못되었습니다: {reservation_datetime_str}")
+                                                            continue
+                                                        
+                                                        create_calendar_event(service, patient_name, pid, department, reservation_datetime, doctor_name, treatment_details)
+                                            
+                                        if found_matched_data:
+                                            st.success(f"**{res['name']}**님 캘린더에 매칭된 모든 환자 일정을 추가했습니다.")
+                                        else:
+                                            st.warning(f"**{res['name']}** 레지던트의 매칭 데이터가 엑셀 파일에 없습니다.")
                                     else:
                                         st.warning(f"**{res['name']}**님은 Google Calendar 계정이 연동되지 않았습니다. 해당 사용자가 Google Calendar 탭에서 인증을 완료해야 합니다.")
                                 except Exception as e:
                                     st.error(f"**{res['name']}**님에게 일정 추가 실패: {e}")
 
+    
     st.markdown("---")
     st.subheader("🛠️ Administer password")
     admin_password_input = st.text_input("관리자 비밀번호를 입력하세요", type="password", key="admin_password")
