@@ -937,11 +937,12 @@ if is_admin_input:
                                     # 사용자에게 이메일 전송 (1회만 호출)
                                     try:
                                         send_email(
-                                            sender=sender,
-                                            sender_pw=sender_pw,
                                             receiver=real_email,
-                                            subject=email_subject,
-                                            body=email_body
+                                            rows=df_matched.to_dict('records'), # rows는 딕셔너리 리스트가 필요
+                                            sender=sender,
+                                            password=sender_pw,
+                                            custom_message=email_body, # 맞춤 메시지 인자로 사용
+                                            date_str=today_date_str # 날짜 정보 전달
                                         )
                                         st.success(f"**{user_name}**님 ({real_email})에게 예약 정보 이메일 전송 완료!")
                                     except Exception as e:
@@ -1109,6 +1110,7 @@ if is_admin_input:
         select_all_users_button = st.button("모든 사용자 선택/해제", key="select_all_btn")
         if select_all_users_button:
             st.session_state.select_all_users = not st.session_state.select_all_users
+            st.rerun() # 이 부분을 추가했습니다.
     
         default_selection = user_list_for_dropdown if st.session_state.select_all_users else []
     
@@ -1130,7 +1132,8 @@ if is_admin_input:
                 if email_list:
                     with st.spinner("메일 전송 중..."):
                         for email in email_list:
-                            result = send_email(sender, sender_pw, email, "알림 메일", custom_message)
+                            # 올바른 인자 순서로 send_email 함수 호출
+                            result = send_email(email, None, sender, sender_pw, None, custom_message)
                             if result is True:
                                 st.success(f"{email}로 메일 전송 완료!")
                             else:
