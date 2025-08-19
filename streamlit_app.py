@@ -701,12 +701,13 @@ if 'login_mode' not in st.session_state:
 if st.session_state.get('login_mode') not in ['user_mode', 'admin_mode', 'resident_mode', 'new_resident_registration']:
     user_name = st.text_input("사용자 이름을 입력하세요 (예시: 홍길동, admin, resident)", key="login_username")
     password_input = st.text_input("비밀번호를 입력하세요", type="password", key="login_password")
+    
+    # 🌟 변수 정의를 '로그인' 버튼 바깥으로 이동하여 항상 정의되도록 수정
+    is_admin_input = (user_name.strip().lower() == "admin")
+    is_resident_input_initial = (user_name.strip().lower() == "resident")
 
     # '로그인' 버튼을 눌러야만 로직이 실행되도록 수정
     if st.button("로그인"):
-        is_admin_input = (user_name.strip().lower() == "admin")
-        is_resident_input_initial = (user_name.strip().lower() == "resident")
-
         if not user_name:
             st.error("사용자 이름을 입력해주세요.")
             
@@ -864,7 +865,6 @@ if st.session_state.get('login_mode') == 'user_mode' or st.session_state.get('em
                 st.rerun()
             else:
                 st.error("올바른 이메일 주소 형식이 아닙니다.")
-
             
 #7. --- Admin 모드 로그인 처리 ---
 if is_admin_input:
