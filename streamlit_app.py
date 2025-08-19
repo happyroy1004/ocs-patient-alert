@@ -31,7 +31,6 @@ def is_daily_schedule(file_name):
     """
     파일명이 'ocs_MMDD.xlsx' 또는 'ocs_MMDD.xlsm' 형식인지 확인합니다.
     """
-    # 'ocs_날짜(4자리).확장자' 패턴을 찾음 (예: ocs_0815.xlsx)
     pattern = r'^ocs_\\d{4}\\.(?:xlsx|xlsm)$'
     return re.match(pattern, file_name, re.IGNORECASE) is not None
 
@@ -100,6 +99,10 @@ def show_login_page():
             st.rerun()
         else:
             st.error("사용자 이름 또는 비밀번호가 올바르지 않습니다.")
+
+
+
+#2.
 
 def show_main_page():
     # --- 사이드바 메뉴 ---
@@ -239,8 +242,10 @@ def show_main_page():
         confirm_password = st.text_input("새 비밀번호 확인", type="password")
         if st.button("비밀번호 변경 완료"):
             if new_password == confirm_password and new_password:
+                # Firebase에서 비밀번호 업데이트
+                users_ref = db.reference('users')
+                users_ref.child(st.session_state.username).update({'password': hash_password(new_password)})
                 st.success("비밀번호가 성공적으로 변경되었습니다.")
-                # 실제 비밀번호 변경 로직을 여기에 구현해야 합니다.
             else:
                 st.error("비밀번호가 일치하지 않거나 비어있습니다.")
 
@@ -261,8 +266,12 @@ def show_main_page():
         time.sleep(1)
         st.rerun()
 
+#3. 
+
 # --- 페이지 렌더링 ---
 if st.session_state.logged_in:
     show_main_page()
 else:
     show_login_page()
+
+
