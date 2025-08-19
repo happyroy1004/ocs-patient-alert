@@ -677,7 +677,6 @@ if 'google_creds' not in st.session_state:
 
 users_ref = db.reference("users")
 
-
 #6. User and Admin and Resident Login and User Management
 import os
 import streamlit as st
@@ -1199,10 +1198,9 @@ if st.session_state.get('login_mode') == 'admin_mode':
                                                 continue
                                             
                                             for _, excel_row in df_sheet.iterrows():
-                                                excel_department_from_row = excel_row.get('진료과', '').strip()
                                                 excel_doctor_name_from_row = str(excel_row.get('예약의사', '')).strip().replace("'", "").replace("‘", "").replace("’", "").strip()
                                                 
-                                                if excel_doctor_name_from_row == res['name'] and excel_department_from_row == res['department']:
+                                                if excel_doctor_name_from_row == res['name'] and excel_sheet_department == res['department']:
                                                     matched_rows_for_resident.append(excel_row.copy())
                                                 
                                     if matched_rows_for_resident:
@@ -1284,7 +1282,7 @@ if st.session_state.get('login_mode') in ['user_mode', 'new_user_registration', 
             # firebase_key가 존재할 때만 함수를 호출하도록 수정
             if firebase_key:
                 try:
-                    google_calendar_service = get_google_calendar_service(firebase_key, is_resident=True)
+                    google_calendar_service = get_google_calendar_service(firebase_key)
                     st.session_state.google_calendar_service = google_calendar_service
                 except Exception as e:
                     st.error(f"❌ Google Calendar 서비스 로딩에 실패했습니다: {e}")
@@ -1427,4 +1425,5 @@ if st.session_state.get('login_mode') in ['user_mode', 'new_user_registration', 
                             st.success("🎉 비밀번호가 성공적으로 변경되었습니다!")
                         except Exception as e:
                             st.error(f"비밀번호 변경 중 오류가 발생했습니다: {e}")
+
 
