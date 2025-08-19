@@ -1011,10 +1011,6 @@ if st.session_state.get('login_mode') == 'admin_mode':
         
         with student_admin_tab:
             st.subheader("📚 학생 관리자 모드")
-            if analysis_results:
-                st.subheader('📈 OCS 분석 결과')
-                st.info(f"분석 파일: {file_name}")
-                st.json(analysis_results)
             
             sender = st.secrets["gmail"]["sender"]
             sender_pw = st.secrets["gmail"]["app_password"]
