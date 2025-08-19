@@ -338,37 +338,36 @@ def create_calendar_event(service, patient_name, pid, department, reservation_da
 
 
 #2. User Authentication
-def get_user_data(username, password):
-    users_ref = db.reference("users")
-    users = users_ref.order_by_child("username").equal_to(username).get()
+def get_user_data(email, password):
+    safe_email = sanitize_path(email)
+    users_ref = db.reference(f"users/{safe_email}")
+    user_data = users_ref.get()
     
-    if not users:
+    if not user_data:
         return None, None
-    found_key = list(users.keys())[0]
-    user_data = users[found_key]
-
+    
     if user_data.get("password") == password:
-        return user_data, found_key
+        return user_data, safe_email
     else:
         return None, None
 
 def login():
     st.title("로그인")
     with st.form("login_form"):
-        username = st.text_input("사용자 이름", key="login_username")
+        email = st.text_input("이메일", key="login_email")
         password = st.text_input("비밀번호", type="password", key="login_password")
         submitted = st.form_submit_button("로그인")
         
         if submitted:
-            user_data, user_key = get_user_data(username, password)
+            user_data, user_key = get_user_data(email, password)
             if user_data:
                 st.session_state.auth_status = "authenticated"
-                st.session_state.current_user_email = user_data.get("email", "")
+                st.session_state.current_user_email = email
                 st.session_state.current_firebase_key = user_key
                 st.session_state.user_role = user_data.get("role", "일반 사용자")
                 st.rerun()
             else:
-                st.error("사용자 이름 또는 비밀번호가 잘못되었습니다.")
+                st.error("이메일 또는 비밀번호가 잘못되었습니다.")
 
 def logout():
     if st.button("로그아웃"):
@@ -392,8 +391,8 @@ def change_password_section():
                 st.error("새 비밀번호가 일치하지 않습니다. 다시 확인해주세요.")
             else:
                 try:
-                    users_ref = db.reference("users")
-                    users_ref.child(st.session_state.current_firebase_key).update({"password": new_password})
+                    users_ref = db.reference(f"users/{st.session_state.current_firebase_key}")
+                    users_ref.update({"password": new_password})
                     st.success("비밀번호가 성공적으로 변경되었습니다.")
                 except Exception as e:
                     st.error(f"비밀번호 변경 중 오류가 발생했습니다: {e}")
@@ -401,7 +400,7 @@ def change_password_section():
 
 #3. Main App UI and Logic
 if st.session_state.auth_status == "authenticated":
-    st.title(f"� 환영합니다, {st.session_state.current_user_email}님!")
+    st.title(f"👋 환영합니다, {st.session_state.current_user_email}님!")
     st.write(f"현재 역할: {st.session_state.user_role}")
     logout()
     
@@ -513,7 +512,6 @@ if st.session_state.auth_status == "authenticated":
     
     with tab3:
         st.header("Google Calendar 연동")
-        # 사용자 이름으로 Firebase 경로 생성
         user_id_safe = sanitize_path(st.session_state.current_user_email)
         service = get_google_calendar_service(user_id_safe)
         
@@ -643,4 +641,3 @@ if st.session_state.auth_status == "authenticated":
 if st.session_state.auth_status == "unauthenticated":
     st.info("로그인이 필요합니다.")
     login()
-
