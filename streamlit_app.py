@@ -754,9 +754,9 @@ if st.session_state.get('login_mode') not in ['user_mode', 'admin_mode', 'reside
         elif user_name.strip().lower() == "admin":
              st.session_state.login_mode = 'admin_mode'
              st.session_state.logged_in_as_admin = True
-              st.session_state.found_user_email = "admin"
+             st.session_state.found_user_email = "admin"
              st.session_state.current_user_name = "admin"
-            st.rerun()
+             st.rerun()
         
         # --- 일반 사용자 로그인 ---
         else:
