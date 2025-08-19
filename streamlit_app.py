@@ -1150,125 +1150,16 @@ if st.session_state.get('login_mode') == 'admin_mode':
                                 except Exception as e:
                                     st.error(f"**{res['name']}**님에게 일정 추가 실패: {e}")
 
-    #7-2. 찐관리자모드
-    
-    st.markdown("---")
-    st.subheader("🛠️ Administer password")
-    admin_password_input = st.text_input("관리자 비밀번호를 입력하세요", type="password", key="admin_password")
-    
-    try:
-        secret_admin_password = st.secrets["admin"]["password"]
-    except KeyError:
-        secret_admin_password = None
-        st.error("⚠️ secrets.toml 파일에 'admin.password' 설정이 없습니다. 개발자에게 문의하세요.")
-        
-    if admin_password_input and admin_password_input == secret_admin_password:
-        st.session_state.admin_password_correct = True
-        st.success("관리자 권한이 활성화되었습니다.")
-    elif admin_password_input and admin_password_input != secret_admin_password:
-        st.error("비밀번호가 틀렸습니다.")
-        st.session_state.admin_password_correct = False
-        
-    if st.session_state.admin_password_correct:
-        st.markdown("---")
-        st.subheader("📦 메일 발송")
-        
-        all_users_meta = users_ref.get()
-        user_list_for_dropdown = [f"{user_info.get('name', '이름 없음')} ({user_info.get('email', '이메일 없음')})"
-                                    for user_info in (all_users_meta.values() if all_users_meta else [])]
-        
-        if 'select_all_users' not in st.session_state:
-            st.session_state.select_all_users = False
-            
-        select_all_users_button = st.button("모든 사용자 선택/해제", key="select_all_btn")
-        if select_all_users_button:
-            st.session_state.select_all_users = not st.session_state.select_all_users
-            st.rerun()
-    
-        default_selection = user_list_for_dropdown if st.session_state.select_all_users else []
-    
-        selected_users_for_mail = st.multiselect("보낼 사용자 선택", user_list_for_dropdown, default=default_selection, key="mail_multiselect")
-        
-        custom_message = st.text_area("보낼 메일 내용", height=200)
-        if st.button("메일 보내기"):
-            if custom_message:
-                sender = st.secrets["gmail"]["sender"]
-                sender_pw = st.secrets["gmail"]["app_password"]
-                
-                email_list = []
-                if selected_users_for_mail:
-                    for user_str in selected_users_for_mail:
-                        match = re.search(r'\((.*?)\)', user_str)
-                        if match:
-                            email_list.append(match.group(1))
-                
-                if email_list:
-                    with st.spinner("메일 전송 중..."):
-                        for email in email_list:
-                            result = send_email(receiver=email, rows=None, sender=sender, password=sender_pw, date_str=None, custom_message=custom_message)
-                            if result is True:
-                                st.success(f"{email}로 메일 전송 완료!")
-                            else:
-                                st.error(f"{email}로 메일 전송 실패: {result}")
-                else:
-                    st.warning("메일 내용을 입력했으나, 선택된 사용자가 없습니다. 전송이 진행되지 않았습니다.")
-            else:
-                st.warning("메일 내용을 입력해주세요.")
-        
-        st.markdown("---")
-        st.subheader("🗑️ 사용자 삭제")
-        
-        if 'delete_confirm' not in st.session_state:
-            st.session_state.delete_confirm = False
-        if 'users_to_delete' not in st.session_state:
-            st.session_state.users_to_delete = []
-    
-        if not st.session_state.delete_confirm:
-            users_to_delete = st.multiselect("삭제할 사용자 선택", user_list_for_dropdown, key="delete_user_multiselect")
-            if st.button("선택한 사용자 삭제"):
-                if users_to_delete:
-                    st.session_state.delete_confirm = True
-                    st.session_state.users_to_delete = users_to_delete
-                    st.rerun()
-                else:
-                    st.warning("삭제할 사용자를 선택해주세요.")
-        else:
-            st.warning("정말로 선택한 사용자를 삭제하시겠습니까? 이 작업은 되돌릴 수 없습니다.")
-            col1, col2 = st.columns(2)
-            with col1:
-                if st.button("예, 삭제합니다"):
-                    for user_to_del_str in st.session_state.users_to_delete:
-                        match = re.search(r'\((.*?)\)', user_to_del_str)
-                        if match:
-                            email_to_del = match.group(1)
-                            safe_key_to_del = sanitize_path(email_to_del)
-                            
-                            db.reference(f"users/{safe_key_to_del}").delete()
-                            db.reference(f"patients/{safe_key_to_del}").delete()
-                    
-                    st.success(f"사용자 {', '.join(st.session_state.users_to_delete)} 삭제 완료.")
-                    
-                    st.session_state.delete_confirm = False
-                    st.session_state.users_to_delete = []
-                    st.rerun()
-            with col2:
-                if st.button("아니오, 취소합니다"):
-                    st.session_state.delete_confirm = False
-                    st.session_state.users_to_delete = []
-                    st.rerun()
 
 #8. Regular User Mode
 # --- 일반 사용자 모드 ---
-else:
-    user_id_final = st.session_state.user_id_input_value if st.session_state.email_change_mode or not st.session_state.found_user_email else st.session_state.found_user_email
-    firebase_key = sanitize_path(user_id_final) if user_id_final else ""
-
-    if not user_name or not user_id_final:
-        st.info("내원 알람 노티를 받을 이메일 주소와 사용자 이름을 입력해주세요.")
-        st.stop()
-
-    patients_ref_for_user = db.reference(f"patients/{firebase_key}")
-
+if st.session_state.get('login_mode') == 'user_mode' or st.session_state.get('login_mode') == 'new_user_registration':
+    # 세션 상태에서 사용자 정보 가져오기
+    user_name = st.session_state.get('current_user_name', "")
+    user_id_final = st.session_state.get('found_user_email', "")
+    firebase_key = st.session_state.get('current_firebase_key', "")
+    
+    # 이메일 주소 변경 기능으로 인해 유저 정보가 바뀔 수 있으므로 매번 업데이트
     if not st.session_state.email_change_mode:
         current_user_meta_data = users_ref.child(firebase_key).get()
         if not current_user_meta_data or current_user_meta_data.get("name") != user_name or current_user_meta_data.get("email") != user_id_final:
@@ -1277,7 +1168,13 @@ else:
         st.session_state.current_firebase_key = firebase_key
         st.session_state.current_user_name = user_name
         st.session_state.found_user_email = user_id_final
+
+    if not user_name or not user_id_final:
+        st.info("내원 알람 노티를 받을 이메일 주소와 사용자 이름을 입력해주세요.")
+        st.stop()
     
+    patients_ref_for_user = db.reference(f"patients/{firebase_key}")
+
     # 두 개의 탭 생성
     analysis_tab, registration_tab = st.tabs(['📈 OCS 분석 결과', '✅ 환자 등록 및 관리'])
     
@@ -1390,27 +1287,27 @@ else:
                     patients_ref_for_user.push().set({"환자명": name, "진료번호": pid, "등록과": selected_department})
                     st.success(f"{name} ({pid}) [{selected_department}] 환자 등록 완료")
                     
-
                     st.rerun()
                     
-    # --- 비밀번호 변경 기능 추가 ---
-    if st.session_state.get("found_user_email"):
-        st.divider()
-        st.header("🔑 비밀번호 변경")
-        
-        new_password = st.text_input("새 비밀번호를 입력하세요", type="password", key="new_password_input")
-        confirm_password = st.text_input("새 비밀번호를 다시 입력하세요", type="password", key="confirm_password_input")
-        
-        if st.button("비밀번호 변경"):
-            if not new_password or not confirm_password:
-                st.error("새 비밀번호와 확인용 비밀번호를 모두 입력해주세요.")
-            elif new_password != confirm_password:
-                st.error("새 비밀번호가 일치하지 않습니다. 다시 확인해주세요.")
-            else:
-                try:
-                    # Firebase 데이터베이스의 비밀번호 업데이트
-                    users_ref.child(st.session_state.current_firebase_key).update({"password": new_password})
-                    st.success("🎉 비밀번호가 성공적으로 변경되었습니다!")
-                except Exception as e:
-                    st.error(f"비밀번호 변경 중 오류가 발생했습니다: {e}")
+        # --- 비밀번호 변경 기능 추가 ---
+        if st.session_state.get("found_user_email"):
+            st.divider()
+            st.header("🔑 비밀번호 변경")
+            
+            new_password = st.text_input("새 비밀번호를 입력하세요", type="password", key="new_password_input")
+            confirm_password = st.text_input("새 비밀번호를 다시 입력하세요", type="password", key="confirm_password_input")
+            
+            if st.button("비밀번호 변경"):
+                if not new_password or not confirm_password:
+                    st.error("새 비밀번호와 확인용 비밀번호를 모두 입력해주세요.")
+                elif new_password != confirm_password:
+                    st.error("새 비밀번호가 일치하지 않습니다. 다시 확인해주세요.")
+                else:
+                    try:
+                        # Firebase 데이터베이스의 비밀번호 업데이트
+                        users_ref.child(st.session_state.current_firebase_key).update({"password": new_password})
+                        st.success("🎉 비밀번호가 성공적으로 변경되었습니다!")
+                    except Exception as e:
+                        st.error(f"비밀번호 변경 중 오류가 발생했습니다: {e}")
+                        
                     
