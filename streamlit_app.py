@@ -1220,7 +1220,7 @@ if st.session_state.get('login_mode') in ['user_mode', 'new_user_registration', 
             if 'google_calendar_service' not in st.session_state:
                 st.session_state.google_calendar_service = None
             
-            google_calendar_service = get_google_calendar_service(firebase_key, is_resident=True)
+            google_calendar_service = get_google_calendar_service(firebase_key)
             st.session_state.google_calendar_service = google_calendar_service
 
             if google_calendar_service:
