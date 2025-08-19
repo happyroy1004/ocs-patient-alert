@@ -789,7 +789,6 @@ if not is_admin_input:
                 st.error("올바른 이메일 주소 형식이 아닙니다.")
 
 
-#7. Admin Mode Functionality
 # --- Admin 모드 로그인 처리 ---
 if is_admin_input:
     st.session_state.logged_in_as_admin = True
@@ -817,7 +816,6 @@ if is_admin_input:
             try:
                 xl_object, raw_file_io = load_excel(uploaded_file, password)
                 excel_data_dfs, styled_excel_bytes = process_excel_file_and_style(raw_file_io)
-                
                 
                 # Firebase에 OCS 분석 결과 영구 저장 (가장 최신값으로 덮어쓰기)
                 professors_dict = {
@@ -922,43 +920,34 @@ if is_admin_input:
                             for user_match_info in matched_users:
                                 real_email = user_match_info['email']
                                 df_matched = user_match_info['data']
+                                user_name = user_match_info['name']
                                 
                                 if not df_matched.empty:
-                                    for _, row in df_matched.iterrows():
-                                        # 매칭된 데이터프레임에서 날짜/시간 정보를 다시 가져와 처리
-                                        # 예약일시 열은 무시하고 파일명에서 추출한 날짜를 사용
-                                        reservation_time = str(row.get('예약시간', '')).strip()
-                                        reservation_date_excel = str(row.get('예약일시', '')).strip()
-                                        
-                                        # 시간 데이터가 유효한지 확인
-                                        if not reservation_time:
-                                            st.warning(f"⚠️ {row.get('환자명', '')} 환자의 시간 데이터가 비어 있습니다. 메일 전송을 건너뜁니다.")
-                                            continue
-
-                                        # 파일명에서 추출한 날짜와 시간 결합
-                                        full_datetime_str = f"{reservation_date_excel} {reservation_time}"
-
-                                        try:
-                                            # 날짜와 시간을 결합하여 datetime 객체를 생성합니다.
-                                            datetime_obj = datetime.datetime.strptime(full_datetime_str, '%Y-%m-%d %H:%M')
-                                            
-                                            # 이메일에 사용할 날짜 형식
-                                            date_str_to_email = datetime_obj.strftime("%Y년 %m월 %d일 %H시 %M분")
-                                            
-                                            result = send_email(real_email, df_matched, sender, sender_pw, date_str=date_str_to_email)
-                                            if result is True:
-                                                st.success(f"**{user_match_info['name']}** ({real_email}) 전송 완료")
-                                            else:
-                                                st.error(f"**{user_match_info['name']}** ({real_email}) 전송 실패: {result}")
-                                        except ValueError as e:
-                                            st.error(f"'{row.get('환자명', '')}' 환자의 날짜/시간 형식 파싱 실패: {e}. 메일 전송에 기본 날짜 정보를 사용합니다.")
-                                            result = send_email(real_email, df_matched, sender, sender_pw, date_str="일정 정보 없음")
-                                            if result is True:
-                                                st.success(f"**{user_match_info['name']}** ({real_email}) 전송 완료 (날짜 정보 없이)")
-                                            else:
-                                                st.error(f"**{user_match_info['name']}** ({real_email}) 전송 실패: {result}")
+                                    # 이메일 내용에 포함될 테이블 HTML 생성
+                                    df_html = df_matched[['환자명', '진료번호', '예약의사', '진료내역', '예약시간']].to_html(index=False, escape=False)
+                                    
+                                    email_subject = "치과 예약 내원 정보"
+                                    email_body = f"""
+                                    <p>안녕하세요, {user_name}님.</p>
+                                    <p>오늘 예약된 환자 내원 정보입니다.</p>
+                                    {df_html}
+                                    <p>확인 부탁드립니다.</p>
+                                    """
+                                    
+                                    # 사용자에게 이메일 전송 (1회만 호출)
+                                    try:
+                                        send_email_v2(
+                                            sender=sender,
+                                            sender_pw=sender_pw,
+                                            receiver=real_email,
+                                            subject=email_subject,
+                                            body=email_body
+                                        )
+                                        st.success(f"**{user_name}**님 ({real_email})에게 예약 정보 이메일 전송 완료!")
+                                    except Exception as e:
+                                        st.error(f"**{user_name}**님 ({real_email})에게 이메일 전송 실패: {e}")
                                 else:
-                                    st.warning(f"**{user_match_info['name']}**님에게 보낼 매칭 데이터가 없습니다.")
+                                    st.warning(f"**{user_name}**님에게 보낼 매칭 데이터가 없습니다.")
 
                     with calendar_col:
                         if st.button("Google Calendar 일정 추가"):
@@ -978,36 +967,28 @@ if is_admin_input:
                                             for _, row in df_matched.iterrows():
                                                 patient_name = row.get('환자명', '')
                                                 patient_pid = row.get('진료번호', '')
-                                                department = row.get('등록과', '') # 이제 이 값이 올바르게 채워집니다.
+                                                department = row.get('등록과', '')
                                                 doctor_name = row.get('예약의사', '')
                                                 treatment_details = row.get('진료내역', '')
                                                 
                                                 # 날짜/시간 데이터를 가져와서 유효성 검사
-                                                reservation_time_raw = row.get('예약시간')
+                                                reservation_date_raw = row.get('예약일시', '')
+                                                reservation_time_raw = row.get('예약시간', '')
+                                                
+                                                is_datetime_invalid = (pd.isna(reservation_date_raw) or str(reservation_date_raw).strip() == "" or
+                                                                    pd.isna(reservation_time_raw) or str(reservation_time_raw).strip() == "")
 
-                                                # 시간이 NaN이거나 빈 문자열일 경우 처리
-                                                is_time_invalid = pd.isna(reservation_time_raw) or str(reservation_time_raw).strip() == ""
-
-                                                if is_time_invalid:
-                                                    st.warning(f"⚠️ {patient_name} 환자의 시간 데이터가 비어 있습니다. 일정 추가를 건너뜁니다.")
+                                                if is_datetime_invalid:
+                                                    st.warning(f"⚠️ {patient_name} 환자의 날짜/시간 데이터가 비어 있습니다. 일정 추가를 건너뜁니다.")
                                                     continue
-
+                                                
+                                                date_str_to_parse = str(reservation_date_raw).strip()
                                                 time_str_to_parse = str(reservation_time_raw).strip()
                                                 
-                                                # 파일명에서 추출한 날짜를 사용
-                                                date_str_to_parse = reservation_date_excel
-                                                
-                                                # 날짜와 시간을 합칩니다.
-                                                full_datetime_str = f"{date_str_to_parse} {time_str_to_parse}"
-                                                
                                                 try:
-                                                    # '-' 형식을 먼저 시도
-                                                    reservation_datetime = datetime.datetime.strptime(
-                                                        full_datetime_str,
-                                                        '%Y-%m-%d %H:%M'
-                                                    )
-
-
+                                                    # '2025/12/03' + '09:00' 형식을 파싱
+                                                    full_datetime_str = f"{date_str_to_parse} {time_str_to_parse}"
+                                                    reservation_datetime = datetime.datetime.strptime(full_datetime_str, '%Y/%m/%d %H:%M')
                                                 except ValueError as e:
                                                     st.error(f"❌ {patient_name} 환자의 날짜/시간 형식 파싱 최종 실패: {e}. 일정 추가를 건너뜁니다.")
                                                     continue # 다음 행으로 넘어감
@@ -1031,6 +1012,9 @@ if is_admin_input:
                                         
                                     except Exception as e:
                                         st.error(f"**{user_name}**님의 캘린더 일정 추가 실패: {e}")
+                                else:
+                                    st.warning(f"**{user_name}**님은 Google Calendar 계정이 연동되어 있지 않습니다. Google Calendar 탭에서 인증을 진행해주세요.")
+
 
                 else:
                     st.info("엑셀 파일 처리 완료. 매칭된 환자가 없습니다.")
@@ -1057,7 +1041,7 @@ if is_admin_input:
             latest_date_ref = db.reference("ocs_analysis/latest_date")
             latest_file_name_ref = db.reference("ocs_analysis/latest_file_name")
             latest_result_ref = db.reference("ocs_analysis/latest_result")
-    
+            
             latest_date = latest_date_ref.get()
             latest_file_name = latest_file_name_ref.get()
             analysis_results = latest_result_ref.get()
@@ -1083,7 +1067,7 @@ if is_admin_input:
                 else:
                     st.warning("보존과 데이터가 엑셀 파일에 없습니다.")
                 st.markdown("---")
-    
+            
                 # 교정과 현황 (Bonding)
                 if '교정' in analysis_results:
                     st.subheader("교정과 현황 (Bonding)")
@@ -1120,7 +1104,7 @@ if is_admin_input:
         
         all_users_meta = users_ref.get()
         user_list_for_dropdown = [f"{user_info.get('name', '이름 없음')} ({user_info.get('email', '이메일 없음')})"
-                                    for user_info in (all_users_meta.values() if all_users_meta else [])]
+                                  for user_info in (all_users_meta.values() if all_users_meta else [])]
         
         select_all_users_button = st.button("모든 사용자 선택/해제", key="select_all_btn")
         if select_all_users_button:
@@ -1146,7 +1130,7 @@ if is_admin_input:
                 if email_list:
                     with st.spinner("메일 전송 중..."):
                         for email in email_list:
-                            result = send_email(email, pd.DataFrame(), sender, sender_pw, custom_message=custom_message)
+                            result = send_email_v2(sender, sender_pw, email, "알림 메일", custom_message)
                             if result is True:
                                 st.success(f"{email}로 메일 전송 완료!")
                             else:
