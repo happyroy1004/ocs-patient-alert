@@ -25,6 +25,15 @@ from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 import base64
 
+def is_daily_schedule(file_name):
+    """
+    파일명이 'ocs_MMDD.xlsx' 또는 'ocs_MMDD.xlsm' 형식인지 확인합니다.
+    """
+    # 'ocs_날짜(4자리).확장자' 패턴을 찾음 (예: ocs_0815.xlsx)
+    pattern = r'^ocs_\d{4}\.(?:xlsx|xlsm)$'
+    return re.match(pattern, file_name, re.IGNORECASE) is not None
+    
+
 # --- 이메일 유효성 검사 함수 ---
 def is_valid_email(email):
     email_regex = r"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$"
@@ -807,6 +816,14 @@ if is_admin_input:
         if uploaded_file:
             file_name = uploaded_file.name
             
+            # ✨ 추가된 부분: 파일명으로 파일 종류를 자동 식별
+            is_daily = is_daily_schedule(file_name)
+            
+            if is_daily:
+                st.info("✔️ '확정된 당일 일정' 파일로 인식되었습니다. 기존 일정과 비교 후 업데이트합니다.")
+            else:
+                st.info("✔️ '예정된 전체 일정' 파일로 인식되었습니다. 모든 일정을 캘린더에 추가합니다.")
+                
             uploaded_file.seek(0)
             password = st.text_input("엑셀 파일 비밀번호 입력", type="password") if is_encrypted_excel(uploaded_file) else None
             if is_encrypted_excel(uploaded_file) and not password:
@@ -897,7 +914,6 @@ if is_admin_input:
                                         
                                         matched_row_copy = excel_row.copy()
                                         matched_row_copy["시트"] = sheet_name_excel_raw
-                                        # ✨ 수정된 부분: 엑셀 시트명에서 추출한 '등록과' 정보를 DataFrame에 명시적으로 추가합니다.
                                         matched_row_copy["등록과"] = excel_sheet_department
                                         matched_rows_for_user.append(matched_row_copy)
                                         break
@@ -909,26 +925,20 @@ if is_admin_input:
                 if matched_users:
                     st.success(f"{len(matched_users)}명의 사용자와 일치하는 환자 발견됨.")
                     
-                    # 매칭된 사용자 리스트 생성
                     matched_user_list_for_dropdown = [f"{user['name']} ({user['email']})" for user in matched_users]
                     
-                    # 세션 상태 초기화 (메일/캘린더용)
                     if 'select_all_matched_users' not in st.session_state:
                         st.session_state.select_all_matched_users = False
                     
-                    # 일괄 선택/해제 버튼
                     select_all_matched_button = st.button("매칭된 사용자 모두 선택/해제", key="select_all_matched_btn")
                     if select_all_matched_button:
                         st.session_state.select_all_matched_users = not st.session_state.select_all_matched_users
                         st.rerun()
                     
-                    # 멀티셀렉트 기본값 설정
                     default_selection_matched = matched_user_list_for_dropdown if st.session_state.select_all_matched_users else []
                     
-                    # 사용자 선택 멀티셀렉트
                     selected_users_to_act = st.multiselect("액션을 취할 사용자 선택", matched_user_list_for_dropdown, default=default_selection_matched, key="matched_user_multiselect")
 
-                    # 선택된 사용자 객체 매핑
                     selected_matched_users_data = [user for user in matched_users if f"{user['name']} ({user['email']})" in selected_users_to_act]
                     
                     for user_match_info in selected_matched_users_data:
@@ -945,7 +955,6 @@ if is_admin_input:
                                 user_name = user_match_info['name']
                                 
                                 if not df_matched.empty:
-                                    # 이메일 내용에 포함될 테이블 HTML 생성
                                     df_html = df_matched[['환자명', '진료번호', '예약의사', '진료내역', '예약시간']].to_html(index=False, escape=False)
                                     
                                     email_subject = "치과 예약 내원 정보"
@@ -956,15 +965,14 @@ if is_admin_input:
                                     <p>확인 부탁드립니다.</p>
                                     """
                                     
-                                    # 사용자에게 이메일 전송 (1회만 호출)
                                     try:
                                         send_email(
                                             receiver=real_email,
-                                            rows=df_matched.to_dict('records'), # rows는 딕셔너리 리스트가 필요
+                                            rows=df_matched.to_dict('records'),
                                             sender=sender,
                                             password=sender_pw,
-                                            custom_message=email_body, # 맞춤 메시지 인자로 사용
-                                            date_str=today_date_str # 날짜 정보 전달
+                                            custom_message=email_body,
+                                            date_str=today_date_str
                                         )
                                         st.success(f"**{user_name}**님 ({real_email})에게 예약 정보 이메일 전송 완료!")
                                     except Exception as e:
@@ -974,13 +982,13 @@ if is_admin_input:
 
                     with calendar_col:
                         if st.button("선택된 사용자에게 Google Calendar 일정 추가"):
+                            
                             for user_match_info in selected_matched_users_data:
                                 user_safe_key = user_match_info['safe_key']
                                 user_email = user_match_info['email']
                                 user_name = user_match_info['name']
                                 df_matched = user_match_info['data']
                                 
-                                # Check for user-specific Google Calendar credentials
                                 creds = load_google_creds_from_firebase(user_safe_key)
                                 
                                 if creds and creds.valid and not creds.expired:
@@ -994,7 +1002,6 @@ if is_admin_input:
                                                 doctor_name = row.get('예약의사', '')
                                                 treatment_details = row.get('진료내역', '')
                                                 
-                                                # 날짜/시간 데이터를 가져와서 유효성 검사
                                                 reservation_date_raw = row.get('예약일시', '')
                                                 reservation_time_raw = row.get('예약시간', '')
                                                 
@@ -1009,18 +1016,18 @@ if is_admin_input:
                                                 time_str_to_parse = str(reservation_time_raw).strip()
                                                 
                                                 try:
-                                                    # '2025/12/03' + '09:00' 형식을 파싱
                                                     full_datetime_str = f"{date_str_to_parse} {time_str_to_parse}"
                                                     reservation_datetime = datetime.datetime.strptime(full_datetime_str, '%Y/%m/%d %H:%M')
                                                 except ValueError as e:
                                                     st.error(f"❌ {patient_name} 환자의 날짜/시간 형식 파싱 최종 실패: {e}. 일정 추가를 건너뜁니다.")
-                                                    continue # 다음 행으로 넘어감
+                                                    continue
 
-                                                # 캘린더 이벤트 제목 및 내용 생성
-                                                event_title = f"{patient_name} ({department}, {doctor_name})"
+                                                # ✨ 변경된 부분: 파일 형식에 따라 캘린더 제목 설정
+                                                event_prefix = "✨ 내원 : " if is_daily else "내원? : "
+                                                event_title = f"{event_prefix}{patient_name} ({department}, {doctor_name})"
+
                                                 event_description = f"환자명 : {patient_name}\n진료번호 : {patient_pid}\n진료내역 : {treatment_details}"
-
-                                                # datetime 객체 하나만 전달
+                                                
                                                 create_calendar_event(
                                                     service,
                                                     event_title,
@@ -1037,7 +1044,6 @@ if is_admin_input:
                                         st.error(f"**{user_name}**님의 캘린더 일정 추가 실패: {e}")
                                 else:
                                     st.warning(f"**{user_name}**님은 Google Calendar 계정이 연동되어 있지 않습니다. Google Calendar 탭에서 인증을 진행해주세요.")
-
 
                 else:
                     st.info("엑셀 파일 처리 완료. 매칭된 환자가 없습니다.")
@@ -1058,7 +1064,6 @@ if is_admin_input:
     with analysis_tab:
         st.header("📈 OCS 분석 결과")
     
-        # Firebase에서 최신 OCS 분석 결과 로드
         all_analysis_data = db.reference("ocs_analysis").get()
         if all_analysis_data:
             latest_date_ref = db.reference("ocs_analysis/latest_date")
@@ -1073,7 +1078,6 @@ if is_admin_input:
                 st.markdown(f"**<h3 style='text-align: left;'>{latest_file_name} 분석 결과</h3>**", unsafe_allow_html=True)
                 st.markdown("---")
                 
-                # 소아치과 현황
                 if '소치' in analysis_results:
                     st.subheader("소아치과 현황 (단타)")
                     st.info(f"오전: **{analysis_results['소치']['오전']}명**")
@@ -1082,7 +1086,6 @@ if is_admin_input:
                     st.warning("소아치과 데이터가 엑셀 파일에 없습니다.")
                 st.markdown("---")
                 
-                # 보존과 현황
                 if '보존' in analysis_results:
                     st.subheader("보존과 현황 (단타)")
                     st.info(f"오전: **{analysis_results['보존']['오전']}명**")
@@ -1091,7 +1094,6 @@ if is_admin_input:
                     st.warning("보존과 데이터가 엑셀 파일에 없습니다.")
                 st.markdown("---")
                 
-                # 교정과 현황 (Bonding)
                 if '교정' in analysis_results:
                     st.subheader("교정과 현황 (Bonding)")
                     st.info(f"오전: **{analysis_results['교정']['오전']}명**")
@@ -1129,7 +1131,6 @@ if is_admin_input:
         user_list_for_dropdown = [f"{user_info.get('name', '이름 없음')} ({user_info.get('email', '이메일 없음')})"
                                     for user_info in (all_users_meta.values() if all_users_meta else [])]
         
-        # 세션 상태 초기화
         if 'select_all_users' not in st.session_state:
             st.session_state.select_all_users = False
             
@@ -1158,7 +1159,6 @@ if is_admin_input:
                 if email_list:
                     with st.spinner("메일 전송 중..."):
                         for email in email_list:
-                            # 올바른 인자 순서로 send_email 함수 호출
                             result = send_email(receiver=email, rows=None, sender=sender, password=sender_pw, date_str=None, custom_message=custom_message)
                             if result is True:
                                 st.success(f"{email}로 메일 전송 완료!")
@@ -1172,18 +1172,15 @@ if is_admin_input:
         st.markdown("---")
         st.subheader("🗑️ 사용자 삭제")
         
-        # 세션 상태 초기화
         if 'delete_confirm' not in st.session_state:
             st.session_state.delete_confirm = False
         if 'users_to_delete' not in st.session_state:
             st.session_state.users_to_delete = []
     
-        # 삭제 확인 상태에 따라 다른 UI 표시
         if not st.session_state.delete_confirm:
             users_to_delete = st.multiselect("삭제할 사용자 선택", user_list_for_dropdown, key="delete_user_multiselect")
             if st.button("선택한 사용자 삭제"):
                 if users_to_delete:
-                    # 상태 변경 및 선택된 사용자 저장
                     st.session_state.delete_confirm = True
                     st.session_state.users_to_delete = users_to_delete
                     st.rerun()
@@ -1200,19 +1197,16 @@ if is_admin_input:
                             email_to_del = match.group(1)
                             safe_key_to_del = sanitize_path(email_to_del)
                             
-                            # Firebase Realtime Database에서 데이터 삭제
                             db.reference(f"users/{safe_key_to_del}").delete()
                             db.reference(f"patients/{safe_key_to_del}").delete()
                     
                     st.success(f"사용자 {', '.join(st.session_state.users_to_delete)} 삭제 완료.")
                     
-                    # 상태 초기화 및 재실행
                     st.session_state.delete_confirm = False
                     st.session_state.users_to_delete = []
                     st.rerun()
             with col2:
                 if st.button("아니오, 취소합니다"):
-                    # 상태 초기화 및 재실행
                     st.session_state.delete_confirm = False
                     st.session_state.users_to_delete = []
                     st.rerun()
