@@ -998,6 +998,10 @@ if st.session_state.get('login_mode') == 'admin_mode':
         
         with student_admin_tab:
             st.subheader("📚 학생 관리자 모드")
+            if analysis_results:
+                st.subheader('📈 OCS 분석 결과')
+                st.info(f"분석 파일: {file_name}")
+                st.json(analysis_results)
             
             sender = st.secrets["gmail"]["sender"]
             sender_pw = st.secrets["gmail"]["app_password"]
@@ -1194,8 +1198,8 @@ if st.session_state.get('login_mode') == 'admin_mode':
                                                 continue
                                             
                                             for _, excel_row in df_sheet.iterrows():
-                                                # 예약의사 이름과 엑셀 시트의 진료과(department)를 모두 확인하여 매칭
-                                                if excel_row.get('예약의사') == res['name'] and excel_sheet_department == res['department']:
+                                                excel_department_from_row = excel_row.get('진료과', '').strip()
+                                                if excel_row.get('예약의사') == res['name'] and excel_department_from_row == res['department']:
                                                     matched_rows_for_resident.append(excel_row.copy())
                                                 
                                     if matched_rows_for_resident:
@@ -1234,6 +1238,7 @@ if st.session_state.get('login_mode') == 'admin_mode':
                                         st.warning(f"**{res['name']}**님은 Google Calendar 계정이 연동되지 않았습니다. 해당 사용자가 Google Calendar 탭에서 인증을 완료해야 합니다.")
                                 except Exception as e:
                                     st.error(f"**{res['name']}**님에게 일정 추가 실패: {e}")
+
     st.markdown("---")
     st.subheader("🛠️ Administer password")
     admin_password_input = st.text_input("관리자 비밀번호를 입력하세요", type="password", key="admin_password")
@@ -1339,7 +1344,7 @@ if st.session_state.get('login_mode') == 'admin_mode':
                     st.session_state.users_to_delete = []
                     st.rerun()
 
-
+            
 # #8. Regular User Mode
 # --- 일반 사용자 & 레지던트 모드 ---
 if st.session_state.get('login_mode') in ['user_mode', 'new_user_registration', 'resident_mode', 'new_resident_registration', 'resident_name_input']:
@@ -1382,7 +1387,7 @@ if st.session_state.get('login_mode') in ['user_mode', 'new_user_registration', 
             # firebase_key가 존재할 때만 함수를 호출하도록 수정
             if firebase_key:
                 try:
-                    google_calendar_service = get_google_calendar_service(firebase_key, is_resident=True)
+                    google_calendar_service = get_google_calendar_service(firebase_key)
                     st.session_state.google_calendar_service = google_calendar_service
                 except Exception as e:
                     st.error(f"❌ Google Calendar 서비스 로딩에 실패했습니다: {e}")
