@@ -789,7 +789,10 @@ if not is_admin_input:
                 st.error("올바른 이메일 주소 형식이 아닙니다.")
 
 
-# --- Admin 모드 로그인 처리 ---
+제공해주신 텍스트는 Streamlit 애플리케이션의 일부로, 관리자 모드에서 실행되는 기능들을 담고 있습니다. 사용자 요청에 따라, 이 코드 블록 전체를 제공해 드리겠습니다.
+
+```python
+#7. --- Admin 모드 로그인 처리 ---
 if is_admin_input:
     st.session_state.logged_in_as_admin = True
     st.session_state.found_user_email = "admin"
@@ -1067,7 +1070,7 @@ if is_admin_input:
                 else:
                     st.warning("보존과 데이터가 엑셀 파일에 없습니다.")
                 st.markdown("---")
-            
+                
                 # 교정과 현황 (Bonding)
                 if '교정' in analysis_results:
                     st.subheader("교정과 현황 (Bonding)")
@@ -1104,7 +1107,7 @@ if is_admin_input:
         
         all_users_meta = users_ref.get()
         user_list_for_dropdown = [f"{user_info.get('name', '이름 없음')} ({user_info.get('email', '이메일 없음')})"
-                                  for user_info in (all_users_meta.values() if all_users_meta else [])]
+                                    for user_info in (all_users_meta.values() if all_users_meta else [])]
         
         select_all_users_button = st.button("모든 사용자 선택/해제", key="select_all_btn")
         if select_all_users_button:
@@ -1187,7 +1190,7 @@ if is_admin_input:
                     st.session_state.delete_confirm = False
                     st.session_state.users_to_delete = []
                     st.rerun()
-
+                    
 #8. Regular User Mode
 # --- 일반 사용자 모드 ---
 else:
