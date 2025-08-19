@@ -1269,7 +1269,6 @@ if st.session_state.get('login_mode') == 'admin_mode':
                                     else:
                                         st.warning(f"**{res['name']}** 레지던트의 매칭 데이터가 엑셀 파일에 없습니다.")
 
-                    with calendar_col:
                         if st.button("선택된 레지던트에게 Google Calendar 일정 추가"):
                             for res in selected_residents_data:
                                 try:
@@ -1277,7 +1276,6 @@ if st.session_state.get('login_mode') == 'admin_mode':
                                     if creds and creds.valid and not creds.expired:
                                         service = build('calendar', 'v3', credentials=creds)
                                         
-                                        # 레지던트에게 매칭되는 환자 데이터 수집
                                         found_matched_data = False
                                         if excel_data_dfs:
                                             for sheet_name_excel_raw, df_sheet in excel_data_dfs.items():
@@ -1295,19 +1293,21 @@ if st.session_state.get('login_mode') == 'admin_mode':
                                                     if excel_doctor_name_from_row == res['name'] and excel_sheet_department == res['department']:
                                                         found_matched_data = True
                                                         
-                                                        # 개별 환자 일정 추가
                                                         patient_name = excel_row.get('환자명', '이름 없음')
                                                         pid = excel_row.get('진료번호', '번호 없음')
                                                         department = res['department']
-                                                        reservation_datetime_str = excel_row.get('예약시간', '')
+                                                        
+                                                        # 👇 '예약일시' 컬럼의 데이터를 사용하도록 수정했습니다.
+                                                        reservation_datetime_str = excel_row.get('예약일시', '')
+                                                        
                                                         doctor_name = res['name']
                                                         treatment_details = excel_row.get('진료내역', '정보 없음')
                                                         
-                                                        # 예약시간을 datetime 객체로 변환
+                                                        # '예약일시' 문자열을 datetime 객체로 변환
                                                         try:
-                                                            reservation_datetime = datetime.datetime.strptime(reservation_datetime_str, '%Y-%m-%d %H:%M:%S')
+                                                            reservation_datetime = datetime.datetime.strptime(str(reservation_datetime_str).strip(), '%Y/%m/%d %H:%M:%S')
                                                         except ValueError:
-                                                            st.warning(f"**{res['name']}** 레지던트의 '{patient_name}' 환자 예약시간 형식이 잘못되었습니다: {reservation_datetime_str}")
+                                                            st.warning(f"**{res['name']}** 레지던트의 '{patient_name}' 환자 예약일시 형식이 잘못되었습니다: {reservation_datetime_str}")
                                                             continue
                                                         
                                                         create_calendar_event(service, patient_name, pid, department, reservation_datetime, doctor_name, treatment_details)
