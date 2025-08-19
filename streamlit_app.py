@@ -1290,47 +1290,47 @@ if st.session_state.get('login_mode') == 'admin_mode':
                                     st.error(f"**{res['name']}**님에게 일정 추가 실패: {e}")
             
         
-        st.markdown("---")
-        st.subheader("🗑️ 사용자 삭제")
+    st.markdown("---")
+    st.subheader("🗑️ 사용자 삭제")
         
-        if 'delete_confirm' not in st.session_state:
-            st.session_state.delete_confirm = False
-        if 'users_to_delete' not in st.session_state:
-            st.session_state.users_to_delete = []
+    if 'delete_confirm' not in st.session_state:
+        st.session_state.delete_confirm = False
+    if 'users_to_delete' not in st.session_state:
+        st.session_state.users_to_delete = []
     
-        if not st.session_state.delete_confirm:
-            users_to_delete = st.multiselect("삭제할 사용자 선택", user_list_for_dropdown, key="delete_user_multiselect")
-            if st.button("선택한 사용자 삭제"):
-                if users_to_delete:
-                    st.session_state.delete_confirm = True
-                    st.session_state.users_to_delete = users_to_delete
-                    st.rerun()
-                else:
-                    st.warning("삭제할 사용자를 선택해주세요.")
-        else:
-            st.warning("정말로 선택한 사용자를 삭제하시겠습니까? 이 작업은 되돌릴 수 없습니다.")
-            col1, col2 = st.columns(2)
-            with col1:
-                if st.button("예, 삭제합니다"):
-                    for user_to_del_str in st.session_state.users_to_delete:
-                        match = re.search(r'\((.*?)\)', user_to_del_str)
-                        if match:
-                            email_to_del = match.group(1)
-                            safe_key_to_del = sanitize_path(email_to_del)
+    if not st.session_state.delete_confirm:
+        users_to_delete = st.multiselect("삭제할 사용자 선택", user_list_for_dropdown, key="delete_user_multiselect")
+        if st.button("선택한 사용자 삭제"):
+            if users_to_delete:
+                st.session_state.delete_confirm = True
+                st.session_state.users_to_delete = users_to_delete
+                st.rerun()
+            else:
+                st.warning("삭제할 사용자를 선택해주세요.")
+    else:
+        st.warning("정말로 선택한 사용자를 삭제하시겠습니까? 이 작업은 되돌릴 수 없습니다.")
+        col1, col2 = st.columns(2)
+        with col1:
+            if st.button("예, 삭제합니다"):
+                for user_to_del_str in st.session_state.users_to_delete:
+                    match = re.search(r'\((.*?)\)', user_to_del_str)
+                    if match:
+                        email_to_del = match.group(1)
+                        safe_key_to_del = sanitize_path(email_to_del)
                             
-                            db.reference(f"users/{safe_key_to_del}").delete()
-                            db.reference(f"patients/{safe_key_to_del}").delete()
+                        db.reference(f"users/{safe_key_to_del}").delete()
+                        db.reference(f"patients/{safe_key_to_del}").delete()
                     
-                    st.success(f"사용자 {', '.join(st.session_state.users_to_delete)} 삭제 완료.")
+                st.success(f"사용자 {', '.join(st.session_state.users_to_delete)} 삭제 완료.")
                     
-                    st.session_state.delete_confirm = False
-                    st.session_state.users_to_delete = []
-                    st.rerun()
-            with col2:
-                if st.button("아니오, 취소합니다"):
-                    st.session_state.delete_confirm = False
-                    st.session_state.users_to_delete = []
-                    st.rerun()
+                st.session_state.delete_confirm = False
+                st.session_state.users_to_delete = []
+                st.rerun()
+        with col2:
+            if st.button("아니오, 취소합니다"):
+                st.session_state.delete_confirm = False
+                st.session_state.users_to_delete = []
+                st.rerun()
 
             
 # #8. Regular User Mode
