@@ -936,7 +936,7 @@ if is_admin_input:
                                     
                                     # 사용자에게 이메일 전송 (1회만 호출)
                                     try:
-                                        send_email_v2(
+                                        send_email(
                                             sender=sender,
                                             sender_pw=sender_pw,
                                             receiver=real_email,
