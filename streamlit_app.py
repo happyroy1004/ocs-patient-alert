@@ -682,6 +682,9 @@ import os
 import streamlit as st
 import datetime
 import pandas as pd
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
+import smtplib
 
 # Assume these functions are defined elsewhere in your script
 # from your_utils import is_valid_email, is_encrypted_excel, load_excel, process_excel_file_and_style, run_analysis, sanitize_path, recover_email, get_google_calendar_service, send_email, send_email_simple, create_calendar_event, create_static_calendar_event, create_auth_url, load_google_creds_from_firebase, users_ref, db, is_daily_schedule, sheet_keyword_to_department_map
@@ -690,6 +693,29 @@ import pandas as pd
 users_ref = db.reference("users")
 resident_users_ref = db.reference("resident_users")
 
+# --- 이메일 전송 함수 (기존 send_email_simple 대신 사용) ---
+def send_email(receiver, rows, sender, password, custom_message, date_str):
+    """
+    매칭된 환자 정보를 담아 이메일을 전송하는 함수.
+    """
+    msg = MIMEMultipart('alternative')
+    msg['Subject'] = f"[치과 내원 알림] {date_str} 예약 내역"
+    msg['From'] = sender
+    msg['To'] = receiver
+
+    html_content = custom_message
+    part1 = MIMEText(html_content, 'html', 'utf-8')
+    msg.attach(part1)
+
+    try:
+        server = smtplib.SMTP_SSL('smtp.gmail.com', 465)
+        server.login(sender, password)
+        server.sendmail(sender, receiver, msg.as_string())
+        server.quit()
+        return True
+    except Exception as e:
+        print(f"Error sending email: {e}")
+        return False
 
 # --- 사용 설명서 PDF 다운로드 버튼 추가 ---
 pdf_file_path = "manual.pdf"
@@ -711,7 +737,7 @@ if 'login_mode' not in st.session_state:
     st.session_state.login_mode = 'not_logged_in'
 
 if st.session_state.get('login_mode') not in ['user_mode', 'admin_mode', 'resident_mode', 'new_resident_registration', 'resident_name_input', 'new_user_registration']:
-    user_name = st.text_input("사용자 이름을 입력하세요 (예시: 홍길동)", key="login_username")
+    user_name = st.text_input("사용자 이름을 입력하세요 (예시: 홍길동, admin, resident)", key="login_username")
     password_input = st.text_input("비밀번호를 입력하세요", type="password", key="login_password")
     
     # 레지던트 자동 전환 로직
@@ -719,18 +745,21 @@ if st.session_state.get('login_mode') not in ['user_mode', 'admin_mode', 'reside
         st.session_state.login_mode = 'resident_name_input'
         st.rerun()
 
-    elif user_name.strip().lower() == "admin":
-        st.session_state.login_mode = 'admin_mode'
-        st.session_state.logged_in_as_admin = True
-        st.session_state.found_user_email = "admin"
-        st.session_state.current_user_name = "admin"
-        st.rerun()
-
     # '로그인' 버튼을 눌러야만 로직이 실행되도록 수정
     if st.button("로그인"):
         if not user_name:
             st.error("사용자 이름을 입력해주세요.")
-
+            
+        # --- 관리자 모드 로그인 ---
+        elif user_name.strip().lower() == "admin":
+            if password_input == st.secrets["admin"]["password"]:
+                st.session_state.login_mode = 'admin_mode'
+                st.session_state.logged_in_as_admin = True
+                st.session_state.found_user_email = "admin"
+                st.session_state.current_user_name = "admin"
+                st.rerun()
+            else:
+                st.error("관리자 비밀번호가 일치하지 않습니다.")
         
         # --- 일반 사용자 로그인 ---
         else:
@@ -1130,7 +1159,8 @@ if st.session_state.get('login_mode') == 'admin_mode':
                         residents.append({
                             "safe_key": safe_key,
                             "name": user_info.get("name", "이름 없음"),
-                            "email": user_info.get("email", "이메일 없음")
+                            "email": user_info.get("email", "이메일 없음"),
+                            "department": user_info.get("department", "미지정")
                         })
             
             if not residents:
@@ -1153,13 +1183,42 @@ if st.session_state.get('login_mode') == 'admin_mode':
                                 st.error("Gmail 인증 정보가 설정되지 않았습니다.")
                             else:
                                 for res in selected_residents_data:
-                                    try:
-                                        subject = "레지던트 공지사항"
-                                        body = f"안녕하세요, {res['name']} 레지던트님.\n\n관리자로부터의 공지입니다.\n\n[이곳에 공지사항 내용을 입력하세요.]\n\n감사합니다."
-                                        send_email_simple(receiver=res['email'], subject=subject, body=body, sender=st.secrets["gmail"]["sender"], password=st.secrets["gmail"]["app_password"])
-                                        st.success(f"**{res['name']}**님에게 메일 전송 완료!")
-                                    except Exception as e:
-                                        st.error(f"**{res['name']}**님에게 메일 전송 실패: {e}")
+                                    matched_rows_for_resident = []
+                                    resident_dept = res.get('department')
+                                    if resident_dept and excel_data_dfs:
+                                        for sheet_name_excel_raw, df_sheet in excel_data_dfs.items():
+                                            excel_sheet_name_lower = sheet_name_excel_raw.strip().lower()
+                                            
+                                            excel_sheet_department = None
+                                            for keyword, department_name in sorted(sheet_keyword_to_department_map.items(), key=lambda item: len(item[0]), reverse=True):
+                                                if keyword.lower() in excel_sheet_name_lower:
+                                                    excel_sheet_department = department_name
+                                                    break
+                                            if not excel_sheet_department or excel_sheet_department != resident_dept:
+                                                continue
+                                            
+                                            for _, excel_row in df_sheet.iterrows():
+                                                matched_row_copy = excel_row.copy()
+                                                matched_row_copy["시트"] = sheet_name_excel_raw
+                                                matched_row_copy["등록과"] = excel_sheet_department
+                                                matched_rows_for_resident.append(matched_row_copy)
+                                                
+                                    if matched_rows_for_resident:
+                                        df_matched = pd.DataFrame(matched_rows_for_resident)
+                                        df_html = df_matched[['환자명', '진료번호', '예약의사', '진료내역', '예약시간']].to_html(index=False, escape=False)
+                                        email_body = f"""
+                                        <p>안녕하세요, {res['name']} 레지던트님.</p>
+                                        <p>오늘 예약된 환자 내원 정보입니다.</p>
+                                        {df_html}
+                                        <p>확인 부탁드립니다.</p>
+                                        """
+                                        try:
+                                            send_email(receiver=res['email'], rows=df_matched.to_dict('records'), sender=st.secrets["gmail"]["sender"], password=st.secrets["gmail"]["app_password"], custom_message=email_body, date_str=today_date_str)
+                                            st.success(f"**{res['name']}**님에게 환자 정보 메일 전송 완료!")
+                                        except Exception as e:
+                                            st.error(f"**{res['name']}**님에게 메일 전송 실패: {e}")
+                                    else:
+                                        st.warning(f"**{res['name']}** 레지던트의 매칭 데이터가 엑셀 파일에 없습니다.")
 
                     with calendar_col:
                         if st.button("선택된 레지던트에게 Google Calendar 일정 추가"):
@@ -1220,10 +1279,17 @@ if st.session_state.get('login_mode') in ['user_mode', 'new_user_registration', 
             if 'google_calendar_service' not in st.session_state:
                 st.session_state.google_calendar_service = None
             
-            google_calendar_service = get_google_calendar_service(firebase_key)
-            st.session_state.google_calendar_service = google_calendar_service
+            # firebase_key가 존재할 때만 함수를 호출하도록 수정
+            if firebase_key:
+                try:
+                    google_calendar_service = get_google_calendar_service(firebase_key)
+                    st.session_state.google_calendar_service = google_calendar_service
+                except Exception as e:
+                    st.error(f"❌ Google Calendar 서비스 로딩에 실패했습니다: {e}")
+                    st.info("로그인/인증 정보가 올바른지 확인해주세요.")
+                    st.session_state.google_calendar_service = None
 
-            if google_calendar_service:
+            if st.session_state.google_calendar_service:
                 st.success("✅ 캘린더 추가 기능이 허용되어 있습니다.")
             else:
                 pass
