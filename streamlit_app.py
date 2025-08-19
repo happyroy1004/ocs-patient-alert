@@ -525,7 +525,7 @@ def process_sheet_v8(df, professors_list, sheet_key):
         final_rows.append(row)
 
     final_df = pd.DataFrame(final_rows, columns=df.columns)
-    required_cols = ['진료번호', '예약시간', '환자명', '예약의사', '진료내역']
+    required_cols = ['진료번호', '예약일시', '예약시간', '환자명', '예약의사', '진료내역']
     final_df = final_df[[col for col in required_cols if col in final_df.columns]]
     return final_df
 
