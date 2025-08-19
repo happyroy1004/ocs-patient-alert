@@ -677,7 +677,7 @@ if 'google_creds' not in st.session_state:
 
 users_ref = db.reference("users")
 
-#6. User and Admin Login and User Management
+#6. User and Admin and Resident Login and User Management
 
 # --- 사용 설명서 PDF 다운로드 버튼 추가 ---
 pdf_file_path = "manual.pdf"
@@ -791,49 +791,79 @@ if st.session_state.get('login_mode') not in ['admin_mode', 'resident_mode']:
                     st.rerun()
                 
                 elif st.session_state.get('login_mode') == 'new_user_registration':
-                    # 신규 사용자 등록 로직
+                    # 신규 사용자 등록 로직 (레지던트 역할 부여)
                     st.session_state.current_firebase_key = new_firebase_key
                     st.session_state.found_user_email = new_email
-                    users_ref.child(new_firebase_key).set({"name": st.session_state.current_user_name, "email": new_email, "password": "1234"})
+                    
+                    # 'resident'로 로그인 시 역할(role)을 'resident'로 저장
+                    if st.session_state.get('is_resident_logging_in'):
+                        user_role = 'resident'
+                        st.session_state.login_mode = 'resident_mode' # 로그인 모드를 resident_mode로 변경
+                        del st.session_state.is_resident_logging_in # 임시 변수 삭제
+                    else:
+                        user_role = 'user'
+                        st.session_state.login_mode = 'user_mode' # 로그인 모드를 user_mode로 변경
+                        
+                    users_ref.child(new_firebase_key).set({"name": st.session_state.current_user_name, "email": new_email, "password": "1234", "role": user_role})
                     st.success(f"새로운 사용자 정보가 등록되었습니다: {st.session_state.current_user_name} ({new_email})")
-                    st.session_state.login_mode = 'user_mode'
                     st.rerun()
             else:
                 st.error("올바른 이메일 주소 형식이 아닙니다.")
 
 
 #6-1. --- Admin/Resident 모드 로그인 처리 ---
-# 비밀번호 없이 사용자 이름만으로 로그인
-if is_admin_input: # 'admin'만 입력되면 바로 실행
+if is_admin_input:
     st.session_state.login_mode = 'admin_mode'
     st.session_state.logged_in_as_admin = True
     st.session_state.found_user_email = "admin"
     st.session_state.current_user_name = "admin"
     st.rerun()
 
-elif is_resident_input: # 'resident'만 입력되면 바로 실행
-    st.session_state.login_mode = 'resident_login_mode'
-    st.session_state.current_user_name = "resident"
-    # 레지던트의 경우, 필요 시 여기에 추가적인 인증 로직을 구현할 수 있습니다.
-    st.rerun()
+elif is_resident_input:
+    all_users_meta = users_ref.get()
+    matched_resident = None
+    if all_users_meta:
+        for safe_key, user_info in all_users_meta.items():
+            # 레지던트 이름과 역할을 모두 확인
+            if user_info and user_info.get("name") == "resident" and user_info.get("role") == "resident":
+                matched_resident = {"safe_key": safe_key, "email": user_info.get("email", ""), "name": user_info.get("name", ""), "password": user_info.get("password")}
+                break
     
-#7. Admin and Resident UI Display
+    if matched_resident:
+        # 기존 레지던트 계정 로그인
+        st.session_state.found_user_email = matched_resident["email"]
+        st.session_state.user_id_input_value = matched_resident["email"]
+        st.session_state.current_firebase_key = matched_resident["safe_key"]
+        st.session_state.current_user_name = matched_resident["name"]
+        st.session_state.login_mode = 'resident_mode'
+        st.info(f"레지던트 계정으로 로그인되었습니다: **{st.session_state.current_user_name}**")
+        st.rerun()
+    else:
+        # 레지던트 이름으로 처음 접속 시, 등록 절차로 이동
+        st.info("'resident'님은 새로운 레지던트입니다. 아래에 이메일 주소를 입력하여 등록을 완료하세요.")
+        st.session_state.found_user_email = ""
+        st.session_state.user_id_input_value = ""
+        st.session_state.current_firebase_key = ""
+        st.session_state.current_user_name = user_name
+        st.session_state.login_mode = 'new_user_registration'
+        st.session_state.is_resident_logging_in = True # 레지던트임을 표시하는 임시 변수
+        st.rerun()
 
-# Admin 모드
-if st.session_state.get('login_mode') == 'admin_mode':
-    st.title('관리자 모드')
+#7. --- Admin 모드 로그인 처리 ---
+if is_admin_input:
     st.session_state.logged_in_as_admin = True
     st.session_state.found_user_email = "admin"
     st.session_state.current_user_name = "admin"
     
-    # 탭 생성 (분석 탭은 제거하고, 레지던트 관리 탭 추가)
-    general_user_tab, resident_management_tab = st.tabs(['일반 사용자 관리', '레지던트 사용자 관리'])
-
-    with general_user_tab:
+    # 세 개의 탭 생성 (레지던트 관리 탭 추가)
+    excel_processor_tab, analysis_tab, resident_management_tab = st.tabs(['💻 Excel File Processor', '📈 OCS 분석 결과', '🧑‍⚕️ 레지던트 관리'])
+    
+    with excel_processor_tab:
+        # 엑셀 업로드 섹션 - 비밀번호 없이도 접근 가능
         st.subheader("💻 Excel File Processor")
         uploaded_file = st.file_uploader("암호화된 Excel 파일을 업로드하세요", type=["xlsx", "xlsm"])
         
-        # 기존 일반 사용자 관련 엑셀 업로드, 매칭, 메일/캘린더 전송 로직
+        # 엑셀 업로드 로직
         if uploaded_file:
             file_name = uploaded_file.name
             
@@ -1054,12 +1084,14 @@ if st.session_state.get('login_mode') == 'admin_mode':
                                                     doctor_name,
                                                     event_description
                                                 )
+
                                             st.success(f"**{user_name}**님의 캘린더에 일정을 추가했습니다.")
                                         
                                     except Exception as e:
                                         st.error(f"**{user_name}**님의 캘린더 일정 추가 실패: {e}")
                                 else:
                                     st.warning(f"**{user_name}**님은 Google Calendar 계정이 연동되어 있지 않습니다. Google Calendar 탭에서 인증을 진행해주세요.")
+
                 else:
                     st.info("엑셀 파일 처리 완료. 매칭된 환자가 없습니다.")
                     
@@ -1075,55 +1107,87 @@ if st.session_state.get('login_mode') == 'admin_mode':
                 st.error(f"파일 처리 실패: {ve}")
             except Exception as e:
                 st.error(f"예상치 못한 오류 발생: {e}")
-
+    
+    # --- 레지던트 관리 탭 ---
     with resident_management_tab:
-        st.subheader('👨‍⚕️ 레지던트 사용자 관리')
+        st.subheader("🧑‍⚕️ 레지던트 관리")
         
-        # 레지던트 사용자 목록 불러오기
-        all_residents_meta = db.reference("residents").get() # 레지던트 정보를 저장하는 별도의 노드가 있다고 가정
-        resident_list_for_dropdown = [f"{resident_info.get('name', '이름 없음')} ({resident_info.get('department', '등록과 없음')})"
-                                      for resident_info in (all_residents_meta.values() if all_residents_meta else [])]
-        
-        # 레지던트 추가 기능
-        st.markdown('---')
-        st.subheader("➕ 신규 레지던트 추가")
-        new_resident_name = st.text_input("새 레지던트 이름")
-        new_resident_department = st.text_input("새 레지던트 등록과")
-        new_resident_email = st.text_input("새 레지던트 이메일")
-        if st.button("레지던트 추가"):
-            if new_resident_name and new_resident_department and new_resident_email:
-                new_resident_safe_key = sanitize_path(new_resident_email)
-                db.reference(f"residents/{new_resident_safe_key}").set({
-                    "name": new_resident_name,
-                    "department": new_resident_department,
-                    "email": new_resident_email
-                })
-                st.success(f"{new_resident_name} 레지던트가 성공적으로 등록되었습니다.")
-                st.rerun()
-            else:
-                st.warning("이름, 등록과, 이메일을 모두 입력해주세요.")
+        all_users_meta = users_ref.get()
+        residents = []
 
-        # 레지던트 삭제 기능
-        st.markdown("---")
-        st.subheader("🗑️ 레지던트 사용자 삭제")
-        if resident_list_for_dropdown:
-            resident_to_delete = st.multiselect("삭제할 레지던트 선택", resident_list_for_dropdown, key="delete_resident_multiselect")
-            if st.button("선택한 레지던트 삭제"):
-                if resident_to_delete:
-                    for resident_str in resident_to_delete:
-                        match = re.search(r'\((.*?)\)', resident_str)
-                        if match:
-                            email_to_del = match.group(1)
-                            safe_key_to_del = sanitize_path(email_to_del)
-                            db.reference(f"residents/{safe_key_to_del}").delete()
-                            st.info(f"{resident_str} 레지던트 정보가 삭제되었습니다.")
-                    st.rerun()
-                else:
-                    st.warning("삭제할 레지던트를 선택해주세요.")
+        if all_users_meta:
+            for safe_key, user_info in all_users_meta.items():
+                # 'role'이 'resident'인 사용자를 필터링
+                if user_info and user_info.get("role") == "resident":
+                    residents.append({
+                        "safe_key": safe_key,
+                        "name": user_info.get("name", "이름 없음"),
+                        "email": user_info.get("email", "이메일 없음")
+                    })
+        
+        if not residents:
+            st.info("현재 등록된 레지던트 계정이 없습니다.")
         else:
-            st.info("등록된 레지던트가 없습니다.")
+            resident_list_for_multiselect = [f"{res['name']} ({res['email']})" for res in residents]
             
-    # 관리자 비밀번호 입력 섹션 (기존 로직 유지)
+            # 레지던트 선택
+            selected_residents_str = st.multiselect("액션을 취할 레지던트 선택", resident_list_for_multiselect, key="resident_multiselect")
+            
+            # 선택된 레지던트 데이터 추출
+            selected_residents_data = [res for res in residents if f"{res['name']} ({res['email']})" in selected_residents_str]
+
+            if selected_residents_data:
+                st.markdown("---")
+                st.write("**선택된 레지던트 목록:**")
+                for res in selected_residents_data:
+                    st.write(f"- {res['name']} ({res['email']})")
+
+                # 메일 및 일정 추가 버튼
+                mail_col, calendar_col = st.columns(2)
+                
+                with mail_col:
+                    if st.button("선택된 레지던트에게 메일 보내기"):
+                        if not st.secrets["gmail"]["sender"] or not st.secrets["gmail"]["app_password"]:
+                            st.error("Gmail 인증 정보가 설정되지 않았습니다.")
+                        else:
+                            for res in selected_residents_data:
+                                try:
+                                    subject = "레지던트 공지사항"
+                                    body = f"안녕하세요, {res['name']} 레지던트님.\n\n관리자로부터의 공지입니다.\n\n[이곳에 공지사항 내용을 입력하세요.]\n\n감사합니다."
+                                    
+                                    send_email_simple(
+                                        receiver=res['email'],
+                                        subject=subject,
+                                        body=body,
+                                        sender=st.secrets["gmail"]["sender"],
+                                        password=st.secrets["gmail"]["app_password"]
+                                    )
+                                    st.success(f"**{res['name']}**님에게 메일 전송 완료!")
+                                except Exception as e:
+                                    st.error(f"**{res['name']}**님에게 메일 전송 실패: {e}")
+
+                with calendar_col:
+                    if st.button("선택된 레지던트에게 Google Calendar 일정 추가"):
+                        for res in selected_residents_data:
+                            try:
+                                creds = load_google_creds_from_firebase(res['safe_key'])
+                                if creds and creds.valid and not creds.expired:
+                                    service = build('calendar', 'v3', credentials=creds)
+                                    
+                                    event = {
+                                        'summary': '⭐ 관리자 공지',
+                                        'description': '관리자로부터의 중요 공지 일정입니다. 자세한 내용은 이메일을 확인하세요.',
+                                        'start': {'date': datetime.date.today().isoformat()},
+                                        'end': {'date': datetime.date.today().isoformat()},
+                                    }
+                                    
+                                    create_static_calendar_event(service, event)
+                                    st.success(f"**{res['name']}**님 캘린더에 공지 일정을 추가했습니다.")
+                                else:
+                                    st.warning(f"**{res['name']}**님은 Google Calendar 계정이 연동되지 않았습니다. 해당 사용자가 Google Calendar 탭에서 인증을 완료해야 합니다.")
+                            except Exception as e:
+                                st.error(f"**{res['name']}**님에게 일정 추가 실패: {e}")
+                                
     st.markdown("---")
     st.subheader("🛠️ Administer password")
     admin_password_input = st.text_input("관리자 비밀번호를 입력하세요", type="password", key="admin_password")
@@ -1140,15 +1204,14 @@ if st.session_state.get('login_mode') == 'admin_mode':
     elif admin_password_input and admin_password_input != secret_admin_password:
         st.error("비밀번호가 틀렸습니다.")
         st.session_state.admin_password_correct = False
-    
-    # 관리자 권한 활성화 시 보이는 기능들 (기존 로직 유지)
-    if st.session_state.get('admin_password_correct'):
+        
+    if st.session_state.admin_password_correct:
         st.markdown("---")
         st.subheader("📦 메일 발송")
         
         all_users_meta = users_ref.get()
         user_list_for_dropdown = [f"{user_info.get('name', '이름 없음')} ({user_info.get('email', '이메일 없음')})"
-                                  for user_info in (all_users_meta.values() if all_users_meta else [])]
+                                    for user_info in (all_users_meta.values() if all_users_meta else [])]
         
         if 'select_all_users' not in st.session_state:
             st.session_state.select_all_users = False
@@ -1157,9 +1220,9 @@ if st.session_state.get('login_mode') == 'admin_mode':
         if select_all_users_button:
             st.session_state.select_all_users = not st.session_state.select_all_users
             st.rerun()
-        
+    
         default_selection = user_list_for_dropdown if st.session_state.select_all_users else []
-        
+    
         selected_users_for_mail = st.multiselect("보낼 사용자 선택", user_list_for_dropdown, default=default_selection, key="mail_multiselect")
         
         custom_message = st.text_area("보낼 메일 내용", height=200)
@@ -1195,7 +1258,7 @@ if st.session_state.get('login_mode') == 'admin_mode':
             st.session_state.delete_confirm = False
         if 'users_to_delete' not in st.session_state:
             st.session_state.users_to_delete = []
-        
+    
         if not st.session_state.delete_confirm:
             users_to_delete = st.multiselect("삭제할 사용자 선택", user_list_for_dropdown, key="delete_user_multiselect")
             if st.button("선택한 사용자 삭제"):
@@ -1230,20 +1293,7 @@ if st.session_state.get('login_mode') == 'admin_mode':
                     st.session_state.users_to_delete = []
                     st.rerun()
 
-
-#8. 레지던트 모드
-elif st.session_state.get('login_mode') == 'resident_mode':
-    st.title('레지던트 모드')
-    st.info(f"**{st.session_state.current_user_name}**님으로 로그인되었습니다.")
-
-    # 레지던트 정보 입력 필드 (예: 로그인 시 저장된 값 사용)
-    resident_name_input = st.text_input('레지던트 이름', value=st.session_state.current_user_name, disabled=True)
-    resident_department = st.text_input('등록과', value=st.session_state.get('resident_department', '')) # 세션 상태에 저장된 값 사용
-
-    
-    
-    
-#9. Regular User Mode
+#8. Regular User Mode
 # --- 일반 사용자 모드 ---
 else:
     user_id_final = st.session_state.user_id_input_value if st.session_state.email_change_mode or not st.session_state.found_user_email else st.session_state.found_user_email
