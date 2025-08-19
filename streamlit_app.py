@@ -1300,6 +1300,13 @@ if st.session_state.get('login_mode') == 'admin_mode':
                                                         # 👇 '예약일시'와 '예약시간'을 합쳐서 하나의 문자열로 만듭니다.
                                                         reservation_date_str = excel_row.get('예약일시', '')
                                                         reservation_time_str = excel_row.get('예약시간', '')
+                                                        patient_name = row.get('환자명', '')
+                                                        patient_pid = row.get('진료번호', '')
+                                                        department = row.get('등록과', '')
+                                                        doctor_name = row.get('예약의사', '')
+                                                        treatment_details = row.get('진료내역', '')
+                                                        reservation_date_raw = row.get('예약일시', '')
+                                                        reservation_time_raw = row.get('예약시간', '')
                                                         
                                                         doctor_name = res['name']
                                                         treatment_details = excel_row.get('진료내역', '정보 없음')
@@ -1311,8 +1318,9 @@ if st.session_state.get('login_mode') == 'admin_mode':
                                                         except ValueError:
                                                             st.warning(f"**{res['name']}** 레지던트의 '{patient_name}' 환자 예약일시 형식이 잘못되었습니다: {full_datetime_str}")
                                                             continue
-                                                        
-                                                        create_calendar_event(service, patient_name, pid, department, reservation_datetime, doctor_name, treatment_details)
+                                                        event_prefix = "✨ 내원 : " if is_daily else "내원? : "
+                                                        event_title = f"{event_prefix}{patient_name} ({department}, {doctor_name})"
+                                                        create_calendar_event(service, event_title, pid, department, reservation_datetime, doctor_name, treatment_details)
                                             
                                         if found_matched_data:
                                             st.success(f"**{res['name']}**님 캘린더에 매칭된 모든 환자 일정을 추가했습니다.")
