@@ -198,6 +198,10 @@ if 'user_role' not in st.session_state:
     st.session_state.user_role = 'user'
 if 'google_creds' not in st.session_state:
     st.session_state['google_creds'] = {}
+if 'user_name' not in st.session_state:
+    st.session_state.user_name = ""
+if 'user_department' not in st.session_state:
+    st.session_state.user_department = ""
 
 # OCS 분석 관련 함수 추가
 def process_excel_file_and_style(file_io):
@@ -337,7 +341,7 @@ def create_calendar_event(service, patient_name, pid, department, reservation_da
         st.error(f'이벤트 생성 실패: {error}')
 
 
-#2. User Authentication
+#2. User Authentication and New User Registration
 def get_user_data(email, password):
     safe_email = sanitize_path(email)
     users_ref = db.reference(f"users/{safe_email}")
@@ -365,43 +369,134 @@ def login():
                 st.session_state.current_user_email = email
                 st.session_state.current_firebase_key = user_key
                 st.session_state.user_role = user_data.get("role", "일반 사용자")
+                st.session_state.user_name = user_data.get("name", "")
+                st.session_state.user_department = user_data.get("department", "")
                 st.rerun()
             else:
                 st.error("이메일 또는 비밀번호가 잘못되었습니다.")
 
 def logout():
     if st.button("로그아웃"):
-        for key in st.session_state.keys():
-            del st.session_state[key]
+        st.session_state.clear()
         st.rerun()
-        
-# --- 비밀번호 변경 기능 추가 ---
-def change_password_section():
+
+def register_user(email, password, role, name, department=None):
+    safe_email = sanitize_path(email)
+    users_ref = db.reference(f"users/{safe_email}")
+    existing_user = users_ref.get()
+
+    if existing_user:
+        return False, "이미 등록된 이메일입니다."
+    
+    user_data = {
+        "email": email,
+        "password": password,
+        "role": role,
+        "name": name,
+    }
+    if department:
+        user_data["department"] = department
+
+    users_ref.set(user_data)
+    return True, "사용자 등록 완료"
+
+def resident_login_ui():
+    st.title("레지던트 로그인")
+    with st.form("resident_login_form"):
+        name = st.text_input("레지던트 이름")
+        department = st.selectbox("등록과", ["소치", "보존", "교정"])
+        password = st.text_input("비밀번호", type="password")
+        submitted = st.form_submit_button("로그인")
+
+        if submitted:
+            # Firebase에서 이름과 과로 레지던트 정보 검색
+            users_ref = db.reference("users")
+            users_by_name = users_ref.order_by_child("name").equal_to(name).get()
+            
+            found_user = None
+            found_key = None
+            if users_by_name:
+                for key, user_data in users_by_name.items():
+                    if user_data.get("department") == department and user_data.get("role") == "레지던트":
+                        found_user = user_data
+                        found_key = key
+                        break
+            
+            if found_user and found_user.get("password") == password:
+                st.session_state.auth_status = "authenticated"
+                st.session_state.user_role = "레지던트"
+                st.session_state.user_name = name
+                st.session_state.user_department = department
+                st.session_state.current_user_email = found_user.get("email")
+                st.session_state.current_firebase_key = found_key
+                st.rerun()
+            else:
+                st.error("이름, 등록과 또는 비밀번호가 잘못되었습니다.")
+
+def resident_register_ui():
+    st.header("레지던트 등록")
+    with st.form("resident_register_form"):
+        email = st.text_input("이메일")
+        name = st.text_input("이름")
+        department = st.selectbox("등록과", ["소치", "보존", "교정"])
+        password = st.text_input("비밀번호", type="password")
+        confirm_password = st.text_input("비밀번호 확인", type="password")
+        submitted = st.form_submit_button("등록")
+
+        if submitted:
+            if not is_valid_email(email):
+                st.error("유효한 이메일 주소를 입력해주세요.")
+            elif password != confirm_password:
+                st.error("비밀번호가 일치하지 않습니다.")
+            else:
+                success, message = register_user(email, password, "레지던트", name, department)
+                if success:
+                    st.success(message)
+                else:
+                    st.error(message)
+
+def change_password_email_section():
     if st.session_state.get("auth_status") == "authenticated":
         st.divider()
-        st.header("🔑 비밀번호 변경")
-        
-        new_password = st.text_input("새 비밀번호를 입력하세요", type="password", key="new_password_input")
-        confirm_password = st.text_input("새 비밀번호를 다시 입력하세요", type="password", key="confirm_password_input")
-        
-        if st.button("비밀번호 변경"):
-            if not new_password or not confirm_password:
-                st.error("새 비밀번호와 확인용 비밀번호를 모두 입력해주세요.")
-            elif new_password != confirm_password:
-                st.error("새 비밀번호가 일치하지 않습니다. 다시 확인해주세요.")
-            else:
-                try:
-                    users_ref = db.reference(f"users/{st.session_state.current_firebase_key}")
-                    users_ref.update({"password": new_password})
-                    st.success("비밀번호가 성공적으로 변경되었습니다.")
-                except Exception as e:
-                    st.error(f"비밀번호 변경 중 오류가 발생했습니다: {e}")
+        st.header("🔑 비밀번호/이메일 변경")
 
+        with st.expander("비밀번호 변경"):
+            new_password = st.text_input("새 비밀번호를 입력하세요", type="password", key="new_password_input")
+            confirm_password = st.text_input("새 비밀번호를 다시 입력하세요", type="password", key="confirm_password_input")
+            if st.button("비밀번호 변경", key="change_password_button"):
+                if not new_password or not confirm_password:
+                    st.error("새 비밀번호와 확인용 비밀번호를 모두 입력해주세요.")
+                elif new_password != confirm_password:
+                    st.error("새 비밀번호가 일치하지 않습니다. 다시 확인해주세요.")
+                else:
+                    try:
+                        users_ref = db.reference(f"users/{st.session_state.current_firebase_key}")
+                        users_ref.update({"password": new_password})
+                        st.success("비밀번호가 성공적으로 변경되었습니다.")
+                    except Exception as e:
+                        st.error(f"비밀번호 변경 중 오류가 발생했습니다: {e}")
+
+        with st.expander("이메일 변경"):
+            st.info("이메일 변경은 로그인 이메일만 변경하며, Firebase 데이터베이스 키는 변경되지 않습니다.")
+            new_email = st.text_input("새 이메일을 입력하세요", key="new_email_input")
+            if st.button("이메일 변경", key="change_email_button"):
+                if not is_valid_email(new_email):
+                    st.error("유효한 이메일 주소를 입력해주세요.")
+                else:
+                    try:
+                        users_ref = db.reference(f"users/{st.session_state.current_firebase_key}")
+                        users_ref.update({"email": new_email})
+                        st.success(f"이메일이 {new_email}(으)로 성공적으로 변경되었습니다. 다음 로그인 시 새 이메일을 사용하세요.")
+                        st.session_state.current_user_email = new_email
+                    except Exception as e:
+                        st.error(f"이메일 변경 중 오류가 발생했습니다: {e}")
 
 #3. Main App UI and Logic
 if st.session_state.auth_status == "authenticated":
-    st.title(f"👋 환영합니다, {st.session_state.current_user_email}님!")
+    st.title(f"👋 환영합니다, {st.session_state.user_name}님!")
     st.write(f"현재 역할: {st.session_state.user_role}")
+    if st.session_state.user_role == "레지던트":
+        st.write(f"등록과: {st.session_state.user_department}")
     logout()
     
     st.divider()
@@ -423,12 +518,28 @@ if st.session_state.auth_status == "authenticated":
                 
                 excel_data_dfs = pd.read_excel(excel_file, sheet_name=None)
                 
-                # 분석 실행
                 professors = st.secrets["professors"]
-                analysis_results = run_analysis(excel_data_dfs, professors)
                 
-                st.session_state.analysis_results = analysis_results
-                st.success(f"파일 '{file_name}' 분석 완료!")
+                # 역할에 따라 다른 분석 로직 적용
+                if st.session_state.user_role == "레지던트":
+                    # 레지던트 전용 분석: 본인 환자 수만 계산
+                    resident_name = st.session_state.user_name
+                    resident_dept = st.session_state.user_department
+                    
+                    analysis_results = {}
+                    if resident_dept in excel_data_dfs:
+                        df_dept = excel_data_dfs[resident_dept]
+                        my_patients_df = df_dept[df_dept['예약의사'] == resident_name]
+                        today_patients = my_patients_df.shape[0]
+                        analysis_results[resident_dept] = {'오늘 환자 수': today_patients}
+                    
+                    st.session_state.analysis_results = analysis_results
+                    st.success(f"레지던트 '{resident_name}'의 파일 '{file_name}' 분석 완료!")
+                else: # 일반 사용자 (학생)
+                    analysis_results = run_analysis(excel_data_dfs, professors)
+                    st.session_state.analysis_results = analysis_results
+                    st.success(f"파일 '{file_name}' 분석 완료!")
+
                 st.session_state.uploaded_file = uploaded_file
             
             except ValueError as ve:
@@ -436,77 +547,75 @@ if st.session_state.auth_status == "authenticated":
             except Exception as e:
                 st.error(f"예상치 못한 오류 발생: {e}")
 
-
     st.divider()
 
     # --- 탭을 이용한 분리된 기능 섹션 ---
-    tab1, tab2, tab3 = st.tabs(["레지던트용 기능", "학생용 기능", "Google Calendar 연동"])
+    tab1, tab2, tab3 = st.tabs(["OCS 분석 결과", "등록 환자 알림", "Google Calendar 연동"])
 
     with tab1:
-        st.header("레지던트용 기능")
-        st.write("레지던트용 기능이 여기에 표시됩니다.")
-        
+        st.header("OCS 분석 결과")
         if 'analysis_results' in st.session_state and st.session_state.analysis_results:
             st.subheader("OCS 분석 결과")
             for dept, results in st.session_state.analysis_results.items():
-                st.markdown(f"**{dept}**")
-                st.write(f" - 오전 환자 수: {results['오전']}명")
-                st.write(f" - 오후 환자 수: {results['오후']}명")
+                if st.session_state.user_role == "레지던트":
+                    st.markdown(f"**{dept} - {st.session_state.user_name} 레지던트**")
+                    st.write(f" - 오늘 내원 환자 수: {results['오늘 환자 수']}명")
+                else:
+                    st.markdown(f"**{dept}**")
+                    st.write(f" - 오전 환자 수: {results['오전']}명")
+                    st.write(f" - 오후 환자 수: {results['오후']}명")
         else:
             st.warning("파일을 먼저 업로드하고 분석을 실행해주세요.")
 
     with tab2:
-        st.header("학생용 기능")
-        st.write("학생용 기능이 여기에 표시됩니다.")
-
+        st.header("등록 환자 알림")
         if st.session_state.get("uploaded_file"):
-            st.info(f"업로드된 파일: {st.session_state.uploaded_file.name}")
-            
-            # --- 학생용 데이터 추출 ---
-            try:
-                excel_file, decrypted_file_io = load_excel(st.session_state.uploaded_file, password=st.secrets["excel_password"])
-                df_dict = pd.read_excel(excel_file, sheet_name=None)
-                
-                # '환자명', '진료번호', '등록과' 컬럼 추출
-                student_df = pd.DataFrame()
-                for sheet_name, df in df_dict.items():
-                    if all(col in df.columns for col in ['환자명', '진료번호', '등록과', '예약의사']):
-                        df_filtered = df[['환자명', '진료번호', '등록과', '예약의사']].copy()
-                        student_df = pd.concat([student_df, df_filtered], ignore_index=True)
-                
-                if not student_df.empty:
-                    student_df = student_df.drop_duplicates(subset=['환자명', '진료번호', '등록과']).reset_index(drop=True)
-                    st.subheader("💡 학생용 데이터 미리보기")
-                    st.dataframe(student_df)
+            # 학생은 기존 기능 유지
+            if st.session_state.user_role == "일반 사용자":
+                try:
+                    excel_file, decrypted_file_io = load_excel(st.session_state.uploaded_file, password=st.secrets["excel_password"])
+                    df_dict = pd.read_excel(excel_file, sheet_name=None)
+                    
+                    student_df = pd.DataFrame()
+                    for sheet_name, df in df_dict.items():
+                        if all(col in df.columns for col in ['환자명', '진료번호', '등록과', '예약의사']):
+                            df_filtered = df[['환자명', '진료번호', '등록과', '예약의사']].copy()
+                            student_df = pd.concat([student_df, df_filtered], ignore_index=True)
+                    
+                    if not student_df.empty:
+                        student_df = student_df.drop_duplicates(subset=['환자명', '진료번호', '등록과']).reset_index(drop=True)
+                        st.subheader("💡 학생용 데이터 미리보기")
+                        st.dataframe(student_df)
 
-                    # --- 등록 환자 내원 알림 (이메일) ---
-                    st.subheader("📧 등록 환자 내원 알림 (이메일)")
-                    
-                    user_patients_ref = db.reference(f"users/{st.session_state.current_firebase_key}/patients")
-                    existing_patients = user_patients_ref.get() or {}
-                    
-                    user_pids = {p['진료번호'] for p in existing_patients.values()}
-                    df_to_send = student_df[student_df['진료번호'].isin(user_pids)]
-                    
-                    if not df_to_send.empty:
-                        st.dataframe(df_to_send)
-                        if st.button("선택된 환자에게 이메일 알림 보내기"):
-                            sender_email = st.secrets["email"]["sender_email"]
-                            sender_password = st.secrets["email"]["sender_password"]
-                            receiver_email = st.session_state.current_user_email
-                            
-                            send_result = send_email(receiver_email, df_to_send, sender_email, sender_password)
-                            if send_result is True:
-                                st.success("알림 이메일 전송 완료!")
-                            else:
-                                st.error(f"알림 이메일 전송 실패: {send_result}")
-                    else:
-                        st.info("오늘 내원하는 등록된 환자가 없습니다.")
+                        st.subheader("📧 등록 환자 내원 알림 (이메일)")
+                        user_patients_ref = db.reference(f"users/{st.session_state.current_firebase_key}/patients")
+                        existing_patients = user_patients_ref.get() or {}
                         
-            except ValueError as ve:
-                st.error(f"파일 처리 오류: {ve}")
-            except Exception as e:
-                st.error(f"예상치 못한 오류 발생: {e}")
+                        user_pids = {p['진료번호'] for p in existing_patients.values()}
+                        df_to_send = student_df[student_df['진료번호'].isin(user_pids)]
+                        
+                        if not df_to_send.empty:
+                            st.dataframe(df_to_send)
+                            if st.button("선택된 환자에게 이메일 알림 보내기"):
+                                sender_email = st.secrets["email"]["sender_email"]
+                                sender_password = st.secrets["email"]["sender_password"]
+                                receiver_email = st.session_state.current_user_email
+                                
+                                send_result = send_email(receiver_email, df_to_send, sender_email, sender_password)
+                                if send_result is True:
+                                    st.success("알림 이메일 전송 완료!")
+                                else:
+                                    st.error(f"알림 이메일 전송 실패: {send_result}")
+                        else:
+                            st.info("오늘 내원하는 등록된 환자가 없습니다.")
+                            
+                except ValueError as ve:
+                    st.error(f"파일 처리 오류: {ve}")
+                except Exception as e:
+                    st.error(f"예상치 못한 오류 발생: {e}")
+            elif st.session_state.user_role == "레지던트":
+                st.info("레지던트는 토탈 환자 등록 및 관리 기능이 없습니다.")
+
         else:
             st.warning("파일을 먼저 업로드해주세요.")
     
@@ -549,23 +658,39 @@ if st.session_state.auth_status == "authenticated":
                     if patient_list:
                         df_patient_list = pd.DataFrame(patient_list)
                         st.subheader("💡 캘린더에 등록할 환자 목록")
-                        st.dataframe(df_patient_list[['환자명', '진료번호', '등록과', '예약일자', '예약시간']])
                         
-                        if st.button("캘린더에 이벤트 등록"):
-                            with st.spinner('이벤트를 캘린더에 등록하는 중...'):
-                                for index, row in df_patient_list.iterrows():
-                                    create_calendar_event(
-                                        service,
-                                        patient_name=row['환자명'],
-                                        pid=row['진료번호'],
-                                        department=row['등록과'],
-                                        reservation_datetime=row['datetime_obj'],
-                                        doctor_name=row['예약의사'],
-                                        treatment_details=row['진료내역']
-                                    )
-                                time.sleep(2) # 이벤트 등록 시간 확보
-                            st.success("모든 이벤트가 성공적으로 등록되었습니다.")
-                            
+                        if st.session_state.user_role == "레지던트":
+                            # 레지던트의 경우 본인 환자만 필터링
+                            df_to_calendar = df_patient_list[
+                                (df_patient_list['예약의사'] == st.session_state.user_name) &
+                                (df_patient_list['등록과'] == st.session_state.user_department)
+                            ]
+                        else: # 일반 사용자 (학생)
+                            # 학생의 경우 등록된 환자만 필터링
+                            user_patients_ref = db.reference(f"users/{st.session_state.current_firebase_key}/patients")
+                            existing_patients = user_patients_ref.get() or {}
+                            user_pids = {p['진료번호'] for p in existing_patients.values()}
+                            df_to_calendar = df_patient_list[df_patient_list['진료번호'].isin(user_pids)]
+
+                        if not df_to_calendar.empty:
+                            st.dataframe(df_to_calendar[['환자명', '진료번호', '등록과', '예약일자', '예약시간']])
+                            if st.button("캘린더에 이벤트 등록"):
+                                with st.spinner('이벤트를 캘린더에 등록하는 중...'):
+                                    for index, row in df_to_calendar.iterrows():
+                                        create_calendar_event(
+                                            service,
+                                            patient_name=row['환자명'],
+                                            pid=row['진료번호'],
+                                            department=row['등록과'],
+                                            reservation_datetime=row['datetime_obj'],
+                                            doctor_name=row['예약의사'],
+                                            treatment_details=row['진료내역']
+                                        )
+                                    time.sleep(2) 
+                                st.success("모든 이벤트가 성공적으로 등록되었습니다.")
+                        else:
+                            st.info("캘린더에 등록할 환자가 없습니다.")
+                    
                 except ValueError as ve:
                     st.error(f"파일 처리 오류: {ve}")
                 except Exception as e:
@@ -575,69 +700,79 @@ if st.session_state.auth_status == "authenticated":
     
     st.divider()
     
-    # --- 환자 등록 및 관리 기능 ---
-    st.header("🏥 내 환자 관리")
-    
-    with st.expander("➕ 새 환자 등록", expanded=False):
-        name = st.text_input("환자명", key="add_name")
-        pid = st.text_input("진료번호", key="add_pid")
-        selected_department = st.selectbox("등록과", ["외과", "내과", "소아과", "신경과"], key="add_department")
-
-        if st.button("환자 등록"):
-            if not name or not pid:
-                st.error("환자명과 진료번호를 모두 입력해주세요.")
-            else:
-                patients_ref_for_user = db.reference(f"users/{st.session_state.current_firebase_key}/patients")
-                existing_patient_data = patients_ref_for_user.get() or {}
-
-                is_duplicate = False
-                for v in existing_patient_data.values():
-                    if (v.get("환자명") == name and 
-                        v.get("진료번호") == pid and 
-                        v.get("등록과") == selected_department):
-                        is_duplicate = True
-                        break
-                
-                if is_duplicate:
-                    st.error("이미 등록된 환자입니다.")
-                else:
-                    patients_ref_for_user.push().set({"환자명": name, "진료번호": pid, "등록과": selected_department})
-                    st.success(f"{name} ({pid}) [{selected_department}] 환자 등록 완료")
-                    st.rerun()
-    
-    st.subheader("📋 등록된 환자 목록")
-    patients_ref_for_user = db.reference(f"users/{st.session_state.current_firebase_key}/patients")
-    existing_patient_data = patients_ref_for_user.get()
-
-    if existing_patient_data:
-        patient_list = []
-        for key, value in existing_patient_data.items():
-            value['key'] = key
-            patient_list.append(value)
+    if st.session_state.user_role == "일반 사용자":
+        # --- 환자 등록 및 관리 기능 (학생용) ---
+        st.header("🏥 내 환자 관리")
         
-        cols = st.columns([1, 1, 1, 0.2])
-        cols[0].write("**환자명**")
-        cols[1].write("**진료번호**")
-        cols[2].write("**등록과**")
-        cols[3].write("")
+        with st.expander("➕ 새 환자 등록", expanded=False):
+            name = st.text_input("환자명", key="add_name")
+            pid = st.text_input("진료번호", key="add_pid")
+            selected_department = st.selectbox("등록과", ["외과", "내과", "소아과", "신경과"], key="add_department")
 
-        for patient in patient_list:
-            cols = st.columns([1, 1, 1, 0.2])
-            cols[0].write(patient["환자명"])
-            cols[1].write(patient["진료번호"])
-            cols[2].write(patient["등록과"])
+            if st.button("환자 등록"):
+                if not name or not pid:
+                    st.error("환자명과 진료번호를 모두 입력해주세요.")
+                else:
+                    patients_ref_for_user = db.reference(f"users/{st.session_state.current_firebase_key}/patients")
+                    existing_patient_data = patients_ref_for_user.get() or {}
+
+                    is_duplicate = False
+                    for v in existing_patient_data.values():
+                        if (v.get("환자명") == name and 
+                            v.get("진료번호") == pid and 
+                            v.get("등록과") == selected_department):
+                            is_duplicate = True
+                            break
+                    
+                    if is_duplicate:
+                        st.error("이미 등록된 환자입니다.")
+                    else:
+                        patients_ref_for_user.push().set({"환자명": name, "진료번호": pid, "등록과": selected_department})
+                        st.success(f"{name} ({pid}) [{selected_department}] 환자 등록 완료")
+                        st.rerun()
+        
+        st.subheader("📋 등록된 환자 목록")
+        patients_ref_for_user = db.reference(f"users/{st.session_state.current_firebase_key}/patients")
+        existing_patient_data = patients_ref_for_user.get()
+
+        if existing_patient_data:
+            patient_list = []
+            for key, value in existing_patient_data.items():
+                value['key'] = key
+                patient_list.append(value)
             
-            if cols[3].button("❌", key=f"delete_{patient['key']}"):
-                patients_ref_for_user.child(patient['key']).delete()
-                st.success("환자 정보가 삭제되었습니다.")
-                st.rerun()
-    else:
-        st.info("등록된 환자가 없습니다.")
+            cols = st.columns([1, 1, 1, 0.2])
+            cols[0].write("**환자명**")
+            cols[1].write("**진료번호**")
+            cols[2].write("**등록과**")
+            cols[3].write("")
 
-    # 비밀번호 변경 기능 호출
-    change_password_section()
+            for patient in patient_list:
+                cols = st.columns([1, 1, 1, 0.2])
+                cols[0].write(patient["환자명"])
+                cols[1].write(patient["진료번호"])
+                cols[2].write(patient["등록과"])
+                
+                if cols[3].button("❌", key=f"delete_{patient['key']}"):
+                    patients_ref_for_user.child(patient['key']).delete()
+                    st.success("환자 정보가 삭제되었습니다.")
+                    st.rerun()
+        else:
+            st.info("등록된 환자가 없습니다.")
+    
+    change_password_email_section()
 
 #4. App Entry Point
 if st.session_state.auth_status == "unauthenticated":
     st.info("로그인이 필요합니다.")
-    login()
+    
+    # 레지던트, 일반 사용자 로그인 분기
+    st.header("사용자 로그인")
+    mode = st.radio("로그인 모드 선택", ["일반 사용자", "레지던트", "레지던트 등록"])
+    
+    if mode == "일반 사용자":
+        login()
+    elif mode == "레지던트":
+        resident_login_ui()
+    elif mode == "레지던트 등록":
+        resident_register_ui()
