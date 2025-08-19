@@ -16,6 +16,7 @@ import os
 import time
 import openpyxl  # 추가
 import datetime  # 추가
+import hashlib # 비밀번호 해싱을 위한 라이브러리 추가
 
 # Google Calendar API 관련 라이브러리 추가
 from google.auth.transport.requests import Request
@@ -24,14 +25,6 @@ from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 import base64
-
-# --- 로그인 정보 설정 (사용자 요청에 따라 이메일 대신 사용자 이름과 비밀번호를 사용) ---
-# 실제 환경에서는 이 정보를 하드코딩하지 않고, 별도의 보안된 공간(예: Streamlit secrets)에 저장해야 합니다.
-LOGIN_CREDENTIALS = {
-    "admin": "admin_password", # 관리자 로그인 정보
-    "레지던트": "resident_password", # 레지던트 로그인 정보
-    "일반사용자": "user_password" # 일반 사용자 로그인 정보 (더미)
-}
 
 # --- 파일 이름 유효성 검사 함수 ---
 def is_daily_schedule(file_name):
@@ -47,6 +40,11 @@ def is_valid_email(email):
     email_regex = r"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$"
     return re.match(email_regex, email) is not None
 
+# --- 비밀번호 해싱 함수 ---
+def hash_password(password):
+    """입력된 비밀번호를 SHA256으로 해싱합니다."""
+    return hashlib.sha256(password.encode()).hexdigest()
+
 # Firebase 초기화
 if not firebase_admin._apps:
     try:
@@ -59,6 +57,15 @@ if not firebase_admin._apps:
     except Exception as e:
         st.error("Firebase 초기화 중 오류가 발생했습니다. Streamlit Secrets 설정 파일을 확인해주세요.")
         st.error(f"오류: {e}")
+
+# 초기 사용자 등록 (최초 실행 시에만)
+users_ref = db.reference('users')
+if users_ref.get() is None:
+    st.info("Firebase 데이터베이스에 초기 사용자를 등록합니다.")
+    users_ref.child('admin').set({'password': hash_password('admin_password'), 'role': 'admin'})
+    users_ref.child('레지던트').set({'password': hash_password('resident_password'), 'role': '레지던트'})
+    users_ref.child('일반사용자').set({'password': hash_password('user_password'), 'role': '일반사용자'})
+    st.success("초기 사용자 등록 완료! 'admin' / 'admin_password' 로 로그인해보세요.")
 
 
 # --- 사용자 역할에 따라 UI를 다르게 표시하기 위한 세션 상태 초기화 ---
@@ -80,11 +87,14 @@ def show_login_page():
     password = st.text_input("비밀번호", type="password", key="login_password")
 
     if st.button("로그인"):
+        # Firebase에서 사용자 데이터 가져오기
+        users_ref = db.reference('users')
+        user_data = users_ref.child(st.session_state.username).get()
+        
         # 입력된 사용자 이름과 비밀번호를 확인
-        if st.session_state.username in LOGIN_CREDENTIALS and \
-           LOGIN_CREDENTIALS[st.session_state.username] == password:
+        if user_data and hash_password(password) == user_data.get('password'):
             st.session_state.logged_in = True
-            st.session_state.current_role = st.session_state.username
+            st.session_state.current_role = user_data.get('role', '일반사용자') # 역할이 없으면 일반사용자로 설정
             st.success(f"로그인 성공! ({st.session_state.current_role} 모드)")
             time.sleep(1)
             st.rerun()
@@ -99,16 +109,22 @@ def show_main_page():
     if st.session_state.current_role == "admin":
         st.sidebar.subheader("관리자 모드")
         st.sidebar.markdown(f"**사용자:** {st.session_state.username}")
+        # 관리자 메뉴에 사용자 등록 추가
+        menu = st.sidebar.radio("작업 선택", [
+            "환자 명단 보기", "환자 등록/수정", "사용자 등록", "비밀번호 변경", "환자 상태 변경", "로그아웃"
+        ])
     elif st.session_state.current_role == "레지던트":
         st.sidebar.subheader("레지던트 모드")
         st.sidebar.markdown(f"**사용자:** {st.session_state.username}")
+        menu = st.sidebar.radio("작업 선택", [
+            "환자 명단 보기", "환자 등록/수정", "비밀번호 변경", "환자 상태 변경", "로그아웃"
+        ])
     else: # 일반 사용자 모드
         st.sidebar.subheader("일반 사용자 모드")
         st.sidebar.markdown(f"**사용자:** {st.session_state.username}")
-
-    menu = st.sidebar.radio("작업 선택", [
-        "환자 명단 보기", "환자 등록/수정", "비밀번호 변경", "환자 상태 변경", "로그아웃"
-    ])
+        menu = st.sidebar.radio("작업 선택", [
+            "환자 명단 보기", "비밀번호 변경", "로그아웃"
+        ])
     
     st.title("병원 환자 관리 대시보드")
     st.write(f"현재 모드: **{st.session_state.current_role} 모드**")
@@ -186,6 +202,34 @@ def show_main_page():
                 st.error("환자명과 진료번호를 모두 입력해주세요.")
             else:
                 st.success(f"{name} ({pid}) 환자 등록 완료!")
+
+    elif st.session_state.current_role == "admin" and menu == "사용자 등록":
+        st.header("➕ 사용자 등록 (관리자 전용)")
+        st.markdown("새로운 사용자의 계정을 생성합니다.")
+        
+        new_username = st.text_input("새 사용자 이름")
+        new_password = st.text_input("새 비밀번호", type="password")
+        role_options = ["admin", "레지던트", "일반사용자"]
+        new_role = st.selectbox("역할 선택", role_options)
+        
+        if st.button("사용자 계정 생성"):
+            if not new_username or not new_password:
+                st.error("사용자 이름과 비밀번호를 모두 입력해주세요.")
+            else:
+                users_ref = db.reference('users')
+                if users_ref.child(new_username).get():
+                    st.error("이미 존재하는 사용자 이름입니다. 다른 이름을 사용해주세요.")
+                else:
+                    try:
+                        # Firebase에 새 사용자 정보 저장
+                        users_ref.child(new_username).set({
+                            'password': hash_password(new_password),
+                            'role': new_role
+                        })
+                        st.success(f"사용자 '{new_username}' ({new_role}) 계정이 성공적으로 생성되었습니다.")
+                    except Exception as e:
+                        st.error(f"사용자 등록 중 오류가 발생했습니다: {e}")
+
 
     elif menu == "비밀번호 변경":
         st.header("🔑 비밀번호 변경")
