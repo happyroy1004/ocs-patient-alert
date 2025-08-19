@@ -698,7 +698,7 @@ else:
 if 'login_mode' not in st.session_state:
     st.session_state.login_mode = 'not_logged_in'
 
-if st.session_state.get('login_mode') not in ['user_mode', 'admin_mode', 'resident_mode', 'new_resident_registration']:
+if st.session_state.get('login_mode') not in ['user_mode', 'admin_mode', 'resident_mode', 'new_resident_registration', 'resident_name_input', 'new_user_registration']:
     user_name = st.text_input("사용자 이름을 입력하세요 (예시: 홍길동, admin, resident)", key="login_username")
     password_input = st.text_input("비밀번호를 입력하세요", type="password", key="login_password")
     
@@ -865,7 +865,7 @@ if st.session_state.get('login_mode') == 'user_mode' or st.session_state.get('em
                 st.rerun()
             else:
                 st.error("올바른 이메일 주소 형식이 아닙니다.")
-            
+
 #7. --- Admin 모드 로그인 처리 ---
 if st.session_state.get('login_mode') == 'admin_mode':
     st.session_state.logged_in_as_admin = True
@@ -1150,10 +1150,9 @@ if st.session_state.get('login_mode') == 'admin_mode':
                                 except Exception as e:
                                     st.error(f"**{res['name']}**님에게 일정 추가 실패: {e}")
 
-
 #8. Regular User Mode
 # --- 일반 사용자 모드 ---
-if st.session_state.get('login_mode') == 'user_mode' or st.session_state.get('login_mode') == 'new_user_registration':
+if st.session_state.get('login_mode') == 'user_mode' or st.session_state.get('login_mode') == 'new_user_registration' or st.session_state.get('login_mode') == 'resident_mode':
     # 세션 상태에서 사용자 정보 가져오기
     user_name = st.session_state.get('current_user_name', "")
     user_id_final = st.session_state.get('found_user_email', "")
@@ -1309,5 +1308,3 @@ if st.session_state.get('login_mode') == 'user_mode' or st.session_state.get('lo
                         st.success("🎉 비밀번호가 성공적으로 변경되었습니다!")
                     except Exception as e:
                         st.error(f"비밀번호 변경 중 오류가 발생했습니다: {e}")
-                        
-                    
