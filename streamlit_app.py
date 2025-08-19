@@ -643,4 +643,4 @@ if st.session_state.auth_status == "authenticated":
 if st.session_state.auth_status == "unauthenticated":
     st.info("로그인이 필요합니다.")
     login()
-�
+
