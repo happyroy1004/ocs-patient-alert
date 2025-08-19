@@ -789,9 +789,6 @@ if not is_admin_input:
                 st.error("올바른 이메일 주소 형식이 아닙니다.")
 
 
-제공해주신 텍스트는 Streamlit 애플리케이션의 일부로, 관리자 모드에서 실행되는 기능들을 담고 있습니다. 사용자 요청에 따라, 이 코드 블록 전체를 제공해 드리겠습니다.
-
-```python
 #7. --- Admin 모드 로그인 처리 ---
 if is_admin_input:
     st.session_state.logged_in_as_admin = True
