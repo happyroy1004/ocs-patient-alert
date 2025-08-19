@@ -1268,7 +1268,7 @@ if st.session_state.get('login_mode') == 'admin_mode':
                                             st.error(f"**{res['name']}**님에게 메일 전송 실패: {e}")
                                     else:
                                         st.warning(f"**{res['name']}** 레지던트의 매칭 데이터가 엑셀 파일에 없습니다.")
-
+                    with calendar_col:
                         if st.button("선택된 레지던트에게 Google Calendar 일정 추가"):
                             for res in selected_residents_data:
                                 try:
@@ -1297,17 +1297,19 @@ if st.session_state.get('login_mode') == 'admin_mode':
                                                         pid = excel_row.get('진료번호', '번호 없음')
                                                         department = res['department']
                                                         
-                                                        # 👇 '예약일시' 컬럼의 데이터를 사용하도록 수정했습니다.
-                                                        reservation_datetime_str = excel_row.get('예약일시', '')
+                                                        # 👇 '예약일시'와 '예약시간'을 합쳐서 하나의 문자열로 만듭니다.
+                                                        reservation_date_str = excel_row.get('예약일시', '')
+                                                        reservation_time_str = excel_row.get('예약시간', '')
                                                         
                                                         doctor_name = res['name']
                                                         treatment_details = excel_row.get('진료내역', '정보 없음')
                                                         
-                                                        # '예약일시' 문자열을 datetime 객체로 변환
+                                                        # 합쳐진 문자열을 datetime 객체로 변환
                                                         try:
-                                                            reservation_datetime = datetime.datetime.strptime(str(reservation_datetime_str).strip(), '%Y/%m/%d %H:%M:%S')
+                                                            full_datetime_str = f"{str(reservation_date_str).strip()} {str(reservation_time_str).strip()}"
+                                                            reservation_datetime = datetime.datetime.strptime(full_datetime_str, '%Y/%m/%d %H:%M')
                                                         except ValueError:
-                                                            st.warning(f"**{res['name']}** 레지던트의 '{patient_name}' 환자 예약일시 형식이 잘못되었습니다: {reservation_datetime_str}")
+                                                            st.warning(f"**{res['name']}** 레지던트의 '{patient_name}' 환자 예약일시 형식이 잘못되었습니다: {full_datetime_str}")
                                                             continue
                                                         
                                                         create_calendar_event(service, patient_name, pid, department, reservation_datetime, doctor_name, treatment_details)
@@ -1319,8 +1321,7 @@ if st.session_state.get('login_mode') == 'admin_mode':
                                     else:
                                         st.warning(f"**{res['name']}**님은 Google Calendar 계정이 연동되지 않았습니다. 해당 사용자가 Google Calendar 탭에서 인증을 완료해야 합니다.")
                                 except Exception as e:
-                                    st.error(f"**{res['name']}**님에게 일정 추가 실패: {e}")
-
+                                    st.error(f"**{res['name']}**님에게 일정 추가 실패: {e}")    
     
     st.markdown("---")
     st.subheader("🛠️ Administer password")
