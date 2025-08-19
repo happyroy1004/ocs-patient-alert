@@ -909,15 +909,37 @@ if is_admin_input:
                 if matched_users:
                     st.success(f"{len(matched_users)}명의 사용자와 일치하는 환자 발견됨.")
                     
-                    for user_match_info in matched_users:
+                    # 매칭된 사용자 리스트 생성
+                    matched_user_list_for_dropdown = [f"{user['name']} ({user['email']})" for user in matched_users]
+                    
+                    # 세션 상태 초기화 (메일/캘린더용)
+                    if 'select_all_matched_users' not in st.session_state:
+                        st.session_state.select_all_matched_users = False
+                    
+                    # 일괄 선택/해제 버튼
+                    select_all_matched_button = st.button("매칭된 사용자 모두 선택/해제", key="select_all_matched_btn")
+                    if select_all_matched_button:
+                        st.session_state.select_all_matched_users = not st.session_state.select_all_matched_users
+                        st.rerun()
+                    
+                    # 멀티셀렉트 기본값 설정
+                    default_selection_matched = matched_user_list_for_dropdown if st.session_state.select_all_matched_users else []
+                    
+                    # 사용자 선택 멀티셀렉트
+                    selected_users_to_act = st.multiselect("액션을 취할 사용자 선택", matched_user_list_for_dropdown, default=default_selection_matched, key="matched_user_multiselect")
+
+                    # 선택된 사용자 객체 매핑
+                    selected_matched_users_data = [user for user in matched_users if f"{user['name']} ({user['email']})" in selected_users_to_act]
+                    
+                    for user_match_info in selected_matched_users_data:
                         st.markdown(f"**수신자:** {user_match_info['name']} ({user_match_info['email']})")
                         st.dataframe(user_match_info['data'])
                     
                     mail_col, calendar_col = st.columns(2)
                     
                     with mail_col:
-                        if st.button("매칭된 환자에게 메일 보내기"):
-                            for user_match_info in matched_users:
+                        if st.button("선택된 사용자에게 메일 보내기"):
+                            for user_match_info in selected_matched_users_data:
                                 real_email = user_match_info['email']
                                 df_matched = user_match_info['data']
                                 user_name = user_match_info['name']
@@ -951,8 +973,8 @@ if is_admin_input:
                                     st.warning(f"**{user_name}**님에게 보낼 매칭 데이터가 없습니다.")
 
                     with calendar_col:
-                        if st.button("Google Calendar 일정 추가"):
-                            for user_match_info in matched_users:
+                        if st.button("선택된 사용자에게 Google Calendar 일정 추가"):
+                            for user_match_info in selected_matched_users_data:
                                 user_safe_key = user_match_info['safe_key']
                                 user_email = user_match_info['email']
                                 user_name = user_match_info['name']
@@ -1107,10 +1129,14 @@ if is_admin_input:
         user_list_for_dropdown = [f"{user_info.get('name', '이름 없음')} ({user_info.get('email', '이메일 없음')})"
                                     for user_info in (all_users_meta.values() if all_users_meta else [])]
         
+        # 세션 상태 초기화
+        if 'select_all_users' not in st.session_state:
+            st.session_state.select_all_users = False
+            
         select_all_users_button = st.button("모든 사용자 선택/해제", key="select_all_btn")
         if select_all_users_button:
             st.session_state.select_all_users = not st.session_state.select_all_users
-            st.rerun() # 이 부분을 추가했습니다.
+            st.rerun()
     
         default_selection = user_list_for_dropdown if st.session_state.select_all_users else []
     
@@ -1133,7 +1159,7 @@ if is_admin_input:
                     with st.spinner("메일 전송 중..."):
                         for email in email_list:
                             # 올바른 인자 순서로 send_email 함수 호출
-                            result = send_email(email, None, sender, sender_pw, None, custom_message)
+                            result = send_email(receiver=email, rows=None, sender=sender, password=sender_pw, date_str=None, custom_message=custom_message)
                             if result is True:
                                 st.success(f"{email}로 메일 전송 완료!")
                             else:
@@ -1190,7 +1216,7 @@ if is_admin_input:
                     st.session_state.delete_confirm = False
                     st.session_state.users_to_delete = []
                     st.rerun()
-                    
+
 #8. Regular User Mode
 # --- 일반 사용자 모드 ---
 else:
