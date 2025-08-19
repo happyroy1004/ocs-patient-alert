@@ -198,7 +198,7 @@ if 'last_processed_file_name' not in st.session_state:
 if 'last_processed_data' not in st.session_state:
     st.session_state.last_processed_data = None
 if 'resident_info' not in st.session_state:
-    st.session_state.resident_info = {'name': '', 'department': ''}
+    st.session_state.resident_info = {'name': '', 'department': '', 'email': ''}
 
 users_ref = db.reference("users")
 patients_ref = db.reference("patients")
@@ -395,9 +395,9 @@ if not st.session_state.logged_in:
             st.rerun()
         # 레지던트 로그인 체크
         elif user_name_input == "레지던트":
-            # 이메일과 비밀번호를 별도로 입력받아 로그인 처리
             st.session_state.user_role = "resident"
             st.session_state.logged_in = True
+            st.session_state.found_user_email = "temp_resident_login" # 임시 이메일 할당
             st.success("레지던트 전용 페이지로 이동합니다.")
             st.rerun()
         # 일반 사용자 로그인 체크
@@ -413,11 +413,11 @@ if not st.session_state.logged_in:
                             found_user_key = key
                             st.session_state.found_user_email = value.get("email")
                             st.session_state.current_firebase_key = key
+                            st.session_state.user_role = value.get("role", "student") # 역할 가져오기
                             break
                     
                     if found_user_key:
                         st.session_state.logged_in = True
-                        st.session_state.user_role = "student" # 학생 역할
                         st.success(f"{user_name_input}님, 로그인 성공!")
                         st.rerun()
                     else:
@@ -427,46 +427,81 @@ if not st.session_state.logged_in:
                 
 # --- 로그인 상태에 따른 페이지 분기 ---
 
-# 레지던트 전용 페이지
+# #9. 레지던트 전용 페이지
 if st.session_state.logged_in and st.session_state.user_role == "resident":
     st.subheader("레지던트 정보 등록/수정")
-    resident_name_input = st.text_input("레지던트 이름", value=st.session_state.resident_info['name'])
-    resident_dept_input = st.text_input("등록과", value=st.session_state.resident_info['department'])
     
-    resident_email_input = st.text_input("이메일", value=st.session_state.found_user_email)
-    
-    new_password = st.text_input("새 비밀번호 (변경 시)", type="password")
-    confirm_new_password = st.text_input("새 비밀번호 확인", type="password")
+    # 레지던트 이메일 입력 및 로그인 처리
+    if st.session_state.found_user_email == "temp_resident_login":
+        st.info("처음 로그인하셨습니다. 레지던트 계정을 등록해주세요.")
+        resident_email_input = st.text_input("레지던트 이메일")
+        resident_password_input = st.text_input("비밀번호", type="password")
+        if st.button("레지던트 계정 등록/로그인"):
+            if not resident_email_input or not is_valid_email(resident_email_input):
+                st.error("유효한 이메일을 입력해주세요.")
+            elif not resident_password_input:
+                st.error("비밀번호를 입력해주세요.")
+            else:
+                user_key = sanitize_path(resident_email_input)
+                user_data = users_ref.child(user_key).get()
+                if user_data:
+                    if user_data.get('password') == resident_password_input:
+                        st.session_state.logged_in = True
+                        st.session_state.user_role = "resident"
+                        st.session_state.found_user_email = resident_email_input
+                        st.session_state.current_firebase_key = user_key
+                        st.success("레지던트 계정으로 로그인했습니다.")
+                        st.rerun()
+                    else:
+                        st.error("비밀번호가 올바르지 않습니다.")
+                else:
+                    # 신규 등록
+                    users_ref.child(user_key).set({
+                        "email": resident_email_input,
+                        "password": resident_password_input,
+                        "role": "resident",
+                        "name": "",
+                        "department": ""
+                    })
+                    st.session_state.logged_in = True
+                    st.session_state.user_role = "resident"
+                    st.session_state.found_user_email = resident_email_input
+                    st.session_state.current_firebase_key = user_key
+                    st.success("새로운 레지던트 계정이 등록되었습니다. 정보를 입력해주세요.")
+                    st.rerun()
+    else:
+        # 이미 로그인한 상태
+        user_key = st.session_state.current_firebase_key
+        user_data = users_ref.child(user_key).get()
+        if user_data:
+            st.session_state.resident_info['name'] = user_data.get('name', '')
+            st.session_state.resident_info['department'] = user_data.get('department', '')
+        
+        resident_name_input = st.text_input("레지던트 이름", value=st.session_state.resident_info['name'])
+        resident_dept_input = st.text_input("등록과", value=st.session_state.resident_info['department'])
+        
+        new_password = st.text_input("새 비밀번호 (변경 시)", type="password")
+        confirm_new_password = st.text_input("새 비밀번호 확인", type="password")
 
-    if st.button("정보 저장"):
-        if not resident_name_input or not resident_dept_input or not resident_email_input:
-            st.error("이름, 등록과, 이메일은 필수 입력 항목입니다.")
-        elif new_password and new_password != confirm_new_password:
-            st.error("새 비밀번호가 일치하지 않습니다. 다시 확인해주세요.")
-        else:
-            safe_email_key = sanitize_path(resident_email_input)
-            
-            # 기존 사용자 데이터 로드
-            current_user_data = users_ref.child(safe_email_key).get()
-            
-            update_data = {
-                "name": resident_name_input,
-                "role": "resident",
-                "department": resident_dept_input,
-                "email": resident_email_input
-            }
-            if new_password:
-                update_data["password"] = new_password
-            elif not current_user_data: # 신규 등록일 경우 초기 비밀번호 설정
-                update_data["password"] = "1234"
+        if st.button("정보 저장"):
+            if not resident_name_input or not resident_dept_input:
+                st.error("이름과 등록과는 필수 입력 항목입니다.")
+            elif new_password and new_password != confirm_new_password:
+                st.error("새 비밀번호가 일치하지 않습니다. 다시 확인해주세요.")
+            else:
+                update_data = {
+                    "name": resident_name_input,
+                    "department": resident_dept_input,
+                }
+                if new_password:
+                    update_data["password"] = new_password
                 
-            users_ref.child(safe_email_key).set(update_data)
-            
-            st.session_state.resident_info['name'] = resident_name_input
-            st.session_state.resident_info['department'] = resident_dept_input
-            st.session_state.found_user_email = resident_email_input
-            st.success("레지던트 정보가 성공적으로 저장되었습니다.")
-            st.rerun()
+                users_ref.child(user_key).update(update_data)
+                
+                st.session_state.resident_info['name'] = resident_name_input
+                st.session_state.resident_info['department'] = resident_dept_input
+                st.success("레지던트 정보가 성공적으로 저장되었습니다.")
+                st.rerun()
 
     st.divider()
     
@@ -476,33 +511,43 @@ if st.session_state.logged_in and st.session_state.user_role == "resident":
     pid = st.text_input("진료번호 (PID)", key="res_pid")
     
     if st.button("환자 등록", key="res_register_patient"):
-        if not name or not pid:
+        if not st.session_state.resident_info['name'] or not st.session_state.resident_info['department']:
+            st.error("환자 등록 전에 먼저 '레지던트 정보 등록/수정'에서 이름과 등록과를 입력해주세요.")
+        elif not name or not pid:
             st.error("환자명과 진료번호를 모두 입력해주세요.")
         else:
             patients_ref_for_user = patients_ref.child(sanitize_path(st.session_state.found_user_email))
             existing_patient_data = patients_ref_for_user.get()
-            if existing_patient_data is None:
-                existing_patient_data = {}
-
-            if any(v["환자명"] == name and v["진료번호"] == pid and v.get("등록과") == st.session_state.resident_info['department']
-                   for v in existing_patient_data.values()):
+            if existing_patient_data is None: existing_patient_data = {}
+            if any(v["환자명"] == name and v["진료번호"] == pid and v.get("등록과") == st.session_state.resident_info['department'] for v in existing_patient_data.values()):
                 st.error("이미 등록된 환자입니다.")
             else:
                 patients_ref_for_user.push().set({"환자명": name, "진료번호": pid, "등록과": st.session_state.resident_info['department']})
                 st.success(f"{name} ({pid}) [{st.session_state.resident_info['department']}] 환자 등록 완료")
                 st.rerun()
 
+    # 등록된 환자 목록 보기
+    st.subheader("등록된 환자 목록")
+    patients_ref_for_user = patients_ref.child(st.session_state.current_firebase_key)
+    registered_patients_data = patients_ref_for_user.get()
+    
+    if registered_patients_data:
+        patient_list = [{"환자명": v["환자명"], "진료번호": v["진료번호"], "등록과": v.get("등록과", "")} for v in registered_patients_data.values()]
+        patient_df = pd.DataFrame(patient_list)
+        st.dataframe(patient_df, use_container_width=True)
+    else:
+        st.info("아직 등록된 환자가 없습니다.")
+
     # 구글 캘린더 연동
     st.divider()
     st.subheader("Google Calendar 연동")
     user_key = sanitize_path(st.session_state.found_user_email)
     google_calendar_service = get_google_calendar_service(user_key)
-    
     if google_calendar_service:
         st.success("Google Calendar가 성공적으로 연동되었습니다.")
         st.info("엑셀 파일 업로드 시 일정이 자동으로 추가됩니다.")
 
-# 학생 전용 페이지 (기존과 동일)
+# 학생 전용 페이지 (기존 기능 복원 및 유지)
 elif st.session_state.logged_in and st.session_state.user_role == "student":
     st.subheader("환자 등록")
     name = st.text_input("환자명")
@@ -515,7 +560,7 @@ elif st.session_state.logged_in and st.session_state.user_role == "student":
         if not name or not pid:
             st.error("환자명과 진료번호를 모두 입력해주세요.")
         else:
-            patients_ref_for_user = patients_ref.child(sanitize_path(st.session_state.found_user_email))
+            patients_ref_for_user = patients_ref.child(st.session_state.current_firebase_key)
             existing_patient_data = patients_ref_for_user.get()
             if existing_patient_data is None:
                 existing_patient_data = {}
@@ -528,6 +573,18 @@ elif st.session_state.logged_in and st.session_state.user_role == "student":
                 st.success(f"{name} ({pid}) [{selected_department}] 환자 등록 완료")
                 st.rerun()
 
+    # 등록된 환자 목록 보기 (복원된 기능)
+    st.subheader("등록된 환자 목록")
+    patients_ref_for_user = patients_ref.child(st.session_state.current_firebase_key)
+    registered_patients_data = patients_ref_for_user.get()
+    
+    if registered_patients_data:
+        patient_list = [{"환자명": v["환자명"], "진료번호": v["진료번호"], "등록과": v.get("등록과", "")} for v in registered_patients_data.values()]
+        patient_df = pd.DataFrame(patient_list)
+        st.dataframe(patient_df, use_container_width=True)
+    else:
+        st.info("아직 등록된 환자가 없습니다.")
+    
     # --- 비밀번호 변경 기능 추가 ---
     if st.session_state.get("found_user_email"):
         st.divider()
@@ -558,7 +615,7 @@ elif st.session_state.logged_in and st.session_state.user_role == "student":
         st.success("Google Calendar가 성공적으로 연동되었습니다.")
         st.info("엑셀 파일 업로드 시 일정이 자동으로 추가됩니다.")
 
-# 관리자 전용 페이지
+# #7. 관리자 전용 페이지
 elif st.session_state.logged_in and st.session_state.user_role == "admin":
     is_admin_input = True # 관리자 전용 페이지 진입을 위한 더미 변수
     
@@ -613,20 +670,16 @@ elif st.session_state.logged_in and st.session_state.user_role == "admin":
                 
                 if all_patients_data:
                     for uid_safe, registered_patients_for_this_user in all_patients_data.items():
-                        user_email = recover_email(uid_safe)
-                        user_display_name = user_email
-                        
-                        if all_users_meta and uid_safe in all_users_meta:
-                            user_meta = all_users_meta[uid_safe]
-                            if "name" in user_meta: user_display_name = user_meta["name"]
-                            if "email" in user_meta: user_email = user_meta["email"]
+                        user_meta = all_users_meta.get(uid_safe, {})
+                        user_email = user_meta.get("email") or recover_email(uid_safe)
+                        user_display_name = user_meta.get("name") or user_email
                         
                         registered_patients_data = []
                         if registered_patients_for_this_user:
                             for key, val in registered_patients_for_this_user.items():
                                 registered_patients_data.append({
-                                    "환자명": val["환자명"].strip(),
-                                    "진료번호": val["진료번호"].strip().zfill(8),
+                                    "환자명": val.get("환자명", "").strip(),
+                                    "진료번호": val.get("진료번호", "").strip().zfill(8),
                                     "등록과": val.get("등록과", "")
                                 })
                         
@@ -642,8 +695,8 @@ elif st.session_state.logged_in and st.session_state.user_role == "admin":
                             if not excel_sheet_department: continue
                                 
                             for _, excel_row in df_sheet.iterrows():
-                                excel_patient_name = excel_row["환자명"].strip()
-                                excel_patient_pid = excel_row["진료번호"].strip().zfill(8)
+                                excel_patient_name = str(excel_row.get("환자명", "")).strip()
+                                excel_patient_pid = str(excel_row.get("진료번호", "")).strip().zfill(8)
                                 
                                 for registered_patient in registered_patients_data:
                                     if (registered_patient["환자명"] == excel_patient_name and
@@ -660,7 +713,7 @@ elif st.session_state.logged_in and st.session_state.user_role == "admin":
                             matched_users.append({"email": user_email, "name": user_display_name, "data": combined_matched_df, "safe_key": uid_safe})
 
                 if matched_users:
-                    st.success(f"{len(matched_users)}명의 사용자와 일치하는 환자 발견됨.")
+                    st.success(f"{len(matched_users)}명의 사용자(학생)와 일치하는 환자 발견됨.")
                     matched_user_list_for_dropdown = [f"{user['name']} ({user['email']})" for user in matched_users]
                     if 'select_all_matched_users_student' not in st.session_state: st.session_state.select_all_matched_users_student = False
                     select_all_matched_button = st.button("매칭된 사용자 모두 선택/해제", key="select_all_matched_btn_student")
@@ -780,8 +833,8 @@ elif st.session_state.logged_in and st.session_state.user_role == "admin":
                 
                 # 레지던트 역할 사용자 필터링
                 resident_users = {
-                    key: value for key, value in all_users_meta.items() 
-                    if value.get('role') == 'resident'
+                    key: value for key, value in (all_users_meta.items() if all_users_meta else {}) 
+                    if value.get('role') == 'resident' and value.get('name') and value.get('department')
                 }
                 
                 matched_residents = []
@@ -889,7 +942,17 @@ elif st.session_state.logged_in and st.session_state.user_role == "admin":
                 st.error(f"예상치 못한 오류 발생: {e}")
                 
     # 일반 관리자 모드
-    if st.session_state.get("admin_password_correct"):
+    st.markdown("---")
+    st.subheader("🛠️ Administer password")
+    admin_password_input = st.text_input("관리자 비밀번호를 입력하세요", type="password", key="admin_password")
+    try: secret_admin_password = st.secrets["admin"]["password"]
+    except KeyError:
+        secret_admin_password = None
+        st.error("⚠️ secrets.toml 파일에 'admin.password' 설정이 없습니다. 개발자에게 문의하세요.")
+    if admin_password_input and admin_password_input == secret_admin_password:
+        st.session_state.admin_password_correct = True
+        st.success("관리자 권한이 활성화되었습니다.")
+        
         st.markdown("---")
         st.subheader("📦 메일 발송")
         all_users_meta = users_ref.get()
@@ -953,17 +1016,6 @@ elif st.session_state.logged_in and st.session_state.user_role == "admin":
                     st.session_state.delete_confirm = False
                     st.session_state.users_to_delete = []
                     st.rerun()
-    st.markdown("---")
-    st.subheader("🛠️ Administer password")
-    admin_password_input = st.text_input("관리자 비밀번호를 입력하세요", type="password", key="admin_password")
-    try: secret_admin_password = st.secrets["admin"]["password"]
-    except KeyError:
-        secret_admin_password = None
-        st.error("⚠️ secrets.toml 파일에 'admin.password' 설정이 없습니다. 개발자에게 문의하세요.")
-    if admin_password_input and admin_password_input == secret_admin_password:
-        st.session_state.admin_password_correct = True
-        st.success("관리자 권한이 활성화되었습니다.")
     elif admin_password_input and admin_password_input != secret_admin_password:
         st.error("비밀번호가 틀렸습니다.")
         st.session_state.admin_password_correct = False
-
