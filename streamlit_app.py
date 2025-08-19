@@ -737,7 +737,7 @@ if 'login_mode' not in st.session_state:
     st.session_state.login_mode = 'not_logged_in'
 
 if st.session_state.get('login_mode') not in ['user_mode', 'admin_mode', 'resident_mode', 'new_resident_registration', 'resident_name_input', 'new_user_registration']:
-    user_name = st.text_input("사용자 이름을 입력하세요 (예시: 홍길동, admin, resident)", key="login_username")
+    user_name = st.text_input("사용자 이름을 입력하세요 (예시: 홍길동)", key="login_username")
     password_input = st.text_input("비밀번호를 입력하세요", type="password", key="login_password")
     
     # 레지던트 자동 전환 로직
@@ -752,14 +752,11 @@ if st.session_state.get('login_mode') not in ['user_mode', 'admin_mode', 'reside
             
         # --- 관리자 모드 로그인 ---
         elif user_name.strip().lower() == "admin":
-            if password_input == st.secrets["admin"]["password"]:
-                st.session_state.login_mode = 'admin_mode'
-                st.session_state.logged_in_as_admin = True
-                st.session_state.found_user_email = "admin"
-                st.session_state.current_user_name = "admin"
-                st.rerun()
-            else:
-                st.error("관리자 비밀번호가 일치하지 않습니다.")
+             st.session_state.login_mode = 'admin_mode'
+             st.session_state.logged_in_as_admin = True
+              st.session_state.found_user_email = "admin"
+             st.session_state.current_user_name = "admin"
+            st.rerun()
         
         # --- 일반 사용자 로그인 ---
         else:
@@ -1255,6 +1252,112 @@ if st.session_state.get('login_mode') == 'admin_mode':
                                         st.warning(f"**{res['name']}**님은 Google Calendar 계정이 연동되지 않았습니다. 해당 사용자가 Google Calendar 탭에서 인증을 완료해야 합니다.")
                                 except Exception as e:
                                     st.error(f"**{res['name']}**님에게 일정 추가 실패: {e}")
+
+    st.markdown("---")
+    st.subheader("🛠️ Administer password")
+    admin_password_input = st.text_input("관리자 비밀번호를 입력하세요", type="password", key="admin_password")
+    
+    try:
+        secret_admin_password = st.secrets["admin"]["password"]
+    except KeyError:
+        secret_admin_password = None
+        st.error("⚠️ secrets.toml 파일에 'admin.password' 설정이 없습니다. 개발자에게 문의하세요.")
+        
+    if admin_password_input and admin_password_input == secret_admin_password:
+        st.session_state.admin_password_correct = True
+        st.success("관리자 권한이 활성화되었습니다.")
+    elif admin_password_input and admin_password_input != secret_admin_password:
+        st.error("비밀번호가 틀렸습니다.")
+        st.session_state.admin_password_correct = False
+        
+    if st.session_state.admin_password_correct:
+        st.markdown("---")
+        st.subheader("📦 메일 발송")
+        
+        all_users_meta = users_ref.get()
+        user_list_for_dropdown = [f"{user_info.get('name', '이름 없음')} ({user_info.get('email', '이메일 없음')})"
+                                    for user_info in (all_users_meta.values() if all_users_meta else [])]
+        
+        if 'select_all_users' not in st.session_state:
+            st.session_state.select_all_users = False
+            
+        select_all_users_button = st.button("모든 사용자 선택/해제", key="select_all_btn")
+        if select_all_users_button:
+            st.session_state.select_all_users = not st.session_state.select_all_users
+            st.rerun()
+    
+        default_selection = user_list_for_dropdown if st.session_state.select_all_users else []
+    
+        selected_users_for_mail = st.multiselect("보낼 사용자 선택", user_list_for_dropdown, default=default_selection, key="mail_multiselect")
+        
+        custom_message = st.text_area("보낼 메일 내용", height=200)
+        if st.button("메일 보내기"):
+            if custom_message:
+                sender = st.secrets["gmail"]["sender"]
+                sender_pw = st.secrets["gmail"]["app_password"]
+                
+                email_list = []
+                if selected_users_for_mail:
+                    for user_str in selected_users_for_mail:
+                        match = re.search(r'\((.*?)\)', user_str)
+                        if match:
+                            email_list.append(match.group(1))
+                
+                if email_list:
+                    with st.spinner("메일 전송 중..."):
+                        for email in email_list:
+                            result = send_email(receiver=email, rows=None, sender=sender, password=sender_pw, date_str=None, custom_message=custom_message)
+                            if result is True:
+                                st.success(f"{email}로 메일 전송 완료!")
+                            else:
+                                st.error(f"{email}로 메일 전송 실패: {result}")
+                else:
+                    st.warning("메일 내용을 입력했으나, 선택된 사용자가 없습니다. 전송이 진행되지 않았습니다.")
+            else:
+                st.warning("메일 내용을 입력해주세요.")
+        
+        st.markdown("---")
+        st.subheader("🗑️ 사용자 삭제")
+        
+        if 'delete_confirm' not in st.session_state:
+            st.session_state.delete_confirm = False
+        if 'users_to_delete' not in st.session_state:
+            st.session_state.users_to_delete = []
+    
+        if not st.session_state.delete_confirm:
+            users_to_delete = st.multiselect("삭제할 사용자 선택", user_list_for_dropdown, key="delete_user_multiselect")
+            if st.button("선택한 사용자 삭제"):
+                if users_to_delete:
+                    st.session_state.delete_confirm = True
+                    st.session_state.users_to_delete = users_to_delete
+                    st.rerun()
+                else:
+                    st.warning("삭제할 사용자를 선택해주세요.")
+        else:
+            st.warning("정말로 선택한 사용자를 삭제하시겠습니까? 이 작업은 되돌릴 수 없습니다.")
+            col1, col2 = st.columns(2)
+            with col1:
+                if st.button("예, 삭제합니다"):
+                    for user_to_del_str in st.session_state.users_to_delete:
+                        match = re.search(r'\((.*?)\)', user_to_del_str)
+                        if match:
+                            email_to_del = match.group(1)
+                            safe_key_to_del = sanitize_path(email_to_del)
+                            
+                            db.reference(f"users/{safe_key_to_del}").delete()
+                            db.reference(f"patients/{safe_key_to_del}").delete()
+                    
+                    st.success(f"사용자 {', '.join(st.session_state.users_to_delete)} 삭제 완료.")
+                    
+                    st.session_state.delete_confirm = False
+                    st.session_state.users_to_delete = []
+                    st.rerun()
+            with col2:
+                if st.button("아니오, 취소합니다"):
+                    st.session_state.delete_confirm = False
+                    st.session_state.users_to_delete = []
+                    st.rerun()
+
             
 # #8. Regular User Mode
 # --- 일반 사용자 & 레지던트 모드 ---
