@@ -1158,6 +1158,7 @@ if st.session_state.get('login_mode') == 'admin_mode':
             else:
                 st.info("엑셀 파일 처리 완료. 매칭된 환자가 없습니다.")
         
+        
         with resident_admin_tab:
             st.subheader("🧑‍⚕️ 레지던트 관리자 모드")
             
@@ -1173,12 +1174,50 @@ if st.session_state.get('login_mode') == 'admin_mode':
                             "department": user_info.get("department", "미지정")
                         })
             
-            if not residents:
-                st.info("현재 등록된 레지던트 계정이 없습니다.")
+            # 엑셀 파일과 매칭되는 레지던트만 필터링
+            matched_residents = []
+            if residents and excel_data_dfs:
+                for res in residents:
+                    found_match = False
+                    for sheet_name_excel_raw, df_sheet in excel_data_dfs.items():
+                        excel_sheet_name_lower = sheet_name_excel_raw.strip().lower().replace(' ', '')
+                        
+                        excel_sheet_department = None
+                        for keyword, department_name in sorted(sheet_keyword_to_department_map.items(), key=lambda item: len(item[0]), reverse=True):
+                            if keyword.lower().replace(' ', '') in excel_sheet_name_lower:
+                                excel_sheet_department = department_name
+                                break
+                        if not excel_sheet_department:
+                            continue
+                        
+                        for _, excel_row in df_sheet.iterrows():
+                            excel_doctor_name_from_row = str(excel_row.get('예약의사', '')).strip().replace("'", "").replace("‘", "").replace("’", "").strip()
+                            
+                            if excel_doctor_name_from_row == res['name'] and excel_sheet_department == res['department']:
+                                matched_residents.append(res)
+                                found_match = True
+                                break 
+                        if found_match:
+                            break
+            
+            if not matched_residents:
+                st.info("현재 엑셀 파일에 등록된 진료가 있는 레지던트 계정이 없습니다.")
             else:
-                resident_list_for_multiselect = [f"{res['name']} ({res['email']})" for res in residents]
-                selected_residents_str = st.multiselect("액션을 취할 레지던트 선택", resident_list_for_multiselect, key="resident_multiselect")
-                selected_residents_data = [res for res in residents if f"{res['name']} ({res['email']})" in selected_residents_str]
+                st.success(f"등록된 진료가 있는 **{len(matched_residents)}명의 레지던트**를 발견했습니다.")
+                
+                if 'select_all_matched_residents' not in st.session_state:
+                    st.session_state.select_all_matched_residents = False
+                
+                select_all_button = st.button("등록된 레지던트 모두 선택/해제", key="select_all_matched_res_btn")
+                if select_all_button:
+                    st.session_state.select_all_matched_residents = not st.session_state.select_all_matched_residents
+                    st.rerun()
+
+                resident_list_for_multiselect = [f"{res['name']} ({res['email']})" for res in matched_residents]
+                
+                default_selection_resident = resident_list_for_multiselect if st.session_state.select_all_matched_residents else []
+                selected_residents_str = st.multiselect("액션을 취할 레지던트 선택", resident_list_for_multiselect, default=default_selection_resident, key="resident_multiselect")
+                selected_residents_data = [res for res in matched_residents if f"{res['name']} ({res['email']})" in selected_residents_str]
 
                 if selected_residents_data:
                     st.markdown("---")
@@ -1196,14 +1235,15 @@ if st.session_state.get('login_mode') == 'admin_mode':
                                     matched_rows_for_resident = []
                                     if excel_data_dfs:
                                         for sheet_name_excel_raw, df_sheet in excel_data_dfs.items():
-                                            excel_sheet_name_lower = sheet_name_excel_raw.strip().lower()
+                                            excel_sheet_name_lower = sheet_name_excel_raw.strip().lower().replace(' ', '')
                                             
                                             excel_sheet_department = None
                                             for keyword, department_name in sorted(sheet_keyword_to_department_map.items(), key=lambda item: len(item[0]), reverse=True):
-                                                if keyword.lower() in excel_sheet_name_lower:
+                                                if keyword.lower().replace(' ', '') in excel_sheet_name_lower:
                                                     excel_sheet_department = department_name
                                                     break
                                             if not excel_sheet_department:
+                                                st.warning(f"시트 '{sheet_name_excel_raw}'을(를) 인식할 수 없습니다. 건너뜁니다.")
                                                 continue
                                             
                                             for _, excel_row in df_sheet.iterrows():
@@ -1248,69 +1288,7 @@ if st.session_state.get('login_mode') == 'admin_mode':
                                         st.warning(f"**{res['name']}**님은 Google Calendar 계정이 연동되지 않았습니다. 해당 사용자가 Google Calendar 탭에서 인증을 완료해야 합니다.")
                                 except Exception as e:
                                     st.error(f"**{res['name']}**님에게 일정 추가 실패: {e}")
-
-    st.markdown("---")
-    st.subheader("🛠️ Administer password")
-    admin_password_input = st.text_input("관리자 비밀번호를 입력하세요", type="password", key="admin_password")
-    
-    try:
-        secret_admin_password = st.secrets["admin"]["password"]
-    except KeyError:
-        secret_admin_password = None
-        st.error("⚠️ secrets.toml 파일에 'admin.password' 설정이 없습니다. 개발자에게 문의하세요.")
-        
-    if admin_password_input and admin_password_input == secret_admin_password:
-        st.session_state.admin_password_correct = True
-        st.success("관리자 권한이 활성화되었습니다.")
-    elif admin_password_input and admin_password_input != secret_admin_password:
-        st.error("비밀번호가 틀렸습니다.")
-        st.session_state.admin_password_correct = False
-        
-    if st.session_state.admin_password_correct:
-        st.markdown("---")
-        st.subheader("📦 메일 발송")
-        
-        all_users_meta = users_ref.get()
-        user_list_for_dropdown = [f"{user_info.get('name', '이름 없음')} ({user_info.get('email', '이메일 없음')})"
-                                    for user_info in (all_users_meta.values() if all_users_meta else [])]
-        
-        if 'select_all_users' not in st.session_state:
-            st.session_state.select_all_users = False
             
-        select_all_users_button = st.button("모든 사용자 선택/해제", key="select_all_btn")
-        if select_all_users_button:
-            st.session_state.select_all_users = not st.session_state.select_all_users
-            st.rerun()
-    
-        default_selection = user_list_for_dropdown if st.session_state.select_all_users else []
-    
-        selected_users_for_mail = st.multiselect("보낼 사용자 선택", user_list_for_dropdown, default=default_selection, key="mail_multiselect")
-        
-        custom_message = st.text_area("보낼 메일 내용", height=200)
-        if st.button("메일 보내기"):
-            if custom_message:
-                sender = st.secrets["gmail"]["sender"]
-                sender_pw = st.secrets["gmail"]["app_password"]
-                
-                email_list = []
-                if selected_users_for_mail:
-                    for user_str in selected_users_for_mail:
-                        match = re.search(r'\((.*?)\)', user_str)
-                        if match:
-                            email_list.append(match.group(1))
-                
-                if email_list:
-                    with st.spinner("메일 전송 중..."):
-                        for email in email_list:
-                            result = send_email(receiver=email, rows=None, sender=sender, password=sender_pw, date_str=None, custom_message=custom_message)
-                            if result is True:
-                                st.success(f"{email}로 메일 전송 완료!")
-                            else:
-                                st.error(f"{email}로 메일 전송 실패: {result}")
-                else:
-                    st.warning("메일 내용을 입력했으나, 선택된 사용자가 없습니다. 전송이 진행되지 않았습니다.")
-            else:
-                st.warning("메일 내용을 입력해주세요.")
         
         st.markdown("---")
         st.subheader("🗑️ 사용자 삭제")
