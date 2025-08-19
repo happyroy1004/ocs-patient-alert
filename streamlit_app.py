@@ -1147,7 +1147,8 @@ if st.session_state.get('login_mode') == 'admin_mode':
                                                 st.error(f"❌ {patient_name} 환자의 날짜/시간 형식 파싱 최종 실패: {e}. 일정 추가를 건너뜁니다.")
                                                 continue
                                             event_prefix = "✨ 내원 : " if is_daily else "내원? : "
-                                            event_title = f"{event_prefix}{patient_name}"
+                                            
+                                            event_title = f"{event_prefix}{patient_name} ({department}, {doctor_name})"
                                             event_description = f"환자명 : {patient_name}\n진료번호 : {patient_pid}\n진료내역 : {treatment_details}"
                                             create_calendar_event(service, event_title, patient_pid, department, reservation_datetime, doctor_name, event_description)
                                         st.success(f"**{user_name}**님의 캘린더에 일정을 추가했습니다.")
@@ -1317,7 +1318,7 @@ if st.session_state.get('login_mode') == 'admin_mode':
                                                             st.warning(f"**{res['name']}** 레지던트의 '{patient_name}' 환자 예약일시 형식이 잘못되었습니다: {full_datetime_str}")
                                                             continue
                                                         event_prefix = "✨ 내원 : " if is_daily else "내원? : "
-                                                        event_title = f"{event_prefix}{patient_name} ({department}, {doctor_name})"
+                                                        event_title = f"{event_prefix}{patient_name}({pid})"
                                                         create_calendar_event(service, event_title, pid, department, reservation_datetime, doctor_name, treatment_details)
                                             
                                         if found_matched_data:
