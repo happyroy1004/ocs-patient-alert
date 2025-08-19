@@ -820,9 +820,9 @@ if is_admin_input:
             is_daily = is_daily_schedule(file_name)
             
             if is_daily:
-                st.info("✔️ '확정된 당일 일정' 파일로 인식되었습니다. 기존 일정과 비교 후 업데이트합니다.")
+                st.info("✔️ '확정된 당일 일정' 파일로 인식되었습니다.")
             else:
-                st.info("✔️ '예정된 전체 일정' 파일로 인식되었습니다. 모든 일정을 캘린더에 추가합니다.")
+                st.info("✔️ '예정된 전체 일정' 파일로 인식되었습니다.")
                 
             uploaded_file.seek(0)
             password = st.text_input("엑셀 파일 비밀번호 입력", type="password") if is_encrypted_excel(uploaded_file) else None
