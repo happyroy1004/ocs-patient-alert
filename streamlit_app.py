@@ -398,6 +398,7 @@ if not st.session_state.logged_in:
             st.session_state.user_role = "resident"
             st.session_state.logged_in = True
             st.session_state.found_user_email = "temp_resident_login" # 임시 이메일 할당
+            st.session_state.current_firebase_key = "temp_resident_login"
             st.success("레지던트 전용 페이지로 이동합니다.")
             st.rerun()
         # 일반 사용자 로그인 체크
@@ -528,15 +529,18 @@ if st.session_state.logged_in and st.session_state.user_role == "resident":
 
     # 등록된 환자 목록 보기
     st.subheader("등록된 환자 목록")
-    patients_ref_for_user = patients_ref.child(st.session_state.current_firebase_key)
-    registered_patients_data = patients_ref_for_user.get()
-    
-    if registered_patients_data:
-        patient_list = [{"환자명": v["환자명"], "진료번호": v["진료번호"], "등록과": v.get("등록과", "")} for v in registered_patients_data.values()]
-        patient_df = pd.DataFrame(patient_list)
-        st.dataframe(patient_df, use_container_width=True)
+    if st.session_state.current_firebase_key:
+        patients_ref_for_user = patients_ref.child(st.session_state.current_firebase_key)
+        registered_patients_data = patients_ref_for_user.get()
+        
+        if registered_patients_data:
+            patient_list = [{"환자명": v["환자명"], "진료번호": v["진료번호"], "등록과": v.get("등록과", "")} for v in registered_patients_data.values()]
+            patient_df = pd.DataFrame(patient_list)
+            st.dataframe(patient_df, use_container_width=True)
+        else:
+            st.info("아직 등록된 환자가 없습니다.")
     else:
-        st.info("아직 등록된 환자가 없습니다.")
+        st.info("레지던트 계정을 등록하면 환자 목록이 여기에 표시됩니다.")
 
     # 구글 캘린더 연동
     st.divider()
@@ -575,15 +579,18 @@ elif st.session_state.logged_in and st.session_state.user_role == "student":
 
     # 등록된 환자 목록 보기 (복원된 기능)
     st.subheader("등록된 환자 목록")
-    patients_ref_for_user = patients_ref.child(st.session_state.current_firebase_key)
-    registered_patients_data = patients_ref_for_user.get()
-    
-    if registered_patients_data:
-        patient_list = [{"환자명": v["환자명"], "진료번호": v["진료번호"], "등록과": v.get("등록과", "")} for v in registered_patients_data.values()]
-        patient_df = pd.DataFrame(patient_list)
-        st.dataframe(patient_df, use_container_width=True)
+    if st.session_state.current_firebase_key:
+        patients_ref_for_user = patients_ref.child(st.session_state.current_firebase_key)
+        registered_patients_data = patients_ref_for_user.get()
+        
+        if registered_patients_data:
+            patient_list = [{"환자명": v["환자명"], "진료번호": v["진료번호"], "등록과": v.get("등록과", "")} for v in registered_patients_data.values()]
+            patient_df = pd.DataFrame(patient_list)
+            st.dataframe(patient_df, use_container_width=True)
+        else:
+            st.info("아직 등록된 환자가 없습니다.")
     else:
-        st.info("아직 등록된 환자가 없습니다.")
+        st.info("로그인하면 등록한 환자 목록이 여기에 표시됩니다.")
     
     # --- 비밀번호 변경 기능 추가 ---
     if st.session_state.get("found_user_email"):
