@@ -818,20 +818,7 @@ if is_admin_input:
                 xl_object, raw_file_io = load_excel(uploaded_file, password)
                 excel_data_dfs, styled_excel_bytes = process_excel_file_and_style(raw_file_io)
                 
-                # --- 엑셀 파일 이름에서 예약 날짜 정보 추출 (추가) ---
-                # 'ocs_0812' -> 8월 12일 -> 2024-08-12
-                date_match = re.search(r'_(\d{2})(\d{2})', file_name)
-                reservation_date_excel = None
-                if date_match:
-                    month_str = date_match.group(1)
-                    day_str = date_match.group(2)
-                    current_year = datetime.datetime.now().year
-                    # 파일명 날짜를 YYYY-MM-DD 형식으로 저장
-                    reservation_date_excel = f"{current_year}-{month_str.zfill(2)}-{day_str.zfill(2)}"
-                else:
-                    st.warning("엑셀 파일 이름에서 예약 날짜를 추출할 수 없습니다. 캘린더 일정은 현재 날짜로 설정됩니다.")
-                    reservation_date_excel = datetime.datetime.now().strftime("%Y-%m-%d")
-
+                
                 # Firebase에 OCS 분석 결과 영구 저장 (가장 최신값으로 덮어쓰기)
                 professors_dict = {
                     '소치': ['김현태', '장기택', '김정욱', '현홍근', '김영재', '신터전', '송지수'],
@@ -941,6 +928,7 @@ if is_admin_input:
                                         # 매칭된 데이터프레임에서 날짜/시간 정보를 다시 가져와 처리
                                         # 예약일시 열은 무시하고 파일명에서 추출한 날짜를 사용
                                         reservation_time = str(row.get('예약시간', '')).strip()
+                                        reservation_date_excel = str(row.get('예약일시', '')).strip()
                                         
                                         # 시간 데이터가 유효한지 확인
                                         if not reservation_time:
