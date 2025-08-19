@@ -1199,7 +1199,9 @@ if st.session_state.get('login_mode') == 'admin_mode':
                                             
                                             for _, excel_row in df_sheet.iterrows():
                                                 excel_department_from_row = excel_row.get('진료과', '').strip()
-                                                if excel_row.get('예약의사') == res['name'] and excel_department_from_row == res['department']:
+                                                excel_doctor_name_from_row = str(excel_row.get('예약의사', '')).strip().replace("'", "")
+                                                
+                                                if excel_doctor_name_from_row == res['name'] and excel_department_from_row == res['department']:
                                                     matched_rows_for_resident.append(excel_row.copy())
                                                 
                                     if matched_rows_for_resident:
