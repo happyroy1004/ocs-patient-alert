@@ -439,7 +439,7 @@ def create_calendar_event(service, patient_name, pid, department, reservation_da
     event_end = event_start + datetime.timedelta(minutes=30)
     
     # 두 개의 요약(summary) 정보를 하나로 합칩니다.
-    summary_text = f'내원예정: {patient_name}' 
+    summary_text = f'{patient_name}' 
     
     # 캘린더 이벤트에 필요한 모든 정보를 한 번에 정의합니다.
     event = {
