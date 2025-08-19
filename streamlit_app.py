@@ -485,7 +485,7 @@ professors_dict = {
 def process_sheet_v8(df, professors_list, sheet_key): 
     if '예약의사' not in df.columns or '예약시간' not in df.columns:
         st.error(f"시트 처리 오류: '예약의사' 또는 '예약시간' 컬럼이 DataFrame에 없습니다.")
-        return pd.DataFrame(columns=['진료번호', '예약시간', '환자명', '예약의사', '진료내역'])
+        return pd.DataFrame(columns=['진료번호', '예약일시', '예약시간', '환자명', '예약의사', '진료내역'])
 
     df = df.sort_values(by=['예약의사', '예약시간'])
     professors = df[df['예약의사'].isin(professors_list)]
