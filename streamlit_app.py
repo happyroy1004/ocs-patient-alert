@@ -803,18 +803,20 @@ if st.session_state.get('login_mode') not in ['admin_mode', 'resident_mode']:
 
 
 #6-1. --- Admin/Resident 모드 로그인 처리 ---
-if is_admin_input and password_input == "admin_password": # 실제 관리자 비밀번호로 변경
+# 비밀번호 없이 사용자 이름만으로 로그인
+if is_admin_input: # 'admin'만 입력되면 바로 실행
     st.session_state.login_mode = 'admin_mode'
-    st.session_state.logged_in_as_admin = True # 기존 변수 유지
+    st.session_state.logged_in_as_admin = True
     st.session_state.found_user_email = "admin"
     st.session_state.current_user_name = "admin"
     st.rerun()
 
-elif is_resident_input:
+elif is_resident_input: # 'resident'만 입력되면 바로 실행
     st.session_state.login_mode = 'resident_login_mode'
     st.session_state.current_user_name = "resident"
+    # 레지던트의 경우, 필요 시 여기에 추가적인 인증 로직을 구현할 수 있습니다.
     st.rerun()
-
+    
 #7. Admin and Resident UI Display
 
 # Admin 모드
