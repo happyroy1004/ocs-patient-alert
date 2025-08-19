@@ -711,7 +711,7 @@ if 'login_mode' not in st.session_state:
     st.session_state.login_mode = 'not_logged_in'
 
 if st.session_state.get('login_mode') not in ['user_mode', 'admin_mode', 'resident_mode', 'new_resident_registration', 'resident_name_input', 'new_user_registration']:
-    user_name = st.text_input("사용자 이름을 입력하세요 (예시: 홍길동, admin, resident)", key="login_username")
+    user_name = st.text_input("사용자 이름을 입력하세요 (예시: 홍길동)", key="login_username")
     password_input = st.text_input("비밀번호를 입력하세요", type="password", key="login_password")
     
     # 레지던트 자동 전환 로직
@@ -719,21 +719,18 @@ if st.session_state.get('login_mode') not in ['user_mode', 'admin_mode', 'reside
         st.session_state.login_mode = 'resident_name_input'
         st.rerun()
 
+    elif user_name.strip().lower() == "admin":
+        st.session_state.login_mode = 'admin_mode'
+        st.session_state.logged_in_as_admin = True
+        st.session_state.found_user_email = "admin"
+        st.session_state.current_user_name = "admin"
+        st.rerun()
+
     # '로그인' 버튼을 눌러야만 로직이 실행되도록 수정
     if st.button("로그인"):
         if not user_name:
             st.error("사용자 이름을 입력해주세요.")
-            
-        # --- 관리자 모드 로그인 ---
-        elif user_name.strip().lower() == "admin":
-            if password_input == st.secrets["admin"]["password"]:
-                st.session_state.login_mode = 'admin_mode'
-                st.session_state.logged_in_as_admin = True
-                st.session_state.found_user_email = "admin"
-                st.session_state.current_user_name = "admin"
-                st.rerun()
-            else:
-                st.error("관리자 비밀번호가 일치하지 않습니다.")
+
         
         # --- 일반 사용자 로그인 ---
         else:
@@ -811,12 +808,12 @@ if st.session_state.get('login_mode') == 'resident_name_input':
                 # 새로운 레지던트 처리 로직
                 if password_input == "1234":
                     st.info("💡 새로운 레지던트 계정으로 인식되었습니다. 초기 비밀번호 '1234'로 등록을 완료합니다.")
-                    st.session_state.found_user_email = f"resident_{resident_name}@example.com"
-                    st.session_state.user_id_input_value = f"resident_{resident_name}@example.com"
-                    st.session_state.current_firebase_key = sanitize_path(st.session_state.found_user_email)
+                    st.session_state.found_user_email = "" # 이메일 입력받도록 초기화
+                    st.session_state.user_id_input_value = ""
+                    st.session_state.current_firebase_key = ""
                     st.session_state.current_user_name = resident_name
                     st.session_state.current_user_role = 'resident'
-                    st.session_state.current_user_dept = "치과" # 임시 기본값
+                    st.session_state.current_user_dept = None # `None`으로 설정하여 초기값을 지정하지 않음
                     st.session_state.login_mode = 'new_resident_registration'
                     st.rerun()
                 else:
@@ -835,7 +832,13 @@ if st.session_state.get('login_mode') == 'new_resident_registration':
     password_input = st.text_input("새로운 비밀번호를 입력하세요", type="password", key="new_resident_password_input", value="1234" if st.session_state.get('current_firebase_key') else "")
     user_id_input = st.text_input("아이디(이메일)를 입력하세요", key="new_resident_email_input", value=st.session_state.get('found_user_email', ''))
     dept_options = ["치과보철과", "구강악안면외과", "치과교정과", "소아치과", "치주과", "치과보존과"]
-    department = st.selectbox("등록 과", dept_options, key="new_resident_dept_selectbox", index=dept_options.index(st.session_state.get('current_user_dept', dept_options[0])) if st.session_state.get('current_user_dept') else 0)
+    
+    selected_dept = st.session_state.get('current_user_dept')
+    default_index = 0
+    if selected_dept and selected_dept in dept_options:
+        default_index = dept_options.index(selected_dept)
+        
+    department = st.selectbox("등록 과", dept_options, key="new_resident_dept_selectbox", index=default_index)
 
     if st.button("레지던트 등록 완료"):
         if is_valid_email(user_id_input) and password_input and department:
