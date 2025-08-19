@@ -1130,7 +1130,7 @@ if is_admin_input:
                 if email_list:
                     with st.spinner("메일 전송 중..."):
                         for email in email_list:
-                            result = send_email_v2(sender, sender_pw, email, "알림 메일", custom_message)
+                            result = send_email(sender, sender_pw, email, "알림 메일", custom_message)
                             if result is True:
                                 st.success(f"{email}로 메일 전송 완료!")
                             else:
