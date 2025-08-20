@@ -1017,9 +1017,6 @@ if st.session_state.get('login_mode') == 'admin_mode':
             analysis_results = run_analysis(excel_data_dfs, professors_dict)
             
             today_date_str = datetime.datetime.now().strftime("%Y-%m-%d")
-            today_date_obj = datetime.datetime.strptime(today_date_str, "%Y-%m-%d")
-            tomorrow_date_obj = today_date_obj + datetime.timedelta(days=1)
-            tomorrow_date_str = tomorrow_date_obj.strftime("%Y-%m-%d")
             db.reference("ocs_analysis/latest_result").set(analysis_results)
             db.reference("ocs_analysis/latest_date").set(today_date_str)
             db.reference("ocs_analysis/latest_file_name").set(file_name)
@@ -1145,7 +1142,7 @@ if st.session_state.get('login_mode') == 'admin_mode':
                                 <p>확인 부탁드립니다.</p>
                                 """
                                 try:
-                                    send_email(receiver=real_email, rows=df_matched.to_dict('records'), sender=sender, password=sender_pw, custom_message=email_body, date_str=tomorrow_date_str)
+                                    send_email(receiver=real_email, rows=df_matched.to_dict('records'), sender=sender, password=sender_pw, custom_message=email_body, date_str=today_date_str)
                                     st.success(f"**{user_name}**님 ({real_email})에게 예약 정보 이메일 전송 완료!")
                                 except Exception as e:
                                     st.error(f"**{user_name}**님 ({real_email})에게 이메일 전송 실패: {e}")
@@ -1296,12 +1293,12 @@ if st.session_state.get('login_mode') == 'admin_mode':
                                         df_html = df_matched[['환자명', '진료번호', '예약의사', '진료내역', '예약일시', '예약시간']].to_html(index=False, escape=False)
                                         email_body = f"""
                                         <p>안녕하세요, {res['name']} 치과의사님.</p>
-                                        <p>내일 예정된 환자 내원 정보입니다.</p>
+                                        <p>오늘 예약된 환자 내원 정보입니다.</p>
                                         {df_html}
                                         <p>확인 부탁드립니다.</p>
                                         """
                                         try:
-                                            send_email(receiver=res['email'], rows=df_matched.to_dict('records'), sender=st.secrets["gmail"]["sender"], password=st.secrets["gmail"]["app_password"], custom_message=email_body, date_str=tomorrow_date_str)
+                                            send_email(receiver=res['email'], rows=df_matched.to_dict('records'), sender=st.secrets["gmail"]["sender"], password=st.secrets["gmail"]["app_password"], custom_message=email_body, date_str=today_date_str)
                                             st.success(f"**{res['name']}**님에게 환자 정보 메일 전송 완료!")
                                         except Exception as e:
                                             st.error(f"**{res['name']}**님에게 메일 전송 실패: {e}")
@@ -1602,7 +1599,7 @@ if st.session_state.get('login_mode') in ['user_mode', 'new_user_registration', 
                 existing_patient_data = patients_ref_for_user.get()
 
                 if existing_patient_data:
-                    desired_order = ['치과교정과', '구강내과', '치과보존과', '치과보철과', '소아치과', '구강악안면외과', '치주과']
+                    desired_order = ['교정', '내과', '보존', '보철', '소치', '외과', '치주', '원진실']
                     order_map = {dept: i for i, dept in enumerate(desired_order)}
                     patient_list = list(existing_patient_data.items())
                     sorted_patient_list = sorted(patient_list, key=lambda item: order_map.get(item[1].get('등록과', '미지정'), float('inf')))
@@ -1627,8 +1624,8 @@ if st.session_state.get('login_mode') in ['user_mode', 'new_user_registration', 
                 with st.form("register_form"):
                     name = st.text_input("환자명")
                     pid = st.text_input("진료번호")
-                    departments_for_registration = ["치과교정과", "구강내과", "치과보존과", "치과보철과", "소아치과", "구강악안면외과", "치주과"]
-                    selected_department = st.selectbox("등록 과", departments_for_registration)
+                    departments_for_registration = ["교정", "내과", "보존", "보철", "소치", "외과", "치주", "원진실"]
+                    selected_department = st.selectbox("등록과", departments_for_registration)
                     submitted = st.form_submit_button("등록")
                     if submitted:
                         if not name or not pid:
