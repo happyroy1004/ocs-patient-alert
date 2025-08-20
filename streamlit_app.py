@@ -677,8 +677,7 @@ if 'google_creds' not in st.session_state:
 
 users_ref = db.reference("users")
 
-# 기존의 모든 #6 코드를 이 코드로 완전히 교체합니다.
-
+#6. User and Admin and Resident Login and User Management
 import os
 import streamlit as st
 import datetime
@@ -687,14 +686,27 @@ from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 import smtplib
 
-# --- 이메일 전송 함수 (기존 코드에서 가져옴) ---
-def send_email(receiver, html_content, subject, sender, password):
+# Assume these functions are defined elsewhere in your script
+# from your_utils import is_valid_email, is_encrypted_excel, load_excel, process_excel_file_and_style, run_analysis, sanitize_path, recover_email, get_google_calendar_service, send_email, send_email_simple, create_calendar_event, create_static_calendar_event, create_auth_url, load_google_creds_from_firebase, users_ref, db, is_daily_schedule, sheet_keyword_to_department_map
+
+# Firebase DB References
+users_ref = db.reference("users")
+resident_users_ref = db.reference("resident_users")
+
+# --- 이메일 전송 함수 (기존 send_email_simple 대신 사용) ---
+def send_email(receiver, rows, sender, password, custom_message, date_str):
+    """
+    매칭된 환자 정보를 담아 이메일을 전송하는 함수.
+    """
     msg = MIMEMultipart('alternative')
-    msg['Subject'] = subject
+    msg['Subject'] = f"[치과 내원 알림] {date_str} 예약 내역"
     msg['From'] = sender
     msg['To'] = receiver
+
+    html_content = custom_message
     part1 = MIMEText(html_content, 'html', 'utf-8')
     msg.attach(part1)
+
     try:
         server = smtplib.SMTP_SSL('smtp.gmail.com', 465)
         server.login(sender, password)
@@ -702,172 +714,266 @@ def send_email(receiver, html_content, subject, sender, password):
         server.quit()
         return True
     except Exception as e:
-        st.error(f"이메일 전송 실패: {e}")
+        print(f"Error sending email: {e}")
         return False
 
-# --- 사용 설명서 PDF 다운로드 버튼 (기존 코드에서 가져옴) ---
+# --- 사용 설명서 PDF 다운로드 버튼 추가 ---
 pdf_file_path = "manual.pdf"
+pdf_display_name = "사용 설명서"
+
 if os.path.exists(pdf_file_path):
     with open(pdf_file_path, "rb") as pdf_file:
         st.download_button(
-            label="사용 설명서 다운로드",
+            label=f"{pdf_display_name} 다운로드",
             data=pdf_file,
             file_name=pdf_file_path,
             mime="application/pdf"
         )
 else:
-    st.warning("⚠️ 사용 설명서 파일을 찾을 수 없습니다.")
+    st.warning(f"⚠️ {pdf_display_name} 파일을 찾을 수 없습니다. (경로: {pdf_file_path})")
 
-# --- 세션 상태 초기화 및 로그인/등록 화면 ---
-if "login_mode" not in st.session_state:
-    st.session_state.login_mode = "login"
-if "logged_in_user" not in st.session_state:
-    st.session_state.logged_in_user = None
+# 로그인 폼 - 로그인/등록 완료 전까지는 이 섹션만 표시
+if 'login_mode' not in st.session_state:
+    st.session_state.login_mode = 'not_logged_in'
 
-# 로그인 화면 (기본 화면)
-if st.session_state.logged_in_user is None:
-    if st.session_state.login_mode == "login":
-        st.image("https://i.ibb.co/6P0117b/logo.png", width=300)
-        st.subheader("로그인")
-        st.markdown("---")
-        
-        user_name_input = st.text_input("사용자 이름", key="login_username")
-        password_input = st.text_input("비밀번호", type="password", key="login_password")
-        
-        col1, col2 = st.columns(2)
-        with col1:
-            if st.button("로그인"):
-                # 1) 관리자 로그인 (이름만으로 확인)
-                if user_name_input.strip().lower() == "admin":
-                    st.session_state.logged_in_user = "admin"
-                    st.session_state.logged_in_name = "관리자"
-                    st.success("관리자 계정으로 로그인되었습니다.")
-                    st.rerun()
-                # 2) 레지던트 로그인/등록 모드 전환
-                elif user_name_input.strip().lower() == "resident":
-                    st.session_state.login_mode = "resident"
-                    st.info("레지던트 로그인 화면으로 전환합니다.")
-                    st.rerun()
-                # 3) 일반 사용자 로그인
-                else:
-                    all_users = users_ref.get()
-                    found_user_key = None
-                    if all_users:
-                        for key, user_data in all_users.items():
-                            if user_data.get('name', '').lower() == user_name_input.lower():
-                                if user_data.get('password') == password_input:
-                                    found_user_key = key
-                                    st.session_state.logged_in_user = key
-                                    st.session_state.logged_in_name = user_data.get('name', '이름 없음')
-                                    st.session_state.logged_in_role = user_data.get('role', 'user')
-                                    st.session_state.logged_in_dept = user_data.get('department', None)
-                                    st.success(f"**{st.session_state.logged_in_name}**님, 로그인되었습니다.")
-                                    st.rerun()
-                                    break
-                                else:
-                                    st.error("비밀번호가 일치하지 않습니다.")
-                                    found_user_key = 'password_mismatch'
-                                    break
-                    if found_user_key is None:
-                        st.error("등록되지 않은 사용자입니다. 회원가입을 먼저 진행해주세요.")
-        with col2:
-            if st.button("회원가입"):
-                st.session_state.login_mode = "register"
-                st.rerun()
-
-    # 회원가입 화면 (별도 탭)
-    elif st.session_state.login_mode == "register":
-        st.image("https://i.ibb.co/6P0117b/logo.png", width=300)
-        st.subheader("회원가입")
-        st.markdown("---")
-
-        with st.form("registration_form"):
-            new_name = st.text_input("이름", help="이름이 중복될 경우, 이름 뒤에 A, B 등을 붙여주세요.", key="new_user_name")
-            new_password = st.text_input("비밀번호", type="password", key="new_user_password")
-            new_dept = st.text_input("부서", key="new_user_dept")
-            submitted = st.form_submit_button("등록 완료")
-
-            if submitted:
-                all_users = users_ref.get()
-                name_exists = False
-                if all_users:
-                    for key, user_data in all_users.items():
-                        if user_data.get('name', '').lower() == new_name.lower():
-                            name_exists = True
-                            break
-
-                if name_exists:
-                    st.error("이미 존재하는 이름입니다. 이름 뒤에 알파벳이나 숫자를 붙여주세요. (예: 김수민B)")
-                else:
-                    try:
-                        new_user_data = {
-                            "name": new_name,
-                            "password": new_password,
-                            "department": new_dept,
-                            "role": "user"
-                        }
-                        users_ref.push(new_user_data)
-                        st.success("✅ 회원가입이 완료되었습니다. 로그인 화면으로 돌아갑니다.")
-                        st.session_state.login_mode = "login"
-                        st.rerun()
-                    except Exception as e:
-                        st.error(f"회원가입 중 오류가 발생했습니다: {e}")
-
-        if st.button("뒤로가기"):
-            st.session_state.login_mode = "login"
-            st.rerun()
+if st.session_state.get('login_mode') not in ['user_mode', 'admin_mode', 'resident_mode', 'new_resident_registration', 'resident_name_input', 'new_user_registration']:
+    user_name = st.text_input("사용자 이름을 입력하세요 (예시: 홍길동)", key="login_username")
+    password_input = st.text_input("비밀번호를 입력하세요", type="password", key="login_password")
     
-    # 레지던트 로그인 화면 (별도 탭)
-    elif st.session_state.login_mode == "resident":
-        st.image("https://i.ibb.co/6P0117b/logo.png", width=300)
-        st.subheader("🧑‍⚕️ 레지던트 로그인")
-        st.markdown("---")
+    # 레지던트 자동 전환 로직
+    if user_name.strip().lower() == "resident":
+        st.session_state.login_mode = 'resident_name_input'
+        st.rerun()
+
+    # '로그인' 버튼을 눌러야만 로직이 실행되도록 수정
+    if st.button("로그인"):
+        if not user_name:
+            st.error("사용자 이름을 입력해주세요.")
+            
+        # --- 관리자 모드 로그인 ---
+        elif user_name.strip().lower() == "admin":
+             st.session_state.login_mode = 'admin_mode'
+             st.session_state.logged_in_as_admin = True
+             st.session_state.found_user_email = "admin"
+             st.session_state.current_user_name = "admin"
+             st.rerun()
         
-        resident_name = st.text_input("레지던트 이름", key="resident_name_input")
-        password_input = st.text_input("비밀번호", type="password", key="resident_password_input")
-        
-        if st.button("로그인"):
-            if resident_name:
-                all_residents_meta = users_ref.get()
-                matched_resident = None
-                if all_residents_meta:
-                    for safe_key, user_info in all_residents_meta.items():
-                        if user_info and user_info.get("name") == resident_name and user_info.get("role") == "resident":
-                            matched_resident = user_info
-                            matched_resident["safe_key"] = safe_key
-                            break
-                
-                if matched_resident:
-                    if password_input == matched_resident.get("password"):
-                        st.session_state.logged_in_user = matched_resident["safe_key"]
-                        st.session_state.logged_in_name = matched_resident["name"]
-                        st.session_state.logged_in_role = 'resident'
-                        st.session_state.logged_in_dept = matched_resident["department"]
-                        st.success(f"레지던트 **{resident_name}**님으로 로그인되었습니다.")
+        # --- 일반 사용자 로그인 ---
+        else:
+            all_users_meta = users_ref.get()
+            matched_user = None
+            if all_users_meta:
+                for safe_key, user_info in all_users_meta.items():
+                    if user_info and user_info.get("name") == user_name:
+                        matched_user = {"safe_key": safe_key, "email": user_info.get("email", ""), "name": user_info.get("name", ""), "password": user_info.get("password")}
+                        break
+            
+            if matched_user:
+                if "password" not in matched_user or not matched_user.get("password"):
+                    if password_input == "1234":
+                        st.session_state.found_user_email = matched_user["email"]
+                        st.session_state.user_id_input_value = matched_user["email"]
+                        st.session_state.current_firebase_key = matched_user["safe_key"]
+                        st.session_state.current_user_name = user_name
+                        st.session_state.login_mode = 'user_mode'
+                        st.info(f"**{user_name}**님으로 로그인되었습니다. 기존 사용자이므로 초기 비밀번호 1234가 설정되었습니다.")
+                        users_ref.child(matched_user["safe_key"]).update({"password": "1234"})
                         st.rerun()
                     else:
-                        st.error("비밀번호가 일치하지 않습니다.")
+                        st.error("비밀번호가 일치하지 않습니다. 기존 사용자의 초기 비밀번호는 '1234'입니다. 다시 시도해주세요.")
                 else:
-                    st.error("등록된 레지던트가 아닙니다. 관리자에게 문의하세요.")
-            else:
-                st.warning("레지던트 이름을 입력해주세요.")
-                
-        if st.button("뒤로가기"):
-            st.session_state.login_mode = "login"
-            st.rerun()
-            
-# --- 로그인 성공 후의 앱 내용 ---
-else:
-    # 아래는 기존의 앱 내용 (탭, 기능 등)이 시작되는 부분입니다.
-    st.sidebar.title(f"반갑습니다, {st.session_state.logged_in_name}님!")
-    if st.sidebar.button("로그아웃"):
-        st.session_state.clear()
-        st.session_state.login_mode = "login"
-        st.rerun()
-    
-    # 여기서부터 #7, #8 등 나머지 코드 시작
+                    if password_input == matched_user.get("password"):
+                        st.session_state.found_user_email = matched_user["email"]
+                        st.session_state.user_id_input_value = matched_user["email"]
+                        st.session_state.current_firebase_key = matched_user["safe_key"]
+                        st.session_state.current_user_name = user_name
+                        st.session_state.login_mode = 'user_mode'
+                        st.info(f"**{user_name}**님으로 로그인되었습니다. 이메일 주소: **{st.session_state.found_user_email}**")
+                        st.rerun()
+                    else:
+                        st.error("비밀번호가 일치하지 않습니다. 다시 확인해주세요.")
 
-#7. Admin 모드 로그인 처리
+    # 일반 사용자 로그인 시, 기존 사용자가 아닌 경우
+            else:
+                st.info(f"'{user_name}'님은 새로운 사용자입니다. 아래에 이메일 주소를 입력하여 등록을 완료하세요.")
+                st.session_state.found_user_email = ""
+                st.session_state.user_id_input_value = ""
+                st.session_state.current_firebase_key = ""
+                st.session_state.current_user_name = user_name
+                st.session_state.login_mode = 'new_user_registration'
+                st.rerun()
+            
+            # --- 새로운 일반 사용자 등록 로직 ---
+            if st.session_state.get('login_mode') == 'new_user_registration':
+                st.subheader("👨‍⚕️ 일반 사용자 등록")
+                new_email_input = st.text_input("아이디(이메일)를 입력하세요", key="new_user_email_input")
+                password_input = st.text_input("새로운 비밀번호를 입력하세요", type="password", key="new_user_password_input")
+                
+                if st.button("사용자 등록 완료"):
+                    if is_valid_email(new_email_input) and password_input:
+                        new_firebase_key = sanitize_path(new_email_input)
+                        
+                        # 중복 이메일 체크
+                        all_users_meta = users_ref.get()
+                        is_email_used = False
+                        if all_users_meta:
+                            for user_info in all_users_meta.values():
+                                if user_info.get("email") == new_email_input:
+                                    is_email_used = True
+                                    break
+                        
+                        if is_email_used:
+                            st.error("이미 등록된 이메일 주소입니다. 다른 주소를 사용해주세요.")
+                        else:
+                            st.session_state.current_firebase_key = new_firebase_key
+                            st.session_state.found_user_email = new_email_input
+                            st.session_state.current_user_name = st.session_state.current_user_name # 로그인 시 입력된 이름 유지
+                            st.session_state.login_mode = 'user_mode'
+                            
+                            users_ref.child(new_firebase_key).set({
+                                "name": st.session_state.current_user_name,
+                                "email": new_email_input,
+                                "password": password_input
+                            })
+                            
+                            st.success(f"새로운 사용자 **{st.session_state.current_user_name}**님 ({new_email_input}) 정보가 등록되었습니다.")
+                            st.rerun()
+                    else:
+                        st.error("올바른 이메일 주소와 비밀번호를 입력해주세요.")
+
+# --- 레지던트 이름 입력 절차 ---
+if st.session_state.get('login_mode') == 'resident_name_input':
+    st.subheader("🧑‍⚕️ 레지던트 로그인")
+    resident_name = st.text_input("레지던트 이름을 입력하세요", key="resident_name_input")
+    password_input = st.text_input("비밀번호를 입력하세요", type="password", key="resident_password_input")
+    
+    if st.button("로그인/등록"):
+        if resident_name:
+            all_residents_meta = resident_users_ref.get()
+            matched_resident = None
+            if all_residents_meta:
+                for safe_key, user_info in all_residents_meta.items():
+                    if user_info and user_info.get("name") == resident_name:
+                        matched_resident = {"safe_key": safe_key, "email": user_info.get("email", ""), "name": user_info.get("name", ""), "password": user_info.get("password"), "department": user_info.get("department", "")}
+                        break
+            
+            if matched_resident:
+                if password_input == matched_resident.get("password"):
+                    st.session_state.found_user_email = matched_resident["email"]
+                    st.session_state.user_id_input_value = matched_resident["email"]
+                    st.session_state.current_firebase_key = matched_resident["safe_key"]
+                    st.session_state.current_user_name = resident_name
+                    st.session_state.current_user_dept = matched_resident["department"]
+                    st.session_state.current_user_role = 'resident'
+                    st.session_state.login_mode = 'resident_mode'
+                    st.info(f"레지던트 **{resident_name}**님으로 로그인되었습니다. 이메일 주소: **{st.session_state.found_user_email}**")
+                    st.rerun()
+                else:
+                    st.error("비밀번호가 일치하지 않습니다. 다시 확인해주세요.")
+            else:
+                # 새로운 레지던트 처리 로직
+                if password_input == "1234":
+                    st.info("💡 새로운 레지던트 계정으로 인식되었습니다. 초기 비밀번호 '1234'로 등록을 완료합니다.")
+                    st.session_state.found_user_email = "" # 이메일 입력받도록 초기화
+                    st.session_state.user_id_input_value = ""
+                    st.session_state.current_firebase_key = ""
+                    st.session_state.current_user_name = resident_name
+                    st.session_state.current_user_role = 'resident'
+                    st.session_state.current_user_dept = None # `None`으로 설정하여 초기값을 지정하지 않음
+                    st.session_state.login_mode = 'new_resident_registration'
+                    st.rerun()
+                else:
+                    st.info(f"'{resident_name}'님은 새로운 레지던트입니다. 아래에 정보를 입력하여 등록을 완료하세요.")
+                    st.session_state.found_user_email = ""
+                    st.session_state.user_id_input_value = ""
+                    st.session_state.current_firebase_key = ""
+                    st.session_state.current_user_name = resident_name
+                    st.session_state.login_mode = 'new_resident_registration'
+                    st.rerun()
+        else:
+            st.warning("레지던트 이름을 입력해주세요.")
+            
+# --- 새로운 레지던트 등록 로직 ---
+if st.session_state.get('login_mode') == 'new_resident_registration':
+    password_input = st.text_input("새로운 비밀번호를 입력하세요", type="password", key="new_resident_password_input", value="1234" if st.session_state.get('current_firebase_key') else "")
+    user_id_input = st.text_input("아이디(이메일)를 입력하세요", key="new_resident_email_input", value=st.session_state.get('found_user_email', ''))
+    
+    dept_options = ["교정", "내과", "보존", "보철", "소치", "외과", "치주"]
+    
+    selected_dept = st.session_state.get('current_user_dept')
+    default_index = 0
+    if selected_dept and selected_dept in dept_options:
+        default_index = dept_options.index(selected_dept)
+        
+    department = st.selectbox("등록 과", dept_options, key="new_resident_dept_selectbox", index=default_index)
+
+    if st.button("레지던트 등록 완료"):
+        if is_valid_email(user_id_input) and password_input and department:
+            new_email = user_id_input
+            new_firebase_key = sanitize_path(new_email)
+            
+            st.session_state.current_firebase_key = new_firebase_key
+            st.session_state.found_user_email = new_email
+            st.session_state.current_user_dept = department
+            st.session_state.current_user_role = 'resident'
+            
+            st.session_state.login_mode = 'resident_mode'
+            
+            resident_users_ref.child(new_firebase_key).set({"name": st.session_state.current_user_name, "email": new_email, "password": password_input, "role": st.session_state.current_user_role, "department": department})
+            st.success(f"새로운 레지던트 **{st.session_state.current_user_name}**님 ({new_email}) 정보가 등록되었습니다.")
+            st.rerun()
+        else:
+            st.error("올바른 이메일 주소, 비밀번호, 그리고 등록 과를 입력해주세요.")
+            
+# --- 이메일 변경 기능 (모든 사용자 공통) ---
+if st.session_state.get('login_mode') in ['user_mode', 'resident_mode', 'email_change_mode']:
+    if st.session_state.get('current_firebase_key'):
+        st.text_input("아이디 (등록된 이메일)", value=st.session_state.get('found_user_email', ''), disabled=True)
+        
+        if st.button("이메일 주소 변경"):
+            st.session_state.email_change_mode = True
+            st.rerun()
+        
+        if st.session_state.get('email_change_mode'):
+            st.divider()
+            st.subheader("이메일 주소 변경")
+            new_email_input = st.text_input("새 이메일 주소를 입력하세요", value=st.session_state.get('user_id_input_value', ''))
+            st.session_state.user_id_input_value = new_email_input
+            
+            if st.button("변경 완료"):
+                if is_valid_email(new_email_input):
+                    new_firebase_key = sanitize_path(new_email_input)
+                    old_firebase_key = st.session_state.current_firebase_key
+                    user_role_to_change = st.session_state.get("current_user_role")
+
+                    if old_firebase_key != new_firebase_key:
+                        if user_role_to_change == 'resident':
+                            target_ref = resident_users_ref
+                        else:
+                            target_ref = users_ref
+                        
+                        target_ref.child(new_firebase_key).update({"name": st.session_state.current_user_name, "email": new_email_input, "role": user_role_to_change, "department": st.session_state.get("current_user_dept", "")})
+                        
+                        # 환자 데이터 이동은 일반 사용자만 해당
+                        if user_role_to_change != 'resident':
+                            old_patient_data = db.reference(f"patients/{old_firebase_key}").get()
+                            if old_patient_data:
+                                db.reference(f"patients/{new_firebase_key}").set(old_patient_data)
+                                db.reference(f"patients/{old_firebase_key}").delete()
+                        
+                        target_ref.child(old_firebase_key).delete()
+                        st.session_state.current_firebase_key = new_firebase_key
+                        st.session_state.found_user_email = new_email_input
+                        st.success(f"이메일 주소가 **{new_email_input}**로 성공적으로 변경되었습니다.")
+                    else:
+                        st.info("이메일 주소 변경사항이 없습니다.")
+                    st.session_state.email_change_mode = False
+                    st.rerun()
+                else:
+                    st.error("올바른 이메일 주소 형식이 아닙니다.")
+
+
+# #7. Admin 모드 로그인 처리
 if st.session_state.get('login_mode') == 'admin_mode':
     st.session_state.logged_in_as_admin = True
     st.session_state.found_user_email = "admin"
