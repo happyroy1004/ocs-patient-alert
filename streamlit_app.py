@@ -686,12 +686,8 @@ import pandas as pd
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 import smtplib
-from googleapiclient.discovery import build
-from google.auth.exceptions import RefreshError
-from google.auth.transport.requests import Request
-from google.oauth2.credentials import Credentials
 
-# --- 이메일 전송 함수 (이전 코드에서 가져온 함수) ---
+# --- 이메일 전송 함수 (기존 코드에서 가져옴) ---
 def send_email(receiver, html_content, subject, sender, password):
     msg = MIMEMultipart('alternative')
     msg['Subject'] = subject
@@ -709,7 +705,7 @@ def send_email(receiver, html_content, subject, sender, password):
         st.error(f"이메일 전송 실패: {e}")
         return False
 
-# --- 사용 설명서 PDF 다운로드 버튼 (이전 코드에서 가져온 기능) ---
+# --- 사용 설명서 PDF 다운로드 버튼 (기존 코드에서 가져옴) ---
 pdf_file_path = "manual.pdf"
 if os.path.exists(pdf_file_path):
     with open(pdf_file_path, "rb") as pdf_file:
@@ -773,7 +769,7 @@ if st.session_state.logged_in_user is None:
                                     found_user_key = 'password_mismatch'
                                     break
                     if found_user_key is None:
-                        st.error("등록되지 않은 사용자입니다.")
+                        st.error("등록되지 않은 사용자입니다. 회원가입을 먼저 진행해주세요.")
         with col2:
             if st.button("회원가입"):
                 st.session_state.login_mode = "register"
@@ -796,7 +792,7 @@ if st.session_state.logged_in_user is None:
                 name_exists = False
                 if all_users:
                     for key, user_data in all_users.items():
-                        if user_data.get('name', '') == new_name:
+                        if user_data.get('name', '').lower() == new_name.lower():
                             name_exists = True
                             break
 
