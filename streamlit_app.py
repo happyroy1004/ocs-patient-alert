@@ -741,7 +741,7 @@ if st.session_state.get('login_mode') not in ['user_mode', 'admin_mode', 'doctor
     user_name = st.text_input("사용자 이름을 입력하세요 (예시: 홍길동)", key="login_username")
     password_input = st.text_input("비밀번호를 입력하세요", type="password", key="login_password")
     
-    # 레지던트 자동 전환 로직
+    # 치과의사 자동 전환 로직
     if user_name.strip().lower() == "doctor":
         st.session_state.login_mode = 'doctor_name_input'
         st.rerun()
@@ -837,7 +837,7 @@ if st.session_state.get('login_mode') == 'new_user_registration':
         else:
             st.error("올바른 이메일 주소와 비밀번호를 입력해주세요.")
 
-# --- 레지던트 이름 입력 절차 ---
+# --- 치과의사 이름 입력 절차 ---
 if st.session_state.get('login_mode') == 'doctor_name_input':
     st.subheader("🧑‍⚕️ 치과의사 로그인")
     doctor_name = st.text_input("치과의사 이름을 입력하세요 (원내생이라면 '95홍길동'과 같은 형태로 등록바랍니다)", key="doctor_name_input")
@@ -867,7 +867,7 @@ if st.session_state.get('login_mode') == 'doctor_name_input':
                 else:
                     st.error("비밀번호가 일치하지 않습니다. 다시 확인해주세요.")
             else:
-                # 새로운 레지던트 처리 로직
+                # 새로운 치과의사 처리 로직
                 if password_input == "1234":
                     st.info("💡 새로운 치과의사 계정으로 인식되었습니다. 초기 비밀번호 '1234'로 등록을 완료합니다.")
                     st.session_state.found_user_email = "" # 이메일 입력받도록 초기화
@@ -887,9 +887,9 @@ if st.session_state.get('login_mode') == 'doctor_name_input':
                     st.session_state.login_mode = 'new_doctor_registration'
                     st.rerun()
         else:
-            st.warning("레지던트 이름을 입력해주세요.")
+            st.warning("치과의사 이름을 입력해주세요.")
             
-# --- 새로운 레지던트 등록 로직 ---
+# --- 새로운 치과의사 등록 로직 ---
 if st.session_state.get('login_mode') == 'new_doctor_registration':
     password_input = st.text_input("새로운 비밀번호를 입력하세요", type="password", key="new_doctor_password_input", value="1234" if st.session_state.get('current_firebase_key') else "")
     user_id_input = st.text_input("아이디(이메일)를 입력하세요", key="new_doctor_email_input", value=st.session_state.get('found_user_email', ''))
@@ -1042,7 +1042,7 @@ if st.session_state.get('login_mode') == 'admin_mode':
             st.error(f"예상치 못한 오류 발생: {e}")
             st.stop()
             
-        student_admin_tab, doctor_admin_tab = st.tabs(['📚 학생 관리자 모드', '🧑‍⚕️ 레지던트 관리자 모드'])
+        student_admin_tab, doctor_admin_tab = st.tabs(['📚 학생 관리자 모드', '🧑‍⚕️ 치과의사 관리자 모드'])
         
         with student_admin_tab:
             st.subheader("📚 학생 관리자 모드")
@@ -1196,7 +1196,7 @@ if st.session_state.get('login_mode') == 'admin_mode':
         
         
         with doctor_admin_tab:
-            st.subheader("🧑‍⚕️ 레지던트 관리자 모드")
+            st.subheader("🧑‍⚕️ 치과의사 관리자 모드")
             
             all_doctors_meta = doctor_users_ref.get()
             doctors = []
@@ -1210,7 +1210,7 @@ if st.session_state.get('login_mode') == 'admin_mode':
                             "department": user_info.get("department", "미지정")
                         })
             
-            # 엑셀 파일과 매칭되는 레지던트만 필터링
+            # 엑셀 파일과 매칭되는 치과의사만 필터링
             matched_doctors = []
             if doctors and excel_data_dfs:
                 for res in doctors:
@@ -1237,14 +1237,14 @@ if st.session_state.get('login_mode') == 'admin_mode':
                             break
             
             if not matched_doctors:
-                st.info("현재 엑셀 파일에 등록된 진료가 있는 레지던트 계정이 없습니다.")
+                st.info("현재 엑셀 파일에 등록된 진료가 있는 치과의사 계정이 없습니다.")
             else:
-                st.success(f"등록된 진료가 있는 **{len(matched_doctors)}명의 레지던트**를 발견했습니다.")
+                st.success(f"등록된 진료가 있는 **{len(matched_doctors)}명의 치과의사**를 발견했습니다.")
                 
                 if 'select_all_matched_doctors' not in st.session_state:
                     st.session_state.select_all_matched_doctors = False
                 
-                select_all_button = st.button("등록된 레지던트 모두 선택/해제", key="select_all_matched_res_btn")
+                select_all_button = st.button("등록된 치과의사 모두 선택/해제", key="select_all_matched_res_btn")
                 if select_all_button:
                     st.session_state.select_all_matched_doctors = not st.session_state.select_all_matched_doctors
                     st.rerun()
@@ -1252,18 +1252,18 @@ if st.session_state.get('login_mode') == 'admin_mode':
                 doctor_list_for_multiselect = [f"{res['name']} ({res['email']})" for res in matched_doctors]
                 
                 default_selection_doctor = doctor_list_for_multiselect if st.session_state.select_all_matched_doctors else []
-                selected_doctors_str = st.multiselect("액션을 취할 레지던트 선택", doctor_list_for_multiselect, default=default_selection_doctor, key="doctor_multiselect")
+                selected_doctors_str = st.multiselect("액션을 취할 치과의사 선택", doctor_list_for_multiselect, default=default_selection_doctor, key="doctor_multiselect")
                 selected_doctors_data = [res for res in matched_doctors if f"{res['name']} ({res['email']})" in selected_doctors_str]
 
                 if selected_doctors_data:
                     st.markdown("---")
-                    st.write("**선택된 레지던트 목록:**")
+                    st.write("**선택된 치과의사 목록:**")
                     for res in selected_doctors_data:
                         st.write(f"- {res['name']} ({res['email']})")
 
                     mail_col, calendar_col = st.columns(2)
                     with mail_col:
-                        if st.button("선택된 레지던트에게 메일 보내기"):
+                        if st.button("선택된 치과의사에게 메일 보내기"):
                             if not st.secrets["gmail"]["sender"] or not st.secrets["gmail"]["app_password"]:
                                 st.error("Gmail 인증 정보가 설정되지 않았습니다.")
                             else:
@@ -1292,7 +1292,7 @@ if st.session_state.get('login_mode') == 'admin_mode':
                                         df_matched = pd.DataFrame(matched_rows_for_doctor)
                                         df_html = df_matched[['환자명', '진료번호', '예약의사', '진료내역', '예약시간']].to_html(index=False, escape=False)
                                         email_body = f"""
-                                        <p>안녕하세요, {res['name']} 레지던트님.</p>
+                                        <p>안녕하세요, {res['name']} 치과의사님.</p>
                                         <p>오늘 예약된 환자 내원 정보입니다.</p>
                                         {df_html}
                                         <p>확인 부탁드립니다.</p>
@@ -1303,9 +1303,9 @@ if st.session_state.get('login_mode') == 'admin_mode':
                                         except Exception as e:
                                             st.error(f"**{res['name']}**님에게 메일 전송 실패: {e}")
                                     else:
-                                        st.warning(f"**{res['name']}** 레지던트의 매칭 데이터가 엑셀 파일에 없습니다.")
+                                        st.warning(f"**{res['name']}** 치과의사의 매칭 데이터가 엑셀 파일에 없습니다.")
                     with calendar_col:
-                        if st.button("선택된 레지던트에게 Google Calendar 일정 추가"):
+                        if st.button("선택된 치과의사에게 Google Calendar 일정 추가"):
                             for res in selected_doctors_data:
                                 try:
                                     creds = load_google_creds_from_firebase(res['safe_key'])
@@ -1350,7 +1350,7 @@ if st.session_state.get('login_mode') == 'admin_mode':
                                                             full_datetime_str = f"{str(reservation_date_str).strip()} {str(reservation_time_str).strip()}"
                                                             reservation_datetime = datetime.datetime.strptime(full_datetime_str, '%Y/%m/%d %H:%M')
                                                         except ValueError:
-                                                            st.warning(f"**{res['name']}** 레지던트의 '{patient_name}' 환자 예약일시 형식이 잘못되었습니다: {full_datetime_str}")
+                                                            st.warning(f"**{res['name']}** 치과의사의 '{patient_name}' 환자 예약일시 형식이 잘못되었습니다: {full_datetime_str}")
                                                             continue
                                                         event_prefix = "✨ 내원 : " if is_daily else "내원? : "
                                                         event_title = f"{event_prefix}{patient_name}({pid})"
@@ -1359,7 +1359,7 @@ if st.session_state.get('login_mode') == 'admin_mode':
                                         if found_matched_data:
                                             st.success(f"**{res['name']}**님 캘린더에 매칭된 모든 환자 일정을 추가했습니다.")
                                         else:
-                                            st.warning(f"**{res['name']}** 레지던트의 매칭 데이터가 엑셀 파일에 없습니다.")
+                                            st.warning(f"**{res['name']}** 치과의사의 매칭 데이터가 엑셀 파일에 없습니다.")
                                     else:
                                         st.warning(f"**{res['name']}**님은 Google Calendar 계정이 연동되지 않았습니다. 해당 사용자가 Google Calendar 탭에서 인증을 완료해야 합니다.")
                                 except Exception as e:
@@ -1471,7 +1471,7 @@ if st.session_state.get('login_mode') == 'admin_mode':
         st.session_state.admin_password_correct = False
                 
 # #8. Regular User Mode
-# --- 일반 사용자 & 레지던트 모드 ---
+# --- 일반 사용자 & 치과의사 모드 ---
 if st.session_state.get('login_mode') in ['user_mode', 'new_user_registration', 'doctor_mode', 'new_doctor_registration', 'doctor_name_input']:
     user_name = st.session_state.get('current_user_name', "")
     user_id_final = st.session_state.get('found_user_email', "")
@@ -1502,7 +1502,7 @@ if st.session_state.get('login_mode') in ['user_mode', 'new_user_registration', 
             st.stop()
     
         if st.session_state.get('login_mode') == 'doctor_mode' or st.session_state.get('login_mode') == 'new_doctor_registration':
-            st.header(f"🧑‍⚕️ {user_name}님, 안녕하세요! (레지던트 모드)")
+            st.header(f"🧑‍⚕️ {user_name}님, 안녕하세요! (치과의사 모드)")
             st.subheader("🗓️ Google Calendar 연동")
             st.info("구글 캘린더와 연동하여 내원 일정을 자동으로 등록할 수 있습니다.")
 
