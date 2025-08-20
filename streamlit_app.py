@@ -1144,7 +1144,7 @@ if st.session_state.get('login_mode') == 'admin_mode':
                                 <p>확인 부탁드립니다.</p>
                                 """
                                 try:
-                                    send_email(receiver=real_email, rows=df_matched.to_dict('records'), sender=sender, password=sender_pw, custom_message=email_body, date_str=today_date_str)
+                                    send_email(receiver=real_email, rows=df_matched.to_dict('records'), sender=sender, password=sender_pw, custom_message=email_body, date_str=reservation_date)
                                     st.success(f"**{user_name}**님 ({real_email})에게 예약 정보 이메일 전송 완료!")
                                 except Exception as e:
                                     st.error(f"**{user_name}**님 ({real_email})에게 이메일 전송 실패: {e}")
@@ -1300,7 +1300,7 @@ if st.session_state.get('login_mode') == 'admin_mode':
                                         <p>확인 부탁드립니다.</p>
                                         """
                                         try:
-                                            send_email(receiver=res['email'], rows=df_matched.to_dict('records'), sender=st.secrets["gmail"]["sender"], password=st.secrets["gmail"]["app_password"], custom_message=email_body, date_str=today_date_str)
+                                            send_email(receiver=res['email'], rows=df_matched.to_dict('records'), sender=st.secrets["gmail"]["sender"], password=st.secrets["gmail"]["app_password"], custom_message=email_body, date_str=reservation_date)
                                             st.success(f"**{res['name']}**님에게 환자 정보 메일 전송 완료!")
                                         except Exception as e:
                                             st.error(f"**{res['name']}**님에게 메일 전송 실패: {e}")
