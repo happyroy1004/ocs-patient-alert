@@ -677,7 +677,7 @@ if 'google_creds' not in st.session_state:
 
 users_ref = db.reference("users")
 
-#6. User and Admin and Resident Login and User Management
+#6. User and Admin and doctor Login and User Management
 import os
 import streamlit as st
 import datetime
@@ -691,7 +691,7 @@ import smtplib
 
 # Firebase DB References
 users_ref = db.reference("users")
-resident_users_ref = db.reference("resident_users")
+doctor_users_ref = db.reference("doctor_users")
 
 # --- 이메일 전송 함수 (기존 send_email_simple 대신 사용) ---
 def send_email(receiver, rows, sender, password, custom_message, date_str):
@@ -737,13 +737,13 @@ if 'login_mode' not in st.session_state:
     st.session_state.login_mode = 'not_logged_in'
 
 # 로그인/등록 폼을 login_mode에 따라 다르게 표시
-if st.session_state.get('login_mode') not in ['user_mode', 'admin_mode', 'resident_mode', 'new_resident_registration', 'resident_name_input', 'new_user_registration']:
+if st.session_state.get('login_mode') not in ['user_mode', 'admin_mode', 'doctor_mode', 'new_doctor_registration', 'doctor_name_input', 'new_user_registration']:
     user_name = st.text_input("사용자 이름을 입력하세요 (예시: 홍길동)", key="login_username")
     password_input = st.text_input("비밀번호를 입력하세요", type="password", key="login_password")
     
     # 레지던트 자동 전환 로직
     if user_name.strip().lower() == "doctor":
-        st.session_state.login_mode = 'resident_name_input'
+        st.session_state.login_mode = 'doctor_name_input'
         st.rerun()
 
     if st.button("로그인"):
@@ -838,31 +838,31 @@ if st.session_state.get('login_mode') == 'new_user_registration':
             st.error("올바른 이메일 주소와 비밀번호를 입력해주세요.")
 
 # --- 레지던트 이름 입력 절차 ---
-if st.session_state.get('login_mode') == 'resident_name_input':
+if st.session_state.get('login_mode') == 'doctor_name_input':
     st.subheader("🧑‍⚕️ 치과의사 로그인")
-    resident_name = st.text_input("치과의사 이름을 입력하세요 (원내생이라면 '95홍길동'과 같은 형태로 등록바랍니다)", key="resident_name_input")
-    password_input = st.text_input("비밀번호를 입력하세요", type="password", key="resident_password_input")
+    doctor_name = st.text_input("치과의사 이름을 입력하세요 (원내생이라면 '95홍길동'과 같은 형태로 등록바랍니다)", key="doctor_name_input")
+    password_input = st.text_input("비밀번호를 입력하세요", type="password", key="doctor_password_input")
     
     if st.button("로그인/등록"):
-        if resident_name:
-            all_residents_meta = resident_users_ref.get()
-            matched_resident = None
-            if all_residents_meta:
-                for safe_key, user_info in all_residents_meta.items():
-                    if user_info and user_info.get("name") == resident_name:
-                        matched_resident = {"safe_key": safe_key, "email": user_info.get("email", ""), "name": user_info.get("name", ""), "password": user_info.get("password"), "department": user_info.get("department", "")}
+        if doctor_name:
+            all_doctors_meta = doctor_users_ref.get()
+            matched_doctor = None
+            if all_doctors_meta:
+                for safe_key, user_info in all_doctors_meta.items():
+                    if user_info and user_info.get("name") == doctor_name:
+                        matched_doctor = {"safe_key": safe_key, "email": user_info.get("email", ""), "name": user_info.get("name", ""), "password": user_info.get("password"), "department": user_info.get("department", "")}
                         break
             
-            if matched_resident:
-                if password_input == matched_resident.get("password"):
-                    st.session_state.found_user_email = matched_resident["email"]
-                    st.session_state.user_id_input_value = matched_resident["email"]
-                    st.session_state.current_firebase_key = matched_resident["safe_key"]
-                    st.session_state.current_user_name = resident_name
-                    st.session_state.current_user_dept = matched_resident["department"]
-                    st.session_state.current_user_role = 'resident'
-                    st.session_state.login_mode = 'resident_mode'
-                    st.info(f"치과의사 **{resident_name}**님으로 로그인되었습니다. 이메일 주소: **{st.session_state.found_user_email}**")
+            if matched_doctor:
+                if password_input == matched_doctor.get("password"):
+                    st.session_state.found_user_email = matched_doctor["email"]
+                    st.session_state.user_id_input_value = matched_doctor["email"]
+                    st.session_state.current_firebase_key = matched_doctor["safe_key"]
+                    st.session_state.current_user_name = doctor_name
+                    st.session_state.current_user_dept = matched_doctor["department"]
+                    st.session_state.current_user_role = 'doctor'
+                    st.session_state.login_mode = 'doctor_mode'
+                    st.info(f"치과의사 **{doctor_name}**님으로 로그인되었습니다. 이메일 주소: **{st.session_state.found_user_email}**")
                     st.rerun()
                 else:
                     st.error("비밀번호가 일치하지 않습니다. 다시 확인해주세요.")
@@ -873,26 +873,26 @@ if st.session_state.get('login_mode') == 'resident_name_input':
                     st.session_state.found_user_email = "" # 이메일 입력받도록 초기화
                     st.session_state.user_id_input_value = ""
                     st.session_state.current_firebase_key = ""
-                    st.session_state.current_user_name = resident_name
-                    st.session_state.current_user_role = 'resident'
+                    st.session_state.current_user_name = doctor_name
+                    st.session_state.current_user_role = 'doctor'
                     st.session_state.current_user_dept = None # `None`으로 설정하여 초기값을 지정하지 않음
-                    st.session_state.login_mode = 'new_resident_registration'
+                    st.session_state.login_mode = 'new_doctor_registration'
                     st.rerun()
                 else:
-                    st.info(f"'{resident_name}'님은 새로운 치과의사입니다. 아래에 정보를 입력하여 등록을 완료하세요.")
+                    st.info(f"'{doctor_name}'님은 새로운 치과의사입니다. 아래에 정보를 입력하여 등록을 완료하세요.")
                     st.session_state.found_user_email = ""
                     st.session_state.user_id_input_value = ""
                     st.session_state.current_firebase_key = ""
-                    st.session_state.current_user_name = resident_name
-                    st.session_state.login_mode = 'new_resident_registration'
+                    st.session_state.current_user_name = doctor_name
+                    st.session_state.login_mode = 'new_doctor_registration'
                     st.rerun()
         else:
             st.warning("레지던트 이름을 입력해주세요.")
             
 # --- 새로운 레지던트 등록 로직 ---
-if st.session_state.get('login_mode') == 'new_resident_registration':
-    password_input = st.text_input("새로운 비밀번호를 입력하세요", type="password", key="new_resident_password_input", value="1234" if st.session_state.get('current_firebase_key') else "")
-    user_id_input = st.text_input("아이디(이메일)를 입력하세요", key="new_resident_email_input", value=st.session_state.get('found_user_email', ''))
+if st.session_state.get('login_mode') == 'new_doctor_registration':
+    password_input = st.text_input("새로운 비밀번호를 입력하세요", type="password", key="new_doctor_password_input", value="1234" if st.session_state.get('current_firebase_key') else "")
+    user_id_input = st.text_input("아이디(이메일)를 입력하세요", key="new_doctor_email_input", value=st.session_state.get('found_user_email', ''))
     
     dept_options = ["교정", "내과", "보존", "보철", "소치", "외과", "치주", "원내생"]
     
@@ -901,9 +901,9 @@ if st.session_state.get('login_mode') == 'new_resident_registration':
     if selected_dept and selected_dept in dept_options:
         default_index = dept_options.index(selected_dept)
         
-    department = st.selectbox("등록 과", dept_options, key="new_resident_dept_selectbox", index=default_index)
+    department = st.selectbox("등록 과", dept_options, key="new_doctor_dept_selectbox", index=default_index)
 
-    if st.button("레지던트 등록 완료"):
+    if st.button("치과의사 등록 완료"):
         if is_valid_email(user_id_input) and password_input and department:
             new_email = user_id_input
             new_firebase_key = sanitize_path(new_email)
@@ -911,18 +911,18 @@ if st.session_state.get('login_mode') == 'new_resident_registration':
             st.session_state.current_firebase_key = new_firebase_key
             st.session_state.found_user_email = new_email
             st.session_state.current_user_dept = department
-            st.session_state.current_user_role = 'resident'
+            st.session_state.current_user_role = 'doctor'
             
-            st.session_state.login_mode = 'resident_mode'
+            st.session_state.login_mode = 'doctor_mode'
             
-            resident_users_ref.child(new_firebase_key).set({"name": st.session_state.current_user_name, "email": new_email, "password": password_input, "role": st.session_state.current_user_role, "department": department})
-            st.success(f"새로운 레지던트 **{st.session_state.current_user_name}**님 ({new_email}) 정보가 등록되었습니다.")
+            doctor_users_ref.child(new_firebase_key).set({"name": st.session_state.current_user_name, "email": new_email, "password": password_input, "role": st.session_state.current_user_role, "department": department})
+            st.success(f"새로운 치과의사 **{st.session_state.current_user_name}**님 ({new_email}) 정보가 등록되었습니다.")
             st.rerun()
         else:
             st.error("올바른 이메일 주소, 비밀번호, 그리고 등록 과를 입력해주세요.")
             
 # --- 이메일 변경 기능 (모든 사용자 공통) ---
-if st.session_state.get('login_mode') in ['user_mode', 'resident_mode', 'email_change_mode']:
+if st.session_state.get('login_mode') in ['user_mode', 'doctor_mode', 'email_change_mode']:
     if st.session_state.get('current_firebase_key'):
         st.text_input("아이디 (등록된 이메일)", value=st.session_state.get('found_user_email', ''), disabled=True)
         
@@ -943,15 +943,15 @@ if st.session_state.get('login_mode') in ['user_mode', 'resident_mode', 'email_c
                     user_role_to_change = st.session_state.get("current_user_role")
 
                     if old_firebase_key != new_firebase_key:
-                        if user_role_to_change == 'resident':
-                            target_ref = resident_users_ref
+                        if user_role_to_change == 'doctor':
+                            target_ref = doctor_users_ref
                         else:
                             target_ref = users_ref
                         
                         target_ref.child(new_firebase_key).update({"name": st.session_state.current_user_name, "email": new_email_input, "role": user_role_to_change, "department": st.session_state.get("current_user_dept", "")})
                         
                         # 환자 데이터 이동은 일반 사용자만 해당
-                        if user_role_to_change != 'resident':
+                        if user_role_to_change != 'doctor':
                             old_patient_data = db.reference(f"patients/{old_firebase_key}").get()
                             if old_patient_data:
                                 db.reference(f"patients/{new_firebase_key}").set(old_patient_data)
@@ -1042,7 +1042,7 @@ if st.session_state.get('login_mode') == 'admin_mode':
             st.error(f"예상치 못한 오류 발생: {e}")
             st.stop()
             
-        student_admin_tab, resident_admin_tab = st.tabs(['📚 학생 관리자 모드', '🧑‍⚕️ 레지던트 관리자 모드'])
+        student_admin_tab, doctor_admin_tab = st.tabs(['📚 학생 관리자 모드', '🧑‍⚕️ 레지던트 관리자 모드'])
         
         with student_admin_tab:
             st.subheader("📚 학생 관리자 모드")
@@ -1195,15 +1195,15 @@ if st.session_state.get('login_mode') == 'admin_mode':
                 st.info("엑셀 파일 처리 완료. 매칭된 환자가 없습니다.")
         
         
-        with resident_admin_tab:
+        with doctor_admin_tab:
             st.subheader("🧑‍⚕️ 레지던트 관리자 모드")
             
-            all_residents_meta = resident_users_ref.get()
-            residents = []
-            if all_residents_meta:
-                for safe_key, user_info in all_residents_meta.items():
+            all_doctors_meta = doctor_users_ref.get()
+            doctors = []
+            if all_doctors_meta:
+                for safe_key, user_info in all_doctors_meta.items():
                     if user_info:
-                        residents.append({
+                        doctors.append({
                             "safe_key": safe_key,
                             "name": user_info.get("name", "이름 없음"),
                             "email": user_info.get("email", "이메일 없음"),
@@ -1211,9 +1211,9 @@ if st.session_state.get('login_mode') == 'admin_mode':
                         })
             
             # 엑셀 파일과 매칭되는 레지던트만 필터링
-            matched_residents = []
-            if residents and excel_data_dfs:
-                for res in residents:
+            matched_doctors = []
+            if doctors and excel_data_dfs:
+                for res in doctors:
                     found_match = False
                     for sheet_name_excel_raw, df_sheet in excel_data_dfs.items():
                         excel_sheet_name_lower = sheet_name_excel_raw.strip().lower().replace(' ', '')
@@ -1230,35 +1230,35 @@ if st.session_state.get('login_mode') == 'admin_mode':
                             excel_doctor_name_from_row = str(excel_row.get('예약의사', '')).strip().replace("'", "").replace("‘", "").replace("’", "").strip()
                             
                             if excel_doctor_name_from_row == res['name'] and excel_sheet_department == res['department']:
-                                matched_residents.append(res)
+                                matched_doctors.append(res)
                                 found_match = True
                                 break 
                         if found_match:
                             break
             
-            if not matched_residents:
+            if not matched_doctors:
                 st.info("현재 엑셀 파일에 등록된 진료가 있는 레지던트 계정이 없습니다.")
             else:
-                st.success(f"등록된 진료가 있는 **{len(matched_residents)}명의 레지던트**를 발견했습니다.")
+                st.success(f"등록된 진료가 있는 **{len(matched_doctors)}명의 레지던트**를 발견했습니다.")
                 
-                if 'select_all_matched_residents' not in st.session_state:
-                    st.session_state.select_all_matched_residents = False
+                if 'select_all_matched_doctors' not in st.session_state:
+                    st.session_state.select_all_matched_doctors = False
                 
                 select_all_button = st.button("등록된 레지던트 모두 선택/해제", key="select_all_matched_res_btn")
                 if select_all_button:
-                    st.session_state.select_all_matched_residents = not st.session_state.select_all_matched_residents
+                    st.session_state.select_all_matched_doctors = not st.session_state.select_all_matched_doctors
                     st.rerun()
 
-                resident_list_for_multiselect = [f"{res['name']} ({res['email']})" for res in matched_residents]
+                doctor_list_for_multiselect = [f"{res['name']} ({res['email']})" for res in matched_doctors]
                 
-                default_selection_resident = resident_list_for_multiselect if st.session_state.select_all_matched_residents else []
-                selected_residents_str = st.multiselect("액션을 취할 레지던트 선택", resident_list_for_multiselect, default=default_selection_resident, key="resident_multiselect")
-                selected_residents_data = [res for res in matched_residents if f"{res['name']} ({res['email']})" in selected_residents_str]
+                default_selection_doctor = doctor_list_for_multiselect if st.session_state.select_all_matched_doctors else []
+                selected_doctors_str = st.multiselect("액션을 취할 레지던트 선택", doctor_list_for_multiselect, default=default_selection_doctor, key="doctor_multiselect")
+                selected_doctors_data = [res for res in matched_doctors if f"{res['name']} ({res['email']})" in selected_doctors_str]
 
-                if selected_residents_data:
+                if selected_doctors_data:
                     st.markdown("---")
                     st.write("**선택된 레지던트 목록:**")
-                    for res in selected_residents_data:
+                    for res in selected_doctors_data:
                         st.write(f"- {res['name']} ({res['email']})")
 
                     mail_col, calendar_col = st.columns(2)
@@ -1267,8 +1267,8 @@ if st.session_state.get('login_mode') == 'admin_mode':
                             if not st.secrets["gmail"]["sender"] or not st.secrets["gmail"]["app_password"]:
                                 st.error("Gmail 인증 정보가 설정되지 않았습니다.")
                             else:
-                                for res in selected_residents_data:
-                                    matched_rows_for_resident = []
+                                for res in selected_doctors_data:
+                                    matched_rows_for_doctor = []
                                     if excel_data_dfs:
                                         for sheet_name_excel_raw, df_sheet in excel_data_dfs.items():
                                             excel_sheet_name_lower = sheet_name_excel_raw.strip().lower().replace(' ', '')
@@ -1286,10 +1286,10 @@ if st.session_state.get('login_mode') == 'admin_mode':
                                                 excel_doctor_name_from_row = str(excel_row.get('예약의사', '')).strip().replace("'", "").replace("‘", "").replace("’", "").strip()
                                                 
                                                 if excel_doctor_name_from_row == res['name'] and excel_sheet_department == res['department']:
-                                                    matched_rows_for_resident.append(excel_row.copy())
+                                                    matched_rows_for_doctor.append(excel_row.copy())
                                                 
-                                    if matched_rows_for_resident:
-                                        df_matched = pd.DataFrame(matched_rows_for_resident)
+                                    if matched_rows_for_doctor:
+                                        df_matched = pd.DataFrame(matched_rows_for_doctor)
                                         df_html = df_matched[['환자명', '진료번호', '예약의사', '진료내역', '예약시간']].to_html(index=False, escape=False)
                                         email_body = f"""
                                         <p>안녕하세요, {res['name']} 레지던트님.</p>
@@ -1306,7 +1306,7 @@ if st.session_state.get('login_mode') == 'admin_mode':
                                         st.warning(f"**{res['name']}** 레지던트의 매칭 데이터가 엑셀 파일에 없습니다.")
                     with calendar_col:
                         if st.button("선택된 레지던트에게 Google Calendar 일정 추가"):
-                            for res in selected_residents_data:
+                            for res in selected_doctors_data:
                                 try:
                                     creds = load_google_creds_from_firebase(res['safe_key'])
                                     if creds and creds.valid and not creds.expired:
@@ -1472,15 +1472,15 @@ if st.session_state.get('login_mode') == 'admin_mode':
                 
 # #8. Regular User Mode
 # --- 일반 사용자 & 레지던트 모드 ---
-if st.session_state.get('login_mode') in ['user_mode', 'new_user_registration', 'resident_mode', 'new_resident_registration', 'resident_name_input']:
+if st.session_state.get('login_mode') in ['user_mode', 'new_user_registration', 'doctor_mode', 'new_doctor_registration', 'doctor_name_input']:
     user_name = st.session_state.get('current_user_name', "")
     user_id_final = st.session_state.get('found_user_email', "")
     firebase_key = st.session_state.get('current_firebase_key', "")
     user_role = st.session_state.get('current_user_role', 'user')
     
     # 올바른 데이터베이스 참조를 결정
-    if user_role == 'resident':
-        target_users_ref = resident_users_ref
+    if user_role == 'doctor':
+        target_users_ref = doctor_users_ref
     else:
         target_users_ref = users_ref
     
@@ -1501,7 +1501,7 @@ if st.session_state.get('login_mode') in ['user_mode', 'new_user_registration', 
             st.info("내원 알람 노티를 받을 이메일 주소와 사용자 이름을 입력해주세요.")
             st.stop()
     
-        if st.session_state.get('login_mode') == 'resident_mode' or st.session_state.get('login_mode') == 'new_resident_registration':
+        if st.session_state.get('login_mode') == 'doctor_mode' or st.session_state.get('login_mode') == 'new_doctor_registration':
             st.header(f"🧑‍⚕️ {user_name}님, 안녕하세요! (레지던트 모드)")
             st.subheader("🗓️ Google Calendar 연동")
             st.info("구글 캘린더와 연동하여 내원 일정을 자동으로 등록할 수 있습니다.")
@@ -1536,7 +1536,7 @@ if st.session_state.get('login_mode') in ['user_mode', 'new_user_registration', 
                     st.error("새 비밀번호가 일치하지 않습니다. 다시 확인해주세요.")
                 else:
                     try:
-                        resident_users_ref.child(st.session_state.current_firebase_key).update({"password": new_password})
+                        doctor_users_ref.child(st.session_state.current_firebase_key).update({"password": new_password})
                         st.success("🎉 비밀번호가 성공적으로 변경되었습니다!")
                     except Exception as e:
                         st.error(f"비밀번호 변경 중 오류가 발생했습니다: {e}")
