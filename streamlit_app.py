@@ -1133,6 +1133,8 @@ if st.session_state.get('login_mode') == 'admin_mode':
                             df_matched = user_match_info['data']
                             user_name = user_match_info['name']
                             if not df_matched.empty:
+                                reservation_date = df_matched.iloc[0].get('예약일시', '날짜 미정')
+                                email_subject = f"내원 알림: {reservation_date} 치과 예약 정보"
                                 df_html = df_matched[['환자명', '진료번호', '예약의사', '진료내역', '예약시간']].to_html(index=False, escape=False)
                                 email_subject = "치과 예약 내원 정보"
                                 email_body = f"""
