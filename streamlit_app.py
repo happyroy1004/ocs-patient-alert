@@ -840,7 +840,7 @@ if st.session_state.get('login_mode') == 'new_user_registration':
 # --- 치과의사 이름 입력 절차 ---
 if st.session_state.get('login_mode') == 'doctor_name_input':
     st.subheader("🧑‍⚕️ 치과의사 로그인")
-    doctor_name = st.text_input("치과의사 이름을 입력하세요 (원내생이라면 '95홍길동'과 같은 형태로 등록바랍니다)", key="doctor_name_input")
+    doctor_name = st.text_input("치과의사 이름을 입력하세요 (원내생이라면 '홍길동95'과 같은 형태로 등록바랍니다)", key="doctor_name_input")
     password_input = st.text_input("비밀번호를 입력하세요", type="password", key="doctor_password_input")
     
     if st.button("로그인/등록"):
