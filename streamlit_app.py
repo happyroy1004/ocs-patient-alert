@@ -742,7 +742,7 @@ if st.session_state.get('login_mode') not in ['user_mode', 'admin_mode', 'reside
     password_input = st.text_input("비밀번호를 입력하세요", type="password", key="login_password")
     
     # 레지던트 자동 전환 로직
-    if user_name.strip().lower() == "resident":
+    if user_name.strip().lower() == "doctor":
         st.session_state.login_mode = 'resident_name_input'
         st.rerun()
 
@@ -839,8 +839,8 @@ if st.session_state.get('login_mode') == 'new_user_registration':
 
 # --- 레지던트 이름 입력 절차 ---
 if st.session_state.get('login_mode') == 'resident_name_input':
-    st.subheader("🧑‍⚕️ 레지던트 로그인")
-    resident_name = st.text_input("레지던트 이름을 입력하세요", key="resident_name_input")
+    st.subheader("🧑‍⚕️ 치과의사 로그인")
+    resident_name = st.text_input("치과의사 이름을 입력하세요 (원내생이라면 '95홍길동'과 같은 형태로 등록바랍니다)", key="resident_name_input")
     password_input = st.text_input("비밀번호를 입력하세요", type="password", key="resident_password_input")
     
     if st.button("로그인/등록"):
@@ -862,14 +862,14 @@ if st.session_state.get('login_mode') == 'resident_name_input':
                     st.session_state.current_user_dept = matched_resident["department"]
                     st.session_state.current_user_role = 'resident'
                     st.session_state.login_mode = 'resident_mode'
-                    st.info(f"레지던트 **{resident_name}**님으로 로그인되었습니다. 이메일 주소: **{st.session_state.found_user_email}**")
+                    st.info(f"치과의사 **{resident_name}**님으로 로그인되었습니다. 이메일 주소: **{st.session_state.found_user_email}**")
                     st.rerun()
                 else:
                     st.error("비밀번호가 일치하지 않습니다. 다시 확인해주세요.")
             else:
                 # 새로운 레지던트 처리 로직
                 if password_input == "1234":
-                    st.info("💡 새로운 레지던트 계정으로 인식되었습니다. 초기 비밀번호 '1234'로 등록을 완료합니다.")
+                    st.info("💡 새로운 치과의사 계정으로 인식되었습니다. 초기 비밀번호 '1234'로 등록을 완료합니다.")
                     st.session_state.found_user_email = "" # 이메일 입력받도록 초기화
                     st.session_state.user_id_input_value = ""
                     st.session_state.current_firebase_key = ""
@@ -879,7 +879,7 @@ if st.session_state.get('login_mode') == 'resident_name_input':
                     st.session_state.login_mode = 'new_resident_registration'
                     st.rerun()
                 else:
-                    st.info(f"'{resident_name}'님은 새로운 레지던트입니다. 아래에 정보를 입력하여 등록을 완료하세요.")
+                    st.info(f"'{resident_name}'님은 새로운 치과의사입니다. 아래에 정보를 입력하여 등록을 완료하세요.")
                     st.session_state.found_user_email = ""
                     st.session_state.user_id_input_value = ""
                     st.session_state.current_firebase_key = ""
@@ -894,7 +894,7 @@ if st.session_state.get('login_mode') == 'new_resident_registration':
     password_input = st.text_input("새로운 비밀번호를 입력하세요", type="password", key="new_resident_password_input", value="1234" if st.session_state.get('current_firebase_key') else "")
     user_id_input = st.text_input("아이디(이메일)를 입력하세요", key="new_resident_email_input", value=st.session_state.get('found_user_email', ''))
     
-    dept_options = ["교정", "내과", "보존", "보철", "소치", "외과", "치주"]
+    dept_options = ["교정", "내과", "보존", "보철", "소치", "외과", "치주", "원내생"]
     
     selected_dept = st.session_state.get('current_user_dept')
     default_index = 0
