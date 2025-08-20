@@ -741,8 +741,8 @@ if st.session_state.logged_in_user is None:
         col1, col2 = st.columns(2)
         with col1:
             if st.button("로그인"):
-                # 1) 관리자 로그인
-                if user_name_input.strip().lower() == "admin" and password_input == "1234":
+                # 1) 관리자 로그인 (이름만으로 확인)
+                if user_name_input.strip().lower() == "admin":
                     st.session_state.logged_in_user = "admin"
                     st.session_state.logged_in_name = "관리자"
                     st.success("관리자 계정으로 로그인되었습니다.")
@@ -788,6 +788,7 @@ if st.session_state.logged_in_user is None:
         with st.form("registration_form"):
             new_name = st.text_input("이름", help="이름이 중복될 경우, 이름 뒤에 A, B 등을 붙여주세요.", key="new_user_name")
             new_password = st.text_input("비밀번호", type="password", key="new_user_password")
+            new_dept = st.text_input("부서", key="new_user_dept")
             submitted = st.form_submit_button("등록 완료")
 
             if submitted:
