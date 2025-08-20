@@ -1290,7 +1290,7 @@ if st.session_state.get('login_mode') == 'admin_mode':
                                                 
                                     if matched_rows_for_doctor:
                                         df_matched = pd.DataFrame(matched_rows_for_doctor)
-                                        df_html = df_matched[['환자명', '진료번호', '예약의사', '진료내역', '예약시간']].to_html(index=False, escape=False)
+                                        df_html = df_matched[['환자명', '진료번호', '예약의사', '진료내역', '예약일시', '예약시간']].to_html(index=False, escape=False)
                                         email_body = f"""
                                         <p>안녕하세요, {res['name']} 치과의사님.</p>
                                         <p>오늘 예약된 환자 내원 정보입니다.</p>
