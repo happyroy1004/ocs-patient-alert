@@ -791,7 +791,7 @@ if st.session_state.get('login_mode') not in ['user_mode', 'admin_mode', 'reside
                         st.info(f"**{user_name}**님으로 로그인되었습니다. 이메일 주소: **{st.session_state.found_user_email}**")
                         st.rerun()
                     else:
-                        st.error("비밀번호가 일치하지 않습니다. 다시 확인해주세요.")
+                        st.error("비밀번호가 일치하지 않거나 다른 사용자가 이미 해당이름을 사용 중입니다. 신규 등록 시 이름에 알파벳이나 숫자를 붙여주세요.")
             else:
                 # 사용자 이름을 찾지 못한 경우, 신규 등록 모드로 전환
                 st.session_state.current_user_name = user_name
