@@ -1137,7 +1137,7 @@ if st.session_state.get('login_mode') == 'admin_mode':
                                 email_subject = "치과 예약 내원 정보"
                                 email_body = f"""
                                 <p>안녕하세요, {user_name}님.</p>
-                                <p>오늘 예약된 환자 내원 정보입니다.</p>
+                                <p>내일 내원 예정인 환자 진료 정보입니다.</p>
                                 {df_html}
                                 <p>확인 부탁드립니다.</p>
                                 """
