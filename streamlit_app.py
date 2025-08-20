@@ -738,7 +738,7 @@ if 'login_mode' not in st.session_state:
 
 # 로그인/등록 폼을 login_mode에 따라 다르게 표시
 if st.session_state.get('login_mode') not in ['user_mode', 'admin_mode', 'resident_mode', 'new_resident_registration', 'resident_name_input', 'new_user_registration']:
-    user_name = st.text_input("사용자 이름을 입력하세요 (예시: 김구라)", key="login_username")
+    user_name = st.text_input("사용자 이름을 입력하세요 (예시: 홍길동)", key="login_username")
     password_input = st.text_input("비밀번호를 입력하세요", type="password", key="login_password")
     
     # 레지던트 자동 전환 로직
