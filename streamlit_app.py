@@ -677,7 +677,8 @@ if 'google_creds' not in st.session_state:
 
 users_ref = db.reference("users")
 
-#6. User and Admin and Resident Login and User Management
+# 기존의 모든 #6 코드를 이 코드로 완전히 교체합니다.
+
 import os
 import streamlit as st
 import datetime
@@ -685,28 +686,19 @@ import pandas as pd
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 import smtplib
+from googleapiclient.discovery import build
+from google.auth.exceptions import RefreshError
+from google.auth.transport.requests import Request
+from google.oauth2.credentials import Credentials
 
-# Assume these functions are defined elsewhere in your script
-# from your_utils import is_valid_email, is_encrypted_excel, load_excel, process_excel_file_and_style, run_analysis, sanitize_path, recover_email, get_google_calendar_service, send_email, send_email_simple, create_calendar_event, create_static_calendar_event, create_auth_url, load_google_creds_from_firebase, users_ref, db, is_daily_schedule, sheet_keyword_to_department_map
-
-# Firebase DB References
-users_ref = db.reference("users")
-resident_users_ref = db.reference("resident_users")
-
-# --- 이메일 전송 함수 (기존 send_email_simple 대신 사용) ---
-def send_email(receiver, rows, sender, password, custom_message, date_str):
-    """
-    매칭된 환자 정보를 담아 이메일을 전송하는 함수.
-    """
+# --- 이메일 전송 함수 (이전 코드에서 가져온 함수) ---
+def send_email(receiver, html_content, subject, sender, password):
     msg = MIMEMultipart('alternative')
-    msg['Subject'] = f"[치과 내원 알림] {date_str} 예약 내역"
+    msg['Subject'] = subject
     msg['From'] = sender
     msg['To'] = receiver
-
-    html_content = custom_message
     part1 = MIMEText(html_content, 'html', 'utf-8')
     msg.attach(part1)
-
     try:
         server = smtplib.SMTP_SSL('smtp.gmail.com', 465)
         server.login(sender, password)
@@ -714,62 +706,62 @@ def send_email(receiver, rows, sender, password, custom_message, date_str):
         server.quit()
         return True
     except Exception as e:
-        print(f"Error sending email: {e}")
+        st.error(f"이메일 전송 실패: {e}")
         return False
 
-# --- 사용 설명서 PDF 다운로드 버튼 추가 ---
+# --- 사용 설명서 PDF 다운로드 버튼 (이전 코드에서 가져온 기능) ---
 pdf_file_path = "manual.pdf"
-pdf_display_name = "사용 설명서"
-
 if os.path.exists(pdf_file_path):
     with open(pdf_file_path, "rb") as pdf_file:
         st.download_button(
-            label=f"{pdf_display_name} 다운로드",
+            label="사용 설명서 다운로드",
             data=pdf_file,
             file_name=pdf_file_path,
             mime="application/pdf"
         )
 else:
-    st.warning(f"⚠️ {pdf_display_name} 파일을 찾을 수 없습니다. (경로: {pdf_file_path})")
+    st.warning("⚠️ 사용 설명서 파일을 찾을 수 없습니다.")
 
-# 로그인 폼 - 로그인/등록 완료 전까지는 이 섹션만 표시
-# 기존의 모든 로그인 처리 코드를 이 코드로 완전히 교체합니다.
-
+# --- 세션 상태 초기화 및 로그인/등록 화면 ---
 if "login_mode" not in st.session_state:
     st.session_state.login_mode = "login"
 if "logged_in_user" not in st.session_state:
     st.session_state.logged_in_user = None
 
-# --- 로그인 / 회원가입 화면 ---
+# 로그인 화면 (기본 화면)
 if st.session_state.logged_in_user is None:
-    # 로그인 화면
     if st.session_state.login_mode == "login":
         st.image("https://i.ibb.co/6P0117b/logo.png", width=300)
         st.subheader("로그인")
         st.markdown("---")
         
-        email = st.text_input("이메일", key="login_email")
-        password = st.text_input("비밀번호", type="password", key="login_password")
+        user_name_input = st.text_input("사용자 이름", key="login_username")
+        password_input = st.text_input("비밀번호", type="password", key="login_password")
         
         col1, col2 = st.columns(2)
         with col1:
             if st.button("로그인"):
-                if email.lower() == "admin" and password == "1234":
+                # 1) 관리자 로그인
+                if user_name_input.strip().lower() == "admin" and password_input == "1234":
                     st.session_state.logged_in_user = "admin"
-                    st.session_state.logged_in_email = "admin"
                     st.session_state.logged_in_name = "관리자"
                     st.success("관리자 계정으로 로그인되었습니다.")
                     st.rerun()
+                # 2) 레지던트 로그인/등록 모드 전환
+                elif user_name_input.strip().lower() == "resident":
+                    st.session_state.login_mode = "resident"
+                    st.info("레지던트 로그인 화면으로 전환합니다.")
+                    st.rerun()
+                # 3) 일반 사용자 로그인
                 else:
                     all_users = users_ref.get()
                     found_user_key = None
                     if all_users:
                         for key, user_data in all_users.items():
-                            if user_data.get('email', '').lower() == email.lower():
-                                if user_data.get('password') == password:
+                            if user_data.get('name', '').lower() == user_name_input.lower():
+                                if user_data.get('password') == password_input:
                                     found_user_key = key
                                     st.session_state.logged_in_user = key
-                                    st.session_state.logged_in_email = email
                                     st.session_state.logged_in_name = user_data.get('name', '이름 없음')
                                     st.session_state.logged_in_role = user_data.get('role', 'user')
                                     st.session_state.logged_in_dept = user_data.get('department', None)
@@ -781,42 +773,40 @@ if st.session_state.logged_in_user is None:
                                     found_user_key = 'password_mismatch'
                                     break
                     if found_user_key is None:
-                        st.error("등록되지 않은 이메일입니다.")
+                        st.error("등록되지 않은 사용자입니다.")
         with col2:
             if st.button("회원가입"):
                 st.session_state.login_mode = "register"
                 st.rerun()
 
-    # 회원가입 화면
+    # 회원가입 화면 (별도 탭)
     elif st.session_state.login_mode == "register":
         st.image("https://i.ibb.co/6P0117b/logo.png", width=300)
         st.subheader("회원가입")
         st.markdown("---")
 
         with st.form("registration_form"):
-            new_email = st.text_input("이메일", key="new_user_email")
-            new_password = st.text_input("비밀번호", type="password", key="new_user_password")
             new_name = st.text_input("이름", help="이름이 중복될 경우, 이름 뒤에 A, B 등을 붙여주세요.", key="new_user_name")
+            new_password = st.text_input("비밀번호", type="password", key="new_user_password")
             new_dept = st.text_input("부서", key="new_user_dept")
             submitted = st.form_submit_button("등록 완료")
 
             if submitted:
                 all_users = users_ref.get()
-                email_exists = False
+                name_exists = False
                 if all_users:
                     for key, user_data in all_users.items():
-                        if user_data.get('email', '').lower() == new_email.lower():
-                            email_exists = True
+                        if user_data.get('name', '') == new_name:
+                            name_exists = True
                             break
 
-                if email_exists:
-                    st.error("이미 사용 중인 이메일 주소입니다. 다른 이메일을 사용해주세요.")
+                if name_exists:
+                    st.error("이미 존재하는 이름입니다. 이름 뒤에 알파벳이나 숫자를 붙여주세요. (예: 김수민B)")
                 else:
                     try:
                         new_user_data = {
-                            "email": new_email,
-                            "password": new_password,
                             "name": new_name,
+                            "password": new_password,
                             "department": new_dept,
                             "role": "user"
                         }
@@ -831,52 +821,45 @@ if st.session_state.logged_in_user is None:
             st.session_state.login_mode = "login"
             st.rerun()
     
-    # --- 별도의 레지던트 로그인 버튼 ---
-    st.markdown("---")
-    if st.button("레지던트 로그인"):
-        st.session_state.login_mode = "resident"
-        st.rerun()
-
-# 레지던트 로그인 화면
-elif st.session_state.login_mode == "resident":
-    st.image("https://i.ibb.co/6P0117b/logo.png", width=300)
-    st.subheader("🧑‍⚕️ 레지던트 로그인")
-    st.markdown("---")
-    
-    resident_name = st.text_input("레지던트 이름을 입력하세요", key="resident_name_input")
-    password_input = st.text_input("비밀번호를 입력하세요", type="password", key="resident_password_input")
-    
-    if st.button("로그인/등록"):
-        if resident_name:
-            all_residents_meta = users_ref.get()  # resident_users_ref 대신 users_ref 사용
-            matched_resident = None
-            if all_residents_meta:
-                for safe_key, user_info in all_residents_meta.items():
-                    if user_info and user_info.get("name") == resident_name and user_info.get("role") == "resident":
-                        matched_resident = user_info
-                        matched_resident["safe_key"] = safe_key
-                        break
-            
-            if matched_resident:
-                if password_input == matched_resident.get("password"):
-                    st.session_state.logged_in_user = matched_resident["safe_key"]
-                    st.session_state.logged_in_email = matched_resident["email"]
-                    st.session_state.logged_in_name = matched_resident["name"]
-                    st.session_state.logged_in_role = 'resident'
-                    st.session_state.logged_in_dept = matched_resident["department"]
-                    st.success(f"레지던트 **{resident_name}**님으로 로그인되었습니다.")
-                    st.rerun()
-                else:
-                    st.error("비밀번호가 일치하지 않습니다.")
-            else:
-                st.error("등록된 레지던트가 아닙니다. 관리자에게 문의하세요.")
-        else:
-            st.warning("레지던트 이름을 입력해주세요.")
-            
-    if st.button("뒤로가기"):
-        st.session_state.login_mode = "login"
-        st.rerun()
+    # 레지던트 로그인 화면 (별도 탭)
+    elif st.session_state.login_mode == "resident":
+        st.image("https://i.ibb.co/6P0117b/logo.png", width=300)
+        st.subheader("🧑‍⚕️ 레지던트 로그인")
+        st.markdown("---")
         
+        resident_name = st.text_input("레지던트 이름", key="resident_name_input")
+        password_input = st.text_input("비밀번호", type="password", key="resident_password_input")
+        
+        if st.button("로그인"):
+            if resident_name:
+                all_residents_meta = users_ref.get()
+                matched_resident = None
+                if all_residents_meta:
+                    for safe_key, user_info in all_residents_meta.items():
+                        if user_info and user_info.get("name") == resident_name and user_info.get("role") == "resident":
+                            matched_resident = user_info
+                            matched_resident["safe_key"] = safe_key
+                            break
+                
+                if matched_resident:
+                    if password_input == matched_resident.get("password"):
+                        st.session_state.logged_in_user = matched_resident["safe_key"]
+                        st.session_state.logged_in_name = matched_resident["name"]
+                        st.session_state.logged_in_role = 'resident'
+                        st.session_state.logged_in_dept = matched_resident["department"]
+                        st.success(f"레지던트 **{resident_name}**님으로 로그인되었습니다.")
+                        st.rerun()
+                    else:
+                        st.error("비밀번호가 일치하지 않습니다.")
+                else:
+                    st.error("등록된 레지던트가 아닙니다. 관리자에게 문의하세요.")
+            else:
+                st.warning("레지던트 이름을 입력해주세요.")
+                
+        if st.button("뒤로가기"):
+            st.session_state.login_mode = "login"
+            st.rerun()
+            
 # --- 로그인 성공 후의 앱 내용 ---
 else:
     # 아래는 기존의 앱 내용 (탭, 기능 등)이 시작되는 부분입니다.
@@ -888,8 +871,7 @@ else:
     
     # 여기서부터 #7, #8 등 나머지 코드 시작
 
-
-# #7. Admin 모드 로그인 처리
+#7. Admin 모드 로그인 처리
 if st.session_state.get('login_mode') == 'admin_mode':
     st.session_state.logged_in_as_admin = True
     st.session_state.found_user_email = "admin"
