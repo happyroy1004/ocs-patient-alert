@@ -1502,7 +1502,7 @@ if st.session_state.get('login_mode') in ['user_mode', 'new_user_registration', 
             st.stop()
     
         if st.session_state.get('login_mode') == 'doctor_mode' or st.session_state.get('login_mode') == 'new_doctor_registration':
-            st.header(f"🧑‍⚕️치과의사 모드 ({user_name})")
+            st.header(f"🧑‍⚕️Dr. {user_name}")
             st.subheader("🗓️ Google Calendar 연동")
             st.info("구글 캘린더와 연동하여 내원 일정을 자동으로 등록할 수 있습니다.")
 
