@@ -1139,7 +1139,7 @@ if st.session_state.get('login_mode') == 'admin_mode':
                                 email_subject = "치과 예약 내원 정보"
                                 email_body = f"""
                                 <p>안녕하세요, {user_name}님.</p>
-                                <p>내일 내원 예정인 환자 진료 정보입니다.</p>
+                                <p>{reservation_date}에 내원 예정인 환자 진료 정보입니다.</p>
                                 {df_html}
                                 <p>확인 부탁드립니다.</p>
                                 """
@@ -1292,10 +1292,11 @@ if st.session_state.get('login_mode') == 'admin_mode':
                                                 
                                     if matched_rows_for_doctor:
                                         df_matched = pd.DataFrame(matched_rows_for_doctor)
+                                        reservation_date = df_matched.iloc[0].get('예약일시', '날짜 미정')
                                         df_html = df_matched[['환자명', '진료번호', '예약의사', '진료내역', '예약일시', '예약시간']].to_html(index=False, escape=False)
                                         email_body = f"""
                                         <p>안녕하세요, {res['name']} 치과의사님.</p>
-                                        <p>오늘 예약된 환자 내원 정보입니다.</p>
+                                        <p>{reservation_date}에 내원할 환자 정보입니다.</p>
                                         {df_html}
                                         <p>확인 부탁드립니다.</p>
                                         """
