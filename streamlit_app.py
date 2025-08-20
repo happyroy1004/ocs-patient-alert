@@ -1602,7 +1602,7 @@ if st.session_state.get('login_mode') in ['user_mode', 'new_user_registration', 
                 existing_patient_data = patients_ref_for_user.get()
 
                 if existing_patient_data:
-                    desired_order = ['교정', '내과', '보존', '보철', '소치', '외과', '치주', '원진실']
+                    desired_order = ['소치', '교정', '내과', '보철', '외과', '치주', '원진실', '보존']
                     order_map = {dept: i for i, dept in enumerate(desired_order)}
                     patient_list = list(existing_patient_data.items())
                     sorted_patient_list = sorted(patient_list, key=lambda item: order_map.get(item[1].get('등록과', '미지정'), float('inf')))
