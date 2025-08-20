@@ -788,7 +788,6 @@ if st.session_state.logged_in_user is None:
         with st.form("registration_form"):
             new_name = st.text_input("이름", help="이름이 중복될 경우, 이름 뒤에 A, B 등을 붙여주세요.", key="new_user_name")
             new_password = st.text_input("비밀번호", type="password", key="new_user_password")
-            new_dept = st.text_input("부서", key="new_user_dept")
             submitted = st.form_submit_button("등록 완료")
 
             if submitted:
