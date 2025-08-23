@@ -1355,7 +1355,7 @@ if st.session_state.get('login_mode') == 'admin_mode':
                                                         except ValueError:
                                                             st.warning(f"**{res['name']}** 치과의사의 '{patient_name}' 환자 예약일시 형식이 잘못되었습니다: {full_datetime_str}")
                                                             continue
-                                                        event_prefix = "✨ 나의 환자 내원 : " if is_daily else "나의 환자 내원? : "
+                                                        event_prefix = "✨:" if is_daily else "?:"
                                                         event_title = f"{event_prefix}{patient_name}({pid})"
                                                         create_calendar_event(service, event_title, pid, department, reservation_datetime, doctor_name, treatment_details)
                                             
