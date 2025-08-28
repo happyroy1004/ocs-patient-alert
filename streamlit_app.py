@@ -847,7 +847,10 @@ if st.session_state.get('login_mode') == 'doctor_name_input':
     if st.button("로그인/등록"):
         if doctor_email:
             # 이메일 주소를 Firebase의 유효한 키로 변환
-            safe_key = doctor_email.replace('.', '_')
+            safe_key = doctor_email.replace('@', '_at_').replace('.', '_dot_')
+            
+            # Firebase에서 해당 키(이메일)를 가진 사용자 정보 직접 조회
+            matched_doctor = doctor_users_ref.child(safe_key).get()
             
             # Firebase에서 해당 키(이메일)를 가진 사용자 정보 직접 조회
             matched_doctor = doctor_users_ref.child(safe_key).get()
