@@ -878,7 +878,7 @@ if st.session_state.get('login_mode') == 'new_user_registration':
             
 # --- 새로운 치과의사 등록 로직 (탭 바깥) ---
 if st.session_state.get('login_mode') == 'new_doctor_registration':
-    st.info(f"'{st.session_state.current_user_name}'님은 새로운 치과의사입니다. 아래에 정보를 입력하여 등록을 완료하세요.")
+    st.info(f"아래에 정보를 입력하여 등록을 완료하세요.")
     st.subheader("👨‍⚕️ 새로운 치과의사 등록")
     new_doctor_name_input = st.text_input("이름을 입력하세요 (원내생이라면 '홍길동95'과 같은 형태로 등록바랍니다)", key="new_doctor_name_input", value=st.session_state.get('current_user_name', ''))
     password_input = st.text_input("새로운 비밀번호를 입력하세요", type="password", key="new_doctor_password_input", value="1234" if st.session_state.get('current_firebase_key') else "")
