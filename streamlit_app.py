@@ -892,7 +892,6 @@ if st.session_state.get('login_mode') == 'doctor_name_input':
 
 ### 2. **새로운 치과의사 등록 로직**
 
-```python
 if st.session_state.get('login_mode') == 'new_doctor_registration':
     # 등록 시 이름 입력 필드를 추가
     new_doctor_name_input = st.text_input("이름을 입력하세요 (원내생이라면 '홍길동95'과 같은 형태로 등록바랍니다)", key="new_doctor_name_input", value=st.session_state.get('current_user_name', ''))
