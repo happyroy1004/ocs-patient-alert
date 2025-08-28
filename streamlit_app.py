@@ -889,7 +889,7 @@ if st.session_state.get('login_mode') == 'doctor_name_input':
         else:
             st.warning("치과의사 이메일 주소를 입력해주세요.")
 
----
+
 ### 2. **새로운 치과의사 등록 로직**
 
 ```python
