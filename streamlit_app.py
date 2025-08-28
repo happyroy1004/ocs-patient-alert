@@ -827,7 +827,7 @@ if st.session_state.get('login_mode') in ['not_logged_in', 'admin_mode']:
                         st.session_state.login_mode = 'new_doctor_registration'
                         st.rerun()
                     else:
-                        st.info(f"'{doctor_email}'님은 새로운 치과의사입니다. 아래에 정보를 입력하여 등록을 완료하세요.")
+                        st.info(f"아래에 정보를 입력하여 등록을 완료하세요.")
                         st.session_state.found_user_email = doctor_email
                         st.session_state.user_id_input_value = doctor_email
                         st.session_state.current_firebase_key = ""
