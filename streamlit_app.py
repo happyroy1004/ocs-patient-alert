@@ -737,11 +737,11 @@ if 'login_mode' not in st.session_state:
     st.session_state.login_mode = 'not_logged_in'
 
 if st.session_state.get('login_mode') in ['not_logged_in', 'admin_mode']:
-    tab1, tab2 = st.tabs(["일반 사용자/학생 로그인", "치과의사 로그인"])
+    tab1, tab2 = st.tabs(["학생 로그인", "치과의사 로그인"])
 
     # 탭 1: 일반 사용자/학생 로그인
     with tab1:
-        st.subheader("👨‍🎓 일반 사용자/학생 로그인")
+        st.subheader("👨‍🎓 학생 로그인")
         user_name = st.text_input("사용자 이름을 입력하세요 (예시: 홍길동)", key="login_username_tab1")
         password_input = st.text_input("비밀번호를 입력하세요", type="password", key="login_password_tab1")
 
