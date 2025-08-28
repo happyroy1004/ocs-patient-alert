@@ -1526,42 +1526,7 @@ if st.session_state.get('login_mode') in ['user_mode', 'new_user_registration', 
             patients_ref_for_user = db.reference(f"patients/{firebase_key}")
 
             analysis_tab, registration_tab = st.tabs(['📈 OCS 분석 결과', '✅ 환자 등록 및 관리'])
-            
-            with analysis_tab:
-                st.header("📈 OCS 분석 결과")
-                analysis_results = db.reference("ocs_analysis/latest_result").get()
-                latest_file_name = db.reference("ocs_analysis/latest_file_name").get()
-
-                if analysis_results and latest_file_name:
-                    st.markdown(f"**<h3 style='text-align: left;'>{latest_file_name} 분석 결과</h3>**", unsafe_allow_html=True)
-                    st.markdown("---")
-                    
-                    if '소치' in analysis_results:
-                        st.subheader("소아치과 현황 (단타)")
-                        st.info(f"오전: **{analysis_results['소치']['오전']}명**")
-                        st.info(f"오후: **{analysis_results['소치']['오후']}명**")
-                    else:
-                        st.warning("소아치과 데이터가 엑셀 파일에 없습니다.")
-                    st.markdown("---")
-                    
-                    if '보존' in analysis_results:
-                        st.subheader("보존과 현황 (단타)")
-                        st.info(f"오전: **{analysis_results['보존']['오전']}명**")
-                        st.info(f"오후: **{analysis_results['보존']['오후']}명**")
-                    else:
-                        st.warning("보존과 데이터가 엑셀 파일에 없습니다.")
-                    st.markdown("---")
-
-                    if '교정' in analysis_results:
-                        st.subheader("교정과 현황 (Bonding)")
-                        st.info(f"오전: **{analysis_results['교정']['오전']}명**")
-                        st.info(f"오후: **{analysis_results['교정']['오후']}명**")
-                    else:
-                        st.warning("교정과 데이터가 엑셀 파일에 없습니다.")
-                    st.markdown("---")
-                else:
-                    st.info("💡 분석 결과가 없습니다. 관리자가 엑셀 파일을 업로드하면 표시됩니다.")
-                    
+ 
             with registration_tab:
                 st.subheader("Google Calendar 연동")
                 st.info("환자 등록 시 입력된 이메일 계정의 구글 캘린더에 자동으로 일정이 추가됩니다.")
@@ -1619,6 +1584,42 @@ if st.session_state.get('login_mode') in ['user_mode', 'new_user_registration', 
                             patients_ref_for_user.push().set({"환자명": name, "진료번호": pid, "등록과": selected_department})
                             st.success(f"{name} ({pid}) [{selected_department}] 환자 등록 완료")
                             st.rerun()
+                            
+            with analysis_tab:
+                st.header("📈 OCS 분석 결과")
+                analysis_results = db.reference("ocs_analysis/latest_result").get()
+                latest_file_name = db.reference("ocs_analysis/latest_file_name").get()
+
+                if analysis_results and latest_file_name:
+                    st.markdown(f"**<h3 style='text-align: left;'>{latest_file_name} 분석 결과</h3>**", unsafe_allow_html=True)
+                    st.markdown("---")
+                    
+                    if '소치' in analysis_results:
+                        st.subheader("소아치과 현황 (단타)")
+                        st.info(f"오전: **{analysis_results['소치']['오전']}명**")
+                        st.info(f"오후: **{analysis_results['소치']['오후']}명**")
+                    else:
+                        st.warning("소아치과 데이터가 엑셀 파일에 없습니다.")
+                    st.markdown("---")
+                    
+                    if '보존' in analysis_results:
+                        st.subheader("보존과 현황 (단타)")
+                        st.info(f"오전: **{analysis_results['보존']['오전']}명**")
+                        st.info(f"오후: **{analysis_results['보존']['오후']}명**")
+                    else:
+                        st.warning("보존과 데이터가 엑셀 파일에 없습니다.")
+                    st.markdown("---")
+
+                    if '교정' in analysis_results:
+                        st.subheader("교정과 현황 (Bonding)")
+                        st.info(f"오전: **{analysis_results['교정']['오전']}명**")
+                        st.info(f"오후: **{analysis_results['교정']['오후']}명**")
+                    else:
+                        st.warning("교정과 데이터가 엑셀 파일에 없습니다.")
+                    st.markdown("---")
+                else:
+                    st.info("💡 분석 결과가 없습니다. 관리자가 엑셀 파일을 업로드하면 표시됩니다.")
+                   
                 
                 st.divider()
                 st.header("🔑 비밀번호 변경")
