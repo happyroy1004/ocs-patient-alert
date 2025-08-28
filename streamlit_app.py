@@ -736,80 +736,122 @@ else:
 if 'login_mode' not in st.session_state:
     st.session_state.login_mode = 'not_logged_in'
 
-# 로그인/등록 폼을 login_mode에 따라 다르게 표시
-if st.session_state.get('login_mode') not in ['user_mode', 'admin_mode', 'doctor_mode', 'new_doctor_registration', 'doctor_name_input', 'new_user_registration']:
-    user_name = st.text_input("사용자 이름을 입력하세요 (예시: 홍길동)", key="login_username")
-    password_input = st.text_input("비밀번호를 입력하세요", type="password", key="login_password")
-    
-    # 치과의사 자동 전환 로직
-    if user_name.strip().lower() == "doctor":
-        st.session_state.login_mode = 'doctor_name_input'
-        st.rerun()
+if st.session_state.get('login_mode') in ['not_logged_in', 'admin_mode']:
+    tab1, tab2 = st.tabs(["일반 사용자/학생 로그인", "치과의사 로그인"])
 
-    if st.button("로그인"):
-        if not user_name:
-            st.error("사용자 이름을 입력해주세요.")
-            
-        # --- 관리자 모드 로그인 ---
-        elif user_name.strip().lower() == "admin":
-            st.session_state.login_mode = 'admin_mode'
-            st.session_state.logged_in_as_admin = True
-            st.session_state.found_user_email = "admin"
-            st.session_state.current_user_name = "admin"
-            st.rerun()
-        
-        # --- 일반 사용자 로그인 ---
-        else:
-            all_users_meta = users_ref.get()
-            matched_user = None
-            if all_users_meta:
-                for safe_key, user_info in all_users_meta.items():
-                    if user_info and user_info.get("name") == user_name:
-                        matched_user = {"safe_key": safe_key, "email": user_info.get("email", ""), "name": user_info.get("name", ""), "password": user_info.get("password")}
-                        break
-            
-            if matched_user:
-                if "password" not in matched_user or not matched_user.get("password"):
-                    if password_input == "1234":
-                        st.session_state.found_user_email = matched_user["email"]
-                        st.session_state.user_id_input_value = matched_user["email"]
-                        st.session_state.current_firebase_key = matched_user["safe_key"]
-                        st.session_state.current_user_name = user_name
-                        st.session_state.login_mode = 'user_mode'
-                        st.info(f"**{user_name}**님으로 로그인되었습니다. 기존 사용자이므로 초기 비밀번호 1234가 설정되었습니다.")
-                        users_ref.child(matched_user["safe_key"]).update({"password": "1234"})
-                        st.rerun()
-                    else:
-                        st.error("비밀번호가 일치하지 않습니다. 기존 사용자의 초기 비밀번호는 '1234'입니다. 다시 시도해주세요.")
-                else:
-                    if password_input == matched_user.get("password"):
-                        st.session_state.found_user_email = matched_user["email"]
-                        st.session_state.user_id_input_value = matched_user["email"]
-                        st.session_state.current_firebase_key = matched_user["safe_key"]
-                        st.session_state.current_user_name = user_name
-                        st.session_state.login_mode = 'user_mode'
-                        st.info(f"**{user_name}**님으로 로그인되었습니다. 이메일 주소: **{st.session_state.found_user_email}**")
-                        st.rerun()
-                    else:
-                        st.error("비밀번호가 일치하지 않거나 다른 사용자가 이미 해당이름을 사용 중입니다. 신규 등록 시 이름에 알파벳이나 숫자를 붙여주세요.")
-            else:
-                # 사용자 이름을 찾지 못한 경우, 신규 등록 모드로 전환
-                st.session_state.current_user_name = user_name
-                st.session_state.login_mode = 'new_user_registration'
+    # 탭 1: 일반 사용자/학생 로그인
+    with tab1:
+        st.subheader("👨‍🎓 일반 사용자/학생 로그인")
+        user_name = st.text_input("사용자 이름을 입력하세요 (예시: 홍길동)", key="login_username_tab1")
+        password_input = st.text_input("비밀번호를 입력하세요", type="password", key="login_password_tab1")
+
+        if st.button("로그인", key="login_button_tab1"):
+            if not user_name:
+                st.error("사용자 이름을 입력해주세요.")
+            elif user_name.strip().lower() == "admin":
+                st.session_state.login_mode = 'admin_mode'
+                st.session_state.logged_in_as_admin = True
+                st.session_state.found_user_email = "admin"
+                st.session_state.current_user_name = "admin"
                 st.rerun()
+            else:
+                all_users_meta = users_ref.get()
+                matched_user = None
+                if all_users_meta:
+                    for safe_key, user_info in all_users_meta.items():
+                        if user_info and user_info.get("name") == user_name:
+                            matched_user = {"safe_key": safe_key, "email": user_info.get("email", ""), "name": user_info.get("name", ""), "password": user_info.get("password")}
+                            break
+                if matched_user:
+                    if "password" not in matched_user or not matched_user.get("password"):
+                        if password_input == "1234":
+                            st.session_state.found_user_email = matched_user["email"]
+                            st.session_state.user_id_input_value = matched_user["email"]
+                            st.session_state.current_firebase_key = matched_user["safe_key"]
+                            st.session_state.current_user_name = user_name
+                            st.session_state.login_mode = 'user_mode'
+                            st.info(f"**{user_name}**님으로 로그인되었습니다. 기존 사용자이므로 초기 비밀번호 1234가 설정되었습니다.")
+                            users_ref.child(matched_user["safe_key"]).update({"password": "1234"})
+                            st.rerun()
+                        else:
+                            st.error("비밀번호가 일치하지 않습니다. 기존 사용자의 초기 비밀번호는 '1234'입니다. 다시 시도해주세요.")
+                    else:
+                        if password_input == matched_user.get("password"):
+                            st.session_state.found_user_email = matched_user["email"]
+                            st.session_state.user_id_input_value = matched_user["email"]
+                            st.session_state.current_firebase_key = matched_user["safe_key"]
+                            st.session_state.current_user_name = user_name
+                            st.session_state.login_mode = 'user_mode'
+                            st.info(f"**{user_name}**님으로 로그인되었습니다. 이메일 주소: **{st.session_state.found_user_email}**")
+                            st.rerun()
+                        else:
+                            st.error("비밀번호가 일치하지 않거나 다른 사용자가 이미 해당이름을 사용 중입니다. 신규 등록 시 이름에 알파벳이나 숫자를 붙여주세요.")
+                else:
+                    st.session_state.current_user_name = user_name
+                    st.session_state.login_mode = 'new_user_registration'
+                    st.rerun()
 
-# --- 새로운 일반 사용자 등록 로직 ---
+    # 탭 2: 치과의사 로그인
+    with tab2:
+        st.subheader("🧑‍⚕️ 치과의사 로그인")
+        doctor_email = st.text_input("치과의사 이메일 주소를 입력하세요", key="doctor_email_input_tab2")
+        password_input_doc = st.text_input("비밀번호를 입력하세요", type="password", key="doctor_password_input_tab2")
+
+        if st.button("로그인/등록", key="doctor_login_button_tab2"):
+            if doctor_email:
+                safe_key = doctor_email.replace('@', '_at_').replace('.', '_dot_')
+                matched_doctor = doctor_users_ref.child(safe_key).get()
+                
+                if matched_doctor:
+                    if password_input_doc == matched_doctor.get("password"):
+                        st.session_state.found_user_email = matched_doctor["email"]
+                        st.session_state.user_id_input_value = matched_doctor["email"]
+                        st.session_state.current_firebase_key = safe_key
+                        st.session_state.current_user_name = matched_doctor.get("name")
+                        st.session_state.current_user_dept = matched_doctor.get("department")
+                        st.session_state.current_user_role = 'doctor'
+                        st.session_state.login_mode = 'doctor_mode'
+                        st.info(f"치과의사 **{st.session_state.current_user_name}**님으로 로그인되었습니다. 이메일 주소: **{st.session_state.found_user_email}**")
+                        st.rerun()
+                    else:
+                        st.error("비밀번호가 일치하지 않습니다. 다시 확인해주세요.")
+                else:
+                    if password_input_doc == "1234":
+                        st.info("💡 새로운 치과의사 계정으로 인식되었습니다. 초기 비밀번호 '1234'로 등록을 완료합니다.")
+                        st.session_state.found_user_email = doctor_email
+                        st.session_state.user_id_input_value = doctor_email
+                        st.session_state.current_firebase_key = ""
+                        st.session_state.current_user_name = None
+                        st.session_state.current_user_role = 'doctor'
+                        st.session_state.current_user_dept = None
+                        st.session_state.login_mode = 'new_doctor_registration'
+                        st.rerun()
+                    else:
+                        st.info(f"'{doctor_email}'님은 새로운 치과의사입니다. 아래에 정보를 입력하여 등록을 완료하세요.")
+                        st.session_state.found_user_email = doctor_email
+                        st.session_state.user_id_input_value = doctor_email
+                        st.session_state.current_firebase_key = ""
+                        st.session_state.current_user_name = None
+                        st.session_state.login_mode = 'new_doctor_registration'
+                        st.rerun()
+            else:
+                st.warning("치과의사 이메일 주소를 입력해주세요.")
+
+# ---
+# 이 아래부터는 로그인 후의 화면입니다.
+# `st.session_state.get('login_mode')`의 값이 'user_mode' 또는 'doctor_mode'가 되면
+# 위의 탭을 포함한 로그인 UI는 더 이상 렌더링되지 않습니다.
+
+# 새로운 일반 사용자 등록 로직 (탭 바깥)
 if st.session_state.get('login_mode') == 'new_user_registration':
     st.info(f"'{st.session_state.current_user_name}'님은 새로운 사용자입니다. 아래에 정보를 입력하여 등록을 완료하세요.")
     st.subheader("👨‍⚕️ 신규 사용자 등록")
     new_email_input = st.text_input("아이디(이메일)를 입력하세요", key="new_user_email_input")
     password_input = st.text_input("새로운 비밀번호를 입력하세요", type="password", key="new_user_password_input")
     
-    if st.button("사용자 등록 완료"):
+    if st.button("사용자 등록 완료", key="new_user_reg_button"):
         if is_valid_email(new_email_input) and password_input:
             new_firebase_key = sanitize_path(new_email_input)
-            
-            # 중복 이메일 체크
             all_users_meta = users_ref.get()
             is_email_used = False
             if all_users_meta:
@@ -817,7 +859,6 @@ if st.session_state.get('login_mode') == 'new_user_registration':
                     if user_info.get("email") == new_email_input:
                         is_email_used = True
                         break
-            
             if is_email_used:
                 st.error("이미 등록된 이메일 주소입니다. 다른 주소를 사용해주세요.")
             else:
@@ -825,148 +866,75 @@ if st.session_state.get('login_mode') == 'new_user_registration':
                 st.session_state.found_user_email = new_email_input
                 st.session_state.current_user_name = st.session_state.current_user_name
                 st.session_state.login_mode = 'user_mode'
-                
                 users_ref.child(new_firebase_key).set({
                     "name": st.session_state.current_user_name,
                     "email": new_email_input,
                     "password": password_input
                 })
-                
                 st.success(f"새로운 사용자 **{st.session_state.current_user_name}**님 ({new_email_input}) 정보가 등록되었습니다.")
                 st.rerun()
         else:
             st.error("올바른 이메일 주소와 비밀번호를 입력해주세요.")
-
-# --- 치과의사 이메일 입력 절차 ---
-if st.session_state.get('login_mode') == 'doctor_name_input':
-    st.subheader("🧑‍⚕️ 치과의사 로그인")
-    # 치과의사 이름 입력 필드를 이메일 입력으로 변경
-    doctor_email = st.text_input("치과의사 이메일 주소를 입력하세요", key="doctor_email_input")
-    password_input = st.text_input("비밀번호를 입력하세요", type="password", key="doctor_password_input")
-    
-    if st.button("로그인/등록"):
-        if doctor_email:
-            # 이메일 주소를 Firebase의 유효한 키로 변환
-            safe_key = doctor_email.replace('@', '_at_').replace('.', '_dot_')
             
-            # Firebase에서 해당 키(이메일)를 가진 사용자 정보 직접 조회
-            matched_doctor = doctor_users_ref.child(safe_key).get()
-            
-            # Firebase에서 해당 키(이메일)를 가진 사용자 정보 직접 조회
-            matched_doctor = doctor_users_ref.child(safe_key).get()
-            
-            if matched_doctor:
-                if password_input == matched_doctor.get("password"):
-                    # 로그인 성공 시, DB에서 가져온 정보로 세션 상태 업데이트
-                    st.session_state.found_user_email = matched_doctor["email"]
-                    st.session_state.user_id_input_value = matched_doctor["email"]
-                    st.session_state.current_firebase_key = safe_key
-                    st.session_state.current_user_name = matched_doctor.get("name") # 이름은 DB에서 불러옴
-                    st.session_state.current_user_dept = matched_doctor.get("department")
-                    st.session_state.current_user_role = 'doctor'
-                    st.session_state.login_mode = 'doctor_mode'
-                    st.info(f"치과의사 **{st.session_state.current_user_name}**님으로 로그인되었습니다. 이메일 주소: **{st.session_state.found_user_email}**")
-                    st.rerun()
-                else:
-                    st.error("비밀번호가 일치하지 않습니다. 다시 확인해주세요.")
-            else:
-                # 새로운 치과의사 처리 로직
-                if password_input == "1234":
-                    st.info("💡 새로운 치과의사 계정으로 인식되었습니다. 초기 비밀번호 '1234'로 등록을 완료합니다.")
-                    st.session_state.found_user_email = doctor_email
-                    st.session_state.user_id_input_value = doctor_email
-                    st.session_state.current_firebase_key = ""
-                    st.session_state.current_user_name = None # 이름을 새로 입력받도록 None으로 설정
-                    st.session_state.current_user_role = 'doctor'
-                    st.session_state.current_user_dept = None
-                    st.session_state.login_mode = 'new_doctor_registration'
-                    st.rerun()
-                else:
-                    st.info(f"'{doctor_email}'님은 새로운 치과의사입니다. 아래에 정보를 입력하여 등록을 완료하세요.")
-                    st.session_state.found_user_email = doctor_email
-                    st.session_state.user_id_input_value = doctor_email
-                    st.session_state.current_firebase_key = ""
-                    st.session_state.current_user_name = None # 이름을 새로 입력받도록 None으로 설정
-                    st.session_state.login_mode = 'new_doctor_registration'
-                    st.rerun()
-        else:
-            st.warning("치과의사 이메일 주소를 입력해주세요.")
-
-
-### 2. **새로운 치과의사 등록 로직**
-
+# --- 새로운 치과의사 등록 로직 (탭 바깥) ---
 if st.session_state.get('login_mode') == 'new_doctor_registration':
-    # 등록 시 이름 입력 필드를 추가
+    st.info(f"'{st.session_state.current_user_name}'님은 새로운 치과의사입니다. 아래에 정보를 입력하여 등록을 완료하세요.")
+    st.subheader("👨‍⚕️ 새로운 치과의사 등록")
     new_doctor_name_input = st.text_input("이름을 입력하세요 (원내생이라면 '홍길동95'과 같은 형태로 등록바랍니다)", key="new_doctor_name_input", value=st.session_state.get('current_user_name', ''))
     password_input = st.text_input("새로운 비밀번호를 입력하세요", type="password", key="new_doctor_password_input", value="1234" if st.session_state.get('current_firebase_key') else "")
     user_id_input = st.text_input("아이디(이메일)를 입력하세요", key="new_doctor_email_input", value=st.session_state.get('found_user_email', ''))
     
     dept_options = ["교정", "내과", "보존", "보철", "소치", "외과", "치주", "원내생"]
-    
     selected_dept = st.session_state.get('current_user_dept')
     default_index = 0
     if selected_dept and selected_dept in dept_options:
         default_index = dept_options.index(selected_dept)
-    
     department = st.selectbox("등록 과", dept_options, key="new_doctor_dept_selectbox", index=default_index)
 
-    if st.button("치과의사 등록 완료"):
-        # 등록 시 이름 필드도 함께 확인
+    if st.button("치과의사 등록 완료", key="new_doc_reg_button"):
         if new_doctor_name_input and is_valid_email(user_id_input) and password_input and department:
             new_email = user_id_input
             new_firebase_key = sanitize_path(new_email)
-            
             st.session_state.current_firebase_key = new_firebase_key
             st.session_state.found_user_email = new_email
             st.session_state.current_user_dept = department
             st.session_state.current_user_role = 'doctor'
-            st.session_state.current_user_name = new_doctor_name_input # 새로 입력한 이름으로 세션 업데이트
-            
+            st.session_state.current_user_name = new_doctor_name_input
             st.session_state.login_mode = 'doctor_mode'
-            
             doctor_users_ref.child(new_firebase_key).set({"name": st.session_state.current_user_name, "email": new_email, "password": password_input, "role": st.session_state.current_user_role, "department": department})
             st.success(f"새로운 치과의사 **{st.session_state.current_user_name}**님 ({new_email}) 정보가 등록되었습니다.")
             st.rerun()
         else:
             st.error("이름, 올바른 이메일 주소, 비밀번호, 그리고 등록 과를 입력해주세요.")
-   
             
 # --- 이메일 변경 기능 (모든 사용자 공통) ---
 if st.session_state.get('login_mode') in ['user_mode', 'doctor_mode', 'email_change_mode']:
     if st.session_state.get('current_firebase_key'):
         st.text_input("아이디 (등록된 이메일)", value=st.session_state.get('found_user_email', ''), disabled=True)
-        
         if st.button("이메일 주소 변경"):
             st.session_state.email_change_mode = True
             st.rerun()
-        
         if st.session_state.get('email_change_mode'):
             st.divider()
             st.subheader("이메일 주소 변경")
             new_email_input = st.text_input("새 이메일 주소를 입력하세요", value=st.session_state.get('user_id_input_value', ''))
             st.session_state.user_id_input_value = new_email_input
-            
             if st.button("변경 완료"):
                 if is_valid_email(new_email_input):
                     new_firebase_key = sanitize_path(new_email_input)
                     old_firebase_key = st.session_state.current_firebase_key
                     user_role_to_change = st.session_state.get("current_user_role")
-
                     if old_firebase_key != new_firebase_key:
                         if user_role_to_change == 'doctor':
                             target_ref = doctor_users_ref
                         else:
                             target_ref = users_ref
-                        
                         target_ref.child(new_firebase_key).update({"name": st.session_state.current_user_name, "email": new_email_input, "role": user_role_to_change, "department": st.session_state.get("current_user_dept", "")})
-                        
-                        # 환자 데이터 이동은 일반 사용자만 해당
                         if user_role_to_change != 'doctor':
                             old_patient_data = db.reference(f"patients/{old_firebase_key}").get()
                             if old_patient_data:
                                 db.reference(f"patients/{new_firebase_key}").set(old_patient_data)
                                 db.reference(f"patients/{old_firebase_key}").delete()
-                        
                         target_ref.child(old_firebase_key).delete()
                         st.session_state.current_firebase_key = new_firebase_key
                         st.session_state.found_user_email = new_email_input
