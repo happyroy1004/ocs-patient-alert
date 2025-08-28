@@ -745,7 +745,7 @@ if st.session_state.get('login_mode') in ['not_logged_in', 'admin_mode']:
         user_name = st.text_input("사용자 이름을 입력하세요 (예시: 홍길동)", key="login_username_tab1")
         password_input = st.text_input("비밀번호를 입력하세요", type="password", key="login_password_tab1")
 
-        if st.button("로그인", key="login_button_tab1"):
+        if st.button("로그인/등록", key="login_button_tab1"):
             if not user_name:
                 st.error("사용자 이름을 입력해주세요.")
             elif user_name.strip().lower() == "admin":
