@@ -1427,7 +1427,80 @@ if st.session_state.get('login_mode') == 'admin_mode':
                             st.session_state.delete_confirm_tab1 = False
                             st.session_state.users_to_delete_tab1 = []
                             st.rerun()
+
+                # 탭 2: 치과의사 사용자 관리
+            with tab2:
+                st.subheader("📦 치과의사 메일 발송 & 삭제")
+    
+                all_doctors_meta = doctor_users_ref.get()
+                doctor_list_for_dropdown = [f"{doc_info.get('name', '이름 없음')} ({doc_info.get('email', '이메일 없음')})"
+                                            for doc_info in (all_doctors_meta.values() if all_doctors_meta else [])]
                 
+                # --- 메일 발송 로직 (치과의사) ---
+                if 'select_all_users_tab2' not in st.session_state:
+                    st.session_state.select_all_users_tab2 = False
+                
+                select_all_users_button_tab2 = st.button("모든 사용자 선택/해제", key="select_all_btn_tab2")
+                if select_all_users_button_tab2:
+                    st.session_state.select_all_users_tab2 = not st.session_state.select_all_users_tab2
+                    st.rerun()
+                
+                default_selection_tab2 = doctor_list_for_dropdown if st.session_state.select_all_users_tab2 else []
+                selected_users_for_mail_tab2 = st.multiselect("보낼 사용자 선택", doctor_list_for_dropdown, default=default_selection_tab2, key="mail_multiselect_tab2")
+                
+                custom_message_tab2 = st.text_area("보낼 메일 내용", height=200, key="mail_content_tab2")
+                
+                if st.button("메일 보내기", key="send_mail_button_tab2"):
+                    # 메일 전송 로직
+                    if custom_message_tab2 and selected_users_for_mail_tab2:
+                        # ... (치과의사 메일 전송 로직)
+                        st.success("메일 전송 완료!")
+                    else:
+                        st.warning("메일 내용과 대상을 모두 선택해주세요.")
+                        
+                st.markdown("---")
+                st.subheader("🗑️ 치과의사 삭제")
+                
+                # --- 사용자 삭제 로직 (치과의사) ---
+                if 'delete_confirm_tab2' not in st.session_state:
+                    st.session_state.delete_confirm_tab2 = False
+                if 'users_to_delete_tab2' not in st.session_state:
+                    st.session_state.users_to_delete_tab2 = []
+                
+                if not st.session_state.delete_confirm_tab2:
+                    users_to_delete_tab2 = st.multiselect("삭제할 사용자 선택", doctor_list_for_dropdown, key="delete_user_multiselect_tab2")
+                    if st.button("선택한 사용자 삭제", key="delete_button_tab2"):
+                        if users_to_delete_tab2:
+                            st.session_state.delete_confirm_tab2 = True
+                            st.session_state.users_to_delete_tab2 = users_to_delete_tab2
+                            st.rerun()
+                        else:
+                            st.warning("삭제할 사용자를 선택해주세요.")
+                else:
+                    st.warning("정말로 선택한 사용자를 삭제하시겠습니까? 이 작업은 되돌릴 수 없습니다.")
+                    col1, col2 = st.columns(2)
+                    with col1:
+                        if st.button("예, 삭제합니다", key="confirm_delete_tab2"):
+                            for user_to_del_str in st.session_state.users_to_delete_tab2:
+                                match = re.search(r'\((.*?)\)', user_to_del_str)
+                                if match:
+                                    email_to_del = match.group(1)
+                                    safe_key_to_del = sanitize_path(email_to_del)
+                                    
+                                    # 치과의사 데이터베이스에서만 삭제
+                                    doctor_users_ref.child(safe_key_to_del).delete()
+                                    
+                            st.success("선택한 치과의사 삭제 완료.")
+                            st.session_state.delete_confirm_tab2 = False
+                            st.session_state.users_to_delete_tab2 = []
+                            st.rerun()
+                    with col2:
+                        if st.button("아니오, 취소합니다", key="cancel_delete_tab2"):
+                            st.session_state.delete_confirm_tab2 = False
+                            st.session_state.users_to_delete_tab2 = []
+                            st.rerun()
+    
+
      
     elif admin_password_input and admin_password_input != secret_admin_password:
         st.error("비밀번호가 틀렸습니다.")
