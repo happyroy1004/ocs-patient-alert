@@ -1525,7 +1525,7 @@ if st.session_state.get('login_mode') in ['user_mode', 'new_user_registration', 
         elif st.session_state.get('login_mode') in ['user_mode', 'new_user_registration']:
             patients_ref_for_user = db.reference(f"patients/{firebase_key}")
 
-            analysis_tab, registration_tab = st.tabs(['📈 OCS 분석 결과', '✅ 환자 등록 및 관리'])
+            registration_tab, analysis_tab = st.tabs(['✅ 환자 등록 및 관리', '📈 OCS 분석 결과'])
  
             with registration_tab:
                 st.subheader("Google Calendar 연동")
