@@ -1356,14 +1356,15 @@ if st.session_state.get('login_mode') == 'admin_mode':
         secret_admin_password = None
         st.error("⚠️ secrets.toml 파일에 'admin.password' 설정이 없습니다. 개발자에게 문의하세요.")
         
+                   
     if admin_password_input and admin_password_input == secret_admin_password:
         st.session_state.admin_password_correct = True
-        st.success("관리자 권한이 활성화되었습니다.")   
+        st.success("관리자 권한이 활성화되었습니다.")
         if st.session_state.admin_password_correct:
             st.markdown("---")
-
+    
             tab1, tab2 = st.tabs(["일반 사용자 관리", "치과의사 관리"])
-                   
+            
             # 탭 1: 일반 사용자 관리
             with tab1:
                 st.subheader("📦 일반 사용자 메일 발송 & 삭제")
@@ -1387,10 +1388,37 @@ if st.session_state.get('login_mode') == 'admin_mode':
                 custom_message_tab1 = st.text_area("보낼 메일 내용", height=200, key="mail_content_tab1")
                 
                 if st.button("메일 보내기", key="send_mail_button_tab1"):
-                    # 메일 전송 로직은 기존과 동일
                     if custom_message_tab1 and selected_users_for_mail_tab1:
-                        # ... (기존 메일 전송 로직)
-                        st.success("메일 전송 완료!")
+                        # 메일 전송 로직은 기존과 동일
+                        sender = st.secrets["gmail"]["sender"]
+                        sender_pw = st.secrets["gmail"]["app_password"]
+                        
+                        email_list = []
+                        for user_str in selected_users_for_mail_tab1:
+                            match = re.search(r'\((.*?)\)', user_str)
+                            if match:
+                                email_list.append(match.group(1))
+    
+                        if email_list:
+                            with st.spinner("메일 전송 중..."):
+                                success_count = 0
+                                for email in email_list:
+                                    result = send_email(
+                                        receiver=email,
+                                        rows=None,
+                                        sender=sender,
+                                        password=sender_pw,
+                                        date_str=None, # 이 기능에서는 사용되지 않으므로 None
+                                        custom_message=custom_message_tab1
+                                    )
+                                    if result:
+                                        success_count += 1
+                                        st.success(f"{email}로 메일 전송 완료!")
+                                    else:
+                                        st.error(f"{email}로 메일 전송 실패!")
+                                st.success(f"총 {success_count}건의 메일 전송 완료!")
+                        else:
+                            st.warning("메일 내용을 입력했으나, 선택된 사용자가 없습니다. 전송이 진행되지 않았습니다.")
                     else:
                         st.warning("메일 내용과 대상을 모두 선택해주세요.")
                 
@@ -1417,21 +1445,32 @@ if st.session_state.get('login_mode') == 'admin_mode':
                     col1, col2 = st.columns(2)
                     with col1:
                         if st.button("예, 삭제합니다", key="confirm_delete_tab1"):
-                            # ... (기존 삭제 로직)
-                            st.success("선택한 사용자 삭제 완료.")
-                            st.session_state.delete_confirm_tab1 = False
-                            st.session_state.users_to_delete_tab1 = []
-                            st.rerun()
+                            with st.spinner('삭제 중...'):
+                                for user_to_del_str in st.session_state.users_to_delete_tab1:
+                                    match = re.search(r'\((.*?)\)', user_to_del_str)
+                                    if match:
+                                        email_to_del = match.group(1)
+                                        safe_key_to_del = sanitize_path(email_to_del)
+                                        
+                                        # 일반 사용자 데이터베이스에서 삭제
+                                        users_ref.child(safe_key_to_del).delete()
+                                        # 사용자 삭제 시 환자 데이터도 함께 삭제하는 로직 추가 (기존 코드와 동일)
+                                        # db.reference(f"patients/{safe_key_to_del}").delete()
+                                        
+                                st.success(f"사용자 {', '.join(st.session_state.users_to_delete_tab1)} 삭제 완료.")
+                                st.session_state.delete_confirm_tab1 = False
+                                st.session_state.users_to_delete_tab1 = []
+                                st.rerun()
                     with col2:
                         if st.button("아니오, 취소합니다", key="cancel_delete_tab1"):
                             st.session_state.delete_confirm_tab1 = False
                             st.session_state.users_to_delete_tab1 = []
                             st.rerun()
-
-                # 탭 2: 치과의사 사용자 관리
+    
+            # 탭 2: 치과의사 사용자 관리
             with tab2:
                 st.subheader("📦 치과의사 메일 발송 & 삭제")
-    
+                
                 all_doctors_meta = doctor_users_ref.get()
                 doctor_list_for_dropdown = [f"{doc_info.get('name', '이름 없음')} ({doc_info.get('email', '이메일 없음')})"
                                             for doc_info in (all_doctors_meta.values() if all_doctors_meta else [])]
@@ -1451,10 +1490,37 @@ if st.session_state.get('login_mode') == 'admin_mode':
                 custom_message_tab2 = st.text_area("보낼 메일 내용", height=200, key="mail_content_tab2")
                 
                 if st.button("메일 보내기", key="send_mail_button_tab2"):
-                    # 메일 전송 로직
                     if custom_message_tab2 and selected_users_for_mail_tab2:
-                        # ... (치과의사 메일 전송 로직)
-                        st.success("메일 전송 완료!")
+                        # 메일 전송 로직
+                        sender = st.secrets["gmail"]["sender"]
+                        sender_pw = st.secrets["gmail"]["app_password"]
+    
+                        email_list = []
+                        for user_str in selected_users_for_mail_tab2:
+                            match = re.search(r'\((.*?)\)', user_str)
+                            if match:
+                                email_list.append(match.group(1))
+    
+                        if email_list:
+                             with st.spinner("메일 전송 중..."):
+                                success_count = 0
+                                for email in email_list:
+                                    result = send_email(
+                                        receiver=email,
+                                        rows=None,
+                                        sender=sender,
+                                        password=sender_pw,
+                                        date_str=None, # 이 기능에서는 사용되지 않으므로 None
+                                        custom_message=custom_message_tab2
+                                    )
+                                    if result:
+                                        success_count += 1
+                                        st.success(f"{email}로 메일 전송 완료!")
+                                    else:
+                                        st.error(f"{email}로 메일 전송 실패!")
+                                st.success(f"총 {success_count}건의 메일 전송 완료!")
+                        else:
+                            st.warning("메일 내용을 입력했으나, 선택된 사용자가 없습니다. 전송이 진행되지 않았습니다.")
                     else:
                         st.warning("메일 내용과 대상을 모두 선택해주세요.")
                         
@@ -1481,26 +1547,25 @@ if st.session_state.get('login_mode') == 'admin_mode':
                     col1, col2 = st.columns(2)
                     with col1:
                         if st.button("예, 삭제합니다", key="confirm_delete_tab2"):
-                            for user_to_del_str in st.session_state.users_to_delete_tab2:
-                                match = re.search(r'\((.*?)\)', user_to_del_str)
-                                if match:
-                                    email_to_del = match.group(1)
-                                    safe_key_to_del = sanitize_path(email_to_del)
-                                    
-                                    # 치과의사 데이터베이스에서만 삭제
-                                    doctor_users_ref.child(safe_key_to_del).delete()
-                                    
-                            st.success("선택한 치과의사 삭제 완료.")
-                            st.session_state.delete_confirm_tab2 = False
-                            st.session_state.users_to_delete_tab2 = []
-                            st.rerun()
+                            with st.spinner('삭제 중...'):
+                                for user_to_del_str in st.session_state.users_to_delete_tab2:
+                                    match = re.search(r'\((.*?)\)', user_to_del_str)
+                                    if match:
+                                        email_to_del = match.group(1)
+                                        safe_key_to_del = sanitize_path(email_to_del)
+                                        
+                                        # 치과의사 데이터베이스에서만 삭제
+                                        doctor_users_ref.child(safe_key_to_del).delete()
+                                        
+                                st.success("선택한 치과의사 삭제 완료.")
+                                st.session_state.delete_confirm_tab2 = False
+                                st.session_state.users_to_delete_tab2 = []
+                                st.rerun()
                     with col2:
                         if st.button("아니오, 취소합니다", key="cancel_delete_tab2"):
                             st.session_state.delete_confirm_tab2 = False
                             st.session_state.users_to_delete_tab2 = []
                             st.rerun()
-    
-
      
     elif admin_password_input and admin_password_input != secret_admin_password:
         st.error("비밀번호가 틀렸습니다.")
