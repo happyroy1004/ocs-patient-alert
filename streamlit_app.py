@@ -1394,7 +1394,7 @@ if st.session_state.get('login_mode') == 'admin_mode':
                                 match = re.search(r'\((.*?)\)', user_str)
                                 if match:
                                     to_email = match.group(1)
-                                    if send_email(to_email, "happyhomeisfun@gmail.com", custom_message_tab1):
+                                    if send_email(to_email, sender, custom_message_tab1):
                                         success_count += 1
                             st.success(f"{success_count}건의 메일 전송 완료!")
                     else:
