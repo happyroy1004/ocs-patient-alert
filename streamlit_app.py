@@ -1699,11 +1699,10 @@ if st.session_state.get('login_mode') in ['user_mode', 'new_user_registration', 
 
                 # --- 환자 정보 대량 등록 섹션 추가 ---
                 st.subheader("📋 환자 정보 대량 등록")
-                st.markdown("엑셀이나 스프레드시트에서 아래 형식으로 복사하여 붙여넣어주세요.")
-                st.markdown("형식: 환자명	진료번호	등록과")
+                st.markdown("엑셀이나 스프레드시트에서 환자명, 진료번호, 등록과 순서로 만든 표를 그대로 붙여넣어주세요.")
                 st.markdown("예시: 홍길동	1046769	보존")
                 
-                paste_area = st.text_area("여기에 표 항목 값을 붙여넣으세요.", height=200, placeholder="여기에 스프레드시트 데이터를 붙여넣으세요.")
+                paste_area = st.text_area("여기에 환자 정보 표를 그대로 붙여넣으세요.", height=200, placeholder="여기에 스프레드시트 데이터를 붙여넣으세요.")
                 
                 if st.button("붙여넣은 환자 등록"):
                     if paste_area:
