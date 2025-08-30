@@ -1573,6 +1573,11 @@ if st.session_state.get('login_mode') == 'admin_mode':
                 
 # #8. Regular User Mode
 # --- 일반 사용자 & 치과의사 모드 ---
+import streamlit as st
+import pandas as pd
+import io
+import re
+                    
 if st.session_state.get('login_mode') in ['user_mode', 'new_user_registration', 'doctor_mode', 'new_doctor_registration', 'doctor_name_input']:
     user_name = st.session_state.get('current_user_name', "")
     user_id_final = st.session_state.get('found_user_email', "")
@@ -1646,33 +1651,38 @@ if st.session_state.get('login_mode') in ['user_mode', 'new_user_registration', 
             patients_ref_for_user = db.reference(f"patients/{firebase_key}")
 
             registration_tab, analysis_tab = st.tabs(['✅ 환자 등록 및 관리', '📈 OCS 분석 결과'])
- 
+        
             with registration_tab:
                 st.subheader("Google Calendar 연동")
                 st.info("환자 등록 시 입력된 이메일 계정의 구글 캘린더에 자동으로 일정이 추가됩니다.")
                 if 'google_calendar_service' not in st.session_state:
                     st.session_state.google_calendar_service = None
-                google_calendar_service = get_google_calendar_service(firebase_key)
-                st.session_state.google_calendar_service = google_calendar_service
-
-                if google_calendar_service:
+                
+                try:
+                    google_calendar_service = get_google_calendar_service(firebase_key)
+                    st.session_state.google_calendar_service = google_calendar_service
+                except Exception as e:
+                    st.error(f"❌ Google Calendar 서비스 로딩에 실패했습니다: {e}")
+                    st.session_state.google_calendar_service = None
+        
+                if st.session_state.google_calendar_service:
                     st.success("✅ 캘린더 추가 기능이 허용되어 있습니다.")
                 else:
                     pass
-
+        
                 st.markdown("---")
                 st.subheader(f"{user_name}님의 등록 환자 목록")
                 existing_patient_data = patients_ref_for_user.get()
-
+        
                 if existing_patient_data:
                     desired_order = ['소치', '교정', '내과', '보철', '외과', '치주', '원진실', '보존']
                     order_map = {dept: i for i, dept in enumerate(desired_order)}
                     patient_list = list(existing_patient_data.items())
                     sorted_patient_list = sorted(patient_list, key=lambda item: order_map.get(item[1].get('등록과', '미지정'), float('inf')))
-
+        
                     cols_count = 3
                     cols = st.columns(cols_count)
-                    
+        
                     for idx, (key, val) in enumerate(sorted_patient_list):
                         with cols[idx % cols_count]:
                             with st.container(border=True):
@@ -1686,7 +1696,118 @@ if st.session_state.get('login_mode') in ['user_mode', 'new_user_registration', 
                 else:
                     st.info("등록된 환자가 없습니다.")
                 st.markdown("---")
-
+        
+                # --- 환자 정보 대량 등록 섹션 추가 ---
+                st.subheader("📋 환자 정보 대량 등록")
+                st.markdown("엑셀, 구글 스프레드시트에서 아래 형식으로 복사하여 붙여넣어주세요.")
+                st.markdown("**형식:** `환자명`\\t`진료번호`\\t`진료과`")
+                st.markdown("예시: `김민준`\\t`12345`\\t`교정`")
+        
+                paste_area = st.text_area("여기에 표를 붙여넣으세요.", height=200, placeholder="여기에 스프레드시트 데이터를 붙여넣으세요.")
+        
+                if st.button("붙여넣은 환자 등록"):
+                    if paste_area:
+                        try:
+                            data_io = io.StringIO(paste_area)
+                            df = pd.read_csv(data_io, sep='\t')
+                            
+                            expected_columns = ["환자명", "진료번호", "진료과"]
+                            if not all(col in df.columns for col in expected_columns):
+                                st.error("스프레드시트 열 이름이 올바르지 않습니다. '환자명', '진료번호', '진료과' 열이 모두 있는지 확인해주세요.")
+                            else:
+                                existing_patient_data = patients_ref_for_user.get()
+                                if not existing_patient_data:
+                                    existing_patient_data = {}
+                                
+                                success_count = 0
+                                for index, row in df.iterrows():
+                                    name = str(row["환자명"]).strip()
+                                    pid = str(row["진료번호"]).strip()
+                                    department = str(row["진료과"]).strip()
+        
+                                    if not name or not pid or not department:
+                                        st.warning(f"스프레드시트 {index+2}번째 행: 정보가 누락되어 건너뜁니다.")
+                                        continue
+        
+                                    is_existing = any(
+                                        v.get("환자명") == name and v.get("진료번호") == pid and v.get("등록과") == department
+                                        for v in existing_patient_data.values()
+                                    )
+        
+                                    if not is_existing:
+                                        patients_ref_for_user.push().set({"환자명": name, "진료번호": pid, "등록과": department})
+                                        success_count += 1
+                                        st.success(f"{name} ({pid}) [{department}] 환자 등록 완료")
+                                    else:
+                                        st.error(f"{name} ({pid}) [{department}]은(는) 이미 등록된 환자입니다.")
+                                
+                                if success_count > 0:
+                                    st.success(f"총 {success_count}명의 새로운 환자 등록이 완료되었습니다.")
+                                st.rerun()
+        
+                        except Exception as e:
+                            st.error("잘못된 형식입니다. 스프레드시트의 표를 복사하여 붙여넣었는지 확인해주세요.")
+                            st.error(f"자세한 오류: {e}")
+                    else:
+                        st.warning("붙여넣을 환자 정보가 없습니다.")
+                
+                st.markdown("---")
+        
+                # --- 환자 정보 일괄 삭제 섹션 추가 ---
+                st.subheader("🗑️ 환자 정보 일괄 삭제")
+        
+                if 'delete_patient_confirm' not in st.session_state:
+                    st.session_state.delete_patient_confirm = False
+                if 'patients_to_delete' not in st.session_state:
+                    st.session_state.patients_to_delete = []
+        
+                all_patients_meta = patients_ref_for_user.get()
+                patient_list_for_dropdown = []
+                patient_key_map = {}
+        
+                if all_patients_meta:
+                    for key, value in all_patients_meta.items():
+                        display_text = f"{value.get('환자명', '이름 없음')} ({value.get('진료번호', '번호 없음')}) [{value.get('등록과', '과 없음')}]"
+                        patient_list_for_dropdown.append(display_text)
+                        patient_key_map[display_text] = key
+        
+                if not st.session_state.delete_patient_confirm:
+                    patients_to_delete_multiselect = st.multiselect(
+                        "삭제할 환자 선택",
+                        patient_list_for_dropdown,
+                        key="delete_patient_multiselect"
+                    )
+        
+                    if st.button("선택한 환자 삭제", key="delete_patient_button"):
+                        if patients_to_delete_multiselect:
+                            st.session_state.delete_patient_confirm = True
+                            st.session_state.patients_to_delete = patients_to_delete_multiselect
+                            st.rerun()
+                        else:
+                            st.warning("삭제할 환자를 선택해주세요.")
+                else:
+                    st.warning("정말로 선택한 환자를 삭제하시겠습니까? 이 작업은 되돌릴 수 없습니다.")
+                    col1, col2 = st.columns(2)
+                    with col1:
+                        if st.button("예, 삭제합니다", key="confirm_delete_patient"):
+                            with st.spinner('삭제 중...'):
+                                for patient_to_del_str in st.session_state.patients_to_delete:
+                                    patient_key_to_del = patient_key_map.get(patient_to_del_str)
+                                    if patient_key_to_del:
+                                        patients_ref_for_user.child(patient_key_to_del).delete()
+                            
+                            st.success(f"선택한 환자 {st.session_state.patients_to_delete} 삭제 완료.")
+                            st.session_state.delete_patient_confirm = False
+                            st.session_state.patients_to_delete = []
+                            st.rerun()
+                    with col2:
+                        if st.button("아니오, 취소합니다", key="cancel_delete_patient"):
+                            st.session_state.delete_patient_confirm = False
+                            st.session_state.patients_to_delete = []
+                            st.rerun()
+                
+                st.markdown("---")
+        
                 with st.form("register_form"):
                     name = st.text_input("환자명")
                     pid = st.text_input("진료번호")
@@ -1704,7 +1825,9 @@ if st.session_state.get('login_mode') in ['user_mode', 'new_user_registration', 
                             patients_ref_for_user.push().set({"환자명": name, "진료번호": pid, "등록과": selected_department})
                             st.success(f"{name} ({pid}) [{selected_department}] 환자 등록 완료")
                             st.rerun()
-                            
+
+
+            
             with analysis_tab:
                 st.header("📈 OCS 분석 결과")
                 analysis_results = db.reference("ocs_analysis/latest_result").get()
