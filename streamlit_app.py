@@ -1704,7 +1704,7 @@ if st.session_state.get('login_mode') in ['user_mode', 'new_user_registration', 
                 st.markdown("등록과 형식 : 교정, 내과, 보존, 보철, 치주, 외과, 원진실")
                 
                 
-                paste_area = st.text_area(height=200, placeholder="여기에 엑셀이나 구글 시트 데이터를 붙여넣으세요.")
+                paste_area = st.text_area("📋", height=200, placeholder="여기에 엑셀이나 구글 시트 데이터를 붙여넣으세요.")
                 
                 if st.button("붙여넣은 환자 등록"):
                     if paste_area:
