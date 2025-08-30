@@ -1770,11 +1770,20 @@ if st.session_state.get('login_mode') in ['user_mode', 'new_user_registration', 
                         display_text = f"{value.get('환자명', '이름 없음')} ({value.get('진료번호', '번호 없음')}) [{value.get('등록과', '과 없음')}]"
                         patient_list_for_dropdown.append(display_text)
                         patient_key_map[display_text] = key
-        
+
+                # "전체 선택" 버튼 추가
+                if st.button("전체 환자 선택", key="select_all_patients_button"):
+                    st.session_state.select_all_mode = not st.session_state.select_all_mode # 상태 토글
+                    st.rerun()
+                
+                # '전체 선택' 모드에 따라 multiselect의 기본값 설정
+                default_selection = patient_list_for_dropdown if st.session_state.select_all_mode else []
+                
                 if not st.session_state.delete_patient_confirm:
                     patients_to_delete_multiselect = st.multiselect(
                         "삭제할 환자 선택",
                         patient_list_for_dropdown,
+                        default=default_selection, # 기본값 설정
                         key="delete_patient_multiselect"
                     )
         
