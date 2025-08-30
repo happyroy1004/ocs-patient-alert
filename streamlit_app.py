@@ -1699,7 +1699,7 @@ if st.session_state.get('login_mode') in ['user_mode', 'new_user_registration', 
 
                 # --- 환자 정보 대량 등록 섹션 추가 ---
                 st.subheader("📋 환자 정보 대량 등록")
-                st.markdown("엑셀이나 스프레드시트에서 환자명, 진료번호, 등록과 순서로 만든 표를 그대로 붙여넣어주세요.")
+                st.markdown("엑셀이나 구글 시트에서 환자명, 진료번호, 등록과 순서의 데이터를 그대로 붙여넣어주세요.")
                 st.markdown("예시: 홍길동	1046769	보존")
                 st.markdown("등록과 형식 : 교정, 내과, 보존, 보철, 치주, 외과, 원진실")
                 
