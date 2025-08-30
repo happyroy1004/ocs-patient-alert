@@ -1755,22 +1755,24 @@ if st.session_state.get('login_mode') in ['user_mode', 'new_user_registration', 
         
                 # --- 환자 정보 일괄 삭제 섹션 추가 ---
                 st.subheader("🗑️ 환자 정보 일괄 삭제")
-        
+                
                 if 'delete_patient_confirm' not in st.session_state:
                     st.session_state.delete_patient_confirm = False
                 if 'patients_to_delete' not in st.session_state:
                     st.session_state.patients_to_delete = []
-        
+                if 'select_all_mode' not in st.session_state:
+                    st.session_state.select_all_mode = False
+                
                 all_patients_meta = patients_ref_for_user.get()
                 patient_list_for_dropdown = []
                 patient_key_map = {}
-        
+                
                 if all_patients_meta:
                     for key, value in all_patients_meta.items():
                         display_text = f"{value.get('환자명', '이름 없음')} ({value.get('진료번호', '번호 없음')}) [{value.get('등록과', '과 없음')}]"
                         patient_list_for_dropdown.append(display_text)
                         patient_key_map[display_text] = key
-
+                
                 # "전체 선택" 버튼 추가
                 if st.button("전체 환자 선택", key="select_all_patients_button"):
                     st.session_state.select_all_mode = not st.session_state.select_all_mode # 상태 토글
@@ -1786,11 +1788,12 @@ if st.session_state.get('login_mode') in ['user_mode', 'new_user_registration', 
                         default=default_selection, # 기본값 설정
                         key="delete_patient_multiselect"
                     )
-        
+                
                     if st.button("선택한 환자 삭제", key="delete_patient_button"):
                         if patients_to_delete_multiselect:
                             st.session_state.delete_patient_confirm = True
                             st.session_state.patients_to_delete = patients_to_delete_multiselect
+                            st.session_state.select_all_mode = False # 삭제 버튼 클릭 시 전체 선택 모드 초기화
                             st.rerun()
                         else:
                             st.warning("삭제할 환자를 선택해주세요.")
