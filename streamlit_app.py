@@ -1699,7 +1699,7 @@ if st.session_state.get('login_mode') in ['user_mode', 'new_user_registration', 
         
                 # --- 환자 정보 대량 등록 섹션 추가 ---
                 st.subheader("📋 환자 정보 대량 등록")
-                st.markdown("엑셀이나 구글 스프레드시트에서 아래 형식으로 복사하여 붙여넣어주세요.")
+                st.markdown("엑셀이나 스프레드시트에서 아래 형식으로 복사하여 붙여넣어주세요.")
                 st.markdown("형식: 환자명	진료번호	등록과")
                 st.markdown("예시: 홍길동	1046769	보존")
         
@@ -1709,47 +1709,48 @@ if st.session_state.get('login_mode') in ['user_mode', 'new_user_registration', 
                     if paste_area:
                         try:
                             data_io = io.StringIO(paste_area)
-                            df = pd.read_csv(data_io, sep='\t')
+
+
+           
+                            # header=None으로 헤더가 없음을 명시하고, names로 열 이름을 수동 지정
+                            df = pd.read_csv(data_io, sep='\t', header=None, names=['환자명', '진료번호', '진료과'])
                             
-                            expected_columns = ["환자명", "진료번호", "진료과"]
-                            if not all(col in df.columns for col in expected_columns):
-                                st.error("스프레드시트 열 이름이 올바르지 않습니다. '환자명', '진료번호', '진료과' 열이 모두 있는지 확인해주세요.")
-                            else:
-                                existing_patient_data = patients_ref_for_user.get()
-                                if not existing_patient_data:
-                                    existing_patient_data = {}
-                                
-                                success_count = 0
-                                for index, row in df.iterrows():
-                                    name = str(row["환자명"]).strip()
-                                    pid = str(row["진료번호"]).strip()
-                                    department = str(row["진료과"]).strip()
-        
-                                    if not name or not pid or not department:
-                                        st.warning(f"스프레드시트 {index+2}번째 행: 정보가 누락되어 건너뜁니다.")
-                                        continue
-        
-                                    is_existing = any(
-                                        v.get("환자명") == name and v.get("진료번호") == pid and v.get("등록과") == department
-                                        for v in existing_patient_data.values()
-                                    )
-        
-                                    if not is_existing:
-                                        patients_ref_for_user.push().set({"환자명": name, "진료번호": pid, "등록과": department})
-                                        success_count += 1
-                                        st.success(f"{name} ({pid}) [{department}] 환자 등록 완료")
-                                    else:
-                                        st.error(f"{name} ({pid}) [{department}]은(는) 이미 등록된 환자입니다.")
-                                
-                                if success_count > 0:
-                                    st.success(f"총 {success_count}명의 새로운 환자 등록이 완료되었습니다.")
-                                st.rerun()
-        
-                        except Exception as e:
-                            st.error("잘못된 형식입니다. 스프레드시트의 표를 복사하여 붙여넣었는지 확인해주세요.")
-                            st.error(f"자세한 오류: {e}")
-                    else:
-                        st.warning("붙여넣을 환자 정보가 없습니다.")
+                            # 기존 환자 데이터 가져오기
+                            existing_patient_data = patients_ref_for_user.get()
+                            if not existing_patient_data:
+                                existing_patient_data = {}
+                            
+                            success_count = 0
+                            for index, row in df.iterrows():
+                                name = str(row["환자명"]).strip()
+                                pid = str(row["진료번호"]).strip()
+                                department = str(row["진료과"]).strip()
+                
+                                if not name or not pid or not department:
+                                    st.warning(f"{index+1}번째 행: 정보가 누락되어 건너뜁니다.")
+                                    continue
+
+                                is_existing = any(
+                                    v.get("환자명") == name and v.get("진료번호") == pid and v.get("등록과") == department
+                                    for v in existing_patient_data.values()
+                                )
+    
+                                if not is_existing:
+                                    patients_ref_for_user.push().set({"환자명": name, "진료번호": pid, "등록과": department})
+                                    success_count += 1
+                                    st.success(f"{name} ({pid}) [{department}] 환자 등록 완료")
+                                else:
+                                    st.error(f"{name} ({pid}) [{department}]은(는) 이미 등록된 환자입니다.")
+                            
+                            if success_count > 0:
+                                st.success(f"총 {success_count}명의 새로운 환자 등록이 완료되었습니다.")
+                            st.rerun()
+    
+                    except Exception as e:
+                        st.error("잘못된 형식입니다. 스프레드시트의 표를 복사하여 붙여넣었는지 확인해주세요.")
+                        st.error(f"자세한 오류: {e}")
+                else:
+                    st.warning("붙여넣을 환자 정보가 없습니다.")
                 
                 st.markdown("---")
         
