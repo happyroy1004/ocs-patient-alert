@@ -1671,7 +1671,7 @@ if st.session_state.get('login_mode') in ['user_mode', 'new_user_registration', 
                     pass
         
                 st.markdown("---")
-                st.subheader(f"{user_name}님의 등록 환자 목록")
+                st.subheader(f"{user_name}님의 토탈 환자 목록")
                 existing_patient_data = patients_ref_for_user.get()
         
                 if existing_patient_data:
