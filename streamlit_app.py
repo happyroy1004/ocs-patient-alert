@@ -1094,10 +1094,7 @@ if st.session_state.get('login_mode') == 'admin_mode':
                                         matched_row_copy["등록과"] = registered_patient["등록과"] # DB의 등록과 사용
                                         matched_rows_for_user.append(matched_row_copy)
                                         # 매칭되면 더 이상 이 시트에서 찾지 않고 다음 환자로 넘어감
-                                        break
-                                # 한 환자 매칭 후 다른 시트 검색은 중단
-                                if any(row.get("진료번호") == registered_patient["진료번호"] for row in matched_rows_for_user):
-                                    break
+                                    
                     
                     if matched_rows_for_user:
                         combined_matched_df = pd.DataFrame(matched_rows_for_user)
@@ -1132,8 +1129,15 @@ if st.session_state.get('login_mode') == 'admin_mode':
                             if not df_matched.empty:
                                 reservation_date = df_matched.iloc[0].get('예약일시', '날짜 미정')
                                 email_subject = f"내원 알림: {reservation_date} 치과 예약 정보"
-                                df_html = df_matched[['환자명', '진료번호', '예약의사', '진료내역', '예약시간']].to_html(index=False, escape=False)
-                                email_subject = "치과 예약 내원 정보"
+                                
+                                # --- 🐛 오류 수정: 필요한 컬럼이 존재하는지 확인하고 DataFrame 구성 ---
+                                # 모든 시트에 예약일시, 예약시간이 없을 수 있으므로 이메일 전송 직전에 컬럼 존재 여부 확인
+                                email_cols = ['환자명', '진료번호', '예약의사', '진료내역', '예약일시', '예약시간']
+                                for col in email_cols:
+                                    if col not in df_matched.columns:
+                                        df_matched[col] = ''
+                                df_html = df_matched[email_cols].to_html(index=False, escape=False)
+                                
                                 email_body = f"""
                                 <p>안녕하세요, {user_name}님.</p>
                                 <p>{reservation_date}에 내원 예정인 환자 진료 정보입니다.</p>
@@ -1307,7 +1311,14 @@ if st.session_state.get('login_mode') == 'admin_mode':
                                     if matched_rows_for_doctor:
                                         df_matched = pd.DataFrame(matched_rows_for_doctor)
                                         reservation_date = df_matched.iloc[0].get('예약일시', '날짜 미정')
-                                        df_html = df_matched[['환자명', '진료번호', '예약의사', '진료내역', '예약일시', '예약시간']].to_html(index=False, escape=False)
+                                        
+                                        # --- 🐛 오류 수정: 필요한 컬럼이 존재하는지 확인하고 DataFrame 구성 ---
+                                        email_cols = ['환자명', '진료번호', '예약의사', '진료내역', '예약일시', '예약시간']
+                                        for col in email_cols:
+                                            if col not in df_matched.columns:
+                                                df_matched[col] = ''
+                                        df_html = df_matched[email_cols].to_html(index=False, escape=False)
+
                                         email_body = f"""
                                         <p>안녕하세요, {res['name']} 치과의사님.</p>
                                         <p>{reservation_date}에 내원할 환자 정보입니다.</p>
@@ -1503,8 +1514,8 @@ if st.session_state.get('login_mode') == 'admin_mode':
                                 st.rerun()
                     with col2:
                         if st.button("아니오, 취소합니다", key="cancel_delete_tab1"):
-                            st.session_state.delete_patient_confirm = False
-                            st.session_state.patients_to_delete = []
+                            st.session_state.delete_confirm_tab1 = False
+                            st.session_state.users_to_delete_tab1 = []
                             st.rerun()
     
             # 탭 2: 치과의사 사용자 관리
@@ -1715,7 +1726,7 @@ if st.session_state.get('login_mode') in ['user_mode', 'new_user_registration', 
                 existing_patient_data = patients_ref_for_user.get()
         
                 if existing_patient_data:
-                    desired_order = ['소치', '교정', '내과', '보철', '외과', '치주', '원진실', '보존']
+                    desired_order = ['소치', '교정', '내과', '보존', '보철', '외과', '치주', '원진실', '보존']
                     order_map = {dept: i for i, dept in enumerate(desired_order)}
                     patient_list = list(existing_patient_data.items())
                     sorted_patient_list = sorted(patient_list, key=lambda item: order_map.get(item[1].get('등록과', '미지정'), float('inf')))
