@@ -474,27 +474,13 @@ sheet_keyword_to_department_map = {
     '구강 내과' : '내과', '구강내과': '내과', '내과': '내과',
     '치과보존과' : '보존', '보존과': '보존', '보존': '보존',
     '소아치과': '소치', '소치': '소치', '소아 치과': '소치',
-    '원내생진료센터': '원진실', '원내생': '원진실','원내생 진료센터': '원진실','원진실':'원진실',
+    '원내생진료센터': '원내생', '원내생': '원내생','원내생 진료센터': '원내생','원진실':'원내생',
     '원스톱 협진센터' : '원스톱', '원스톱협진센터': '원스톱', '원스톱': '원스톱',
     '임플란트 진료센터' : '임플란트', '임플란트진료센터': '임플란트', '임플란트': '임플란트',
     '임플' : '임플란트', '치주과': '치주', '치주': '치주',
     '임플실': '임플란트', '병리': '병리'
 }
-# ⚠️ 추가: 치과의사/환자 부서별 검색 시트 맵핑
-department_search_map = {
-    '외과': ['외과', '원스톱', '임플란트'],
-    '보철': ['보철', '임플란트'],
-    '치주': ['치주', '임플란트'],
-    # 나머지 부서는 해당 부서 시트만 검색
-    '보존': ['보존'],
-    '교정': ['교정'],
-    '소치': ['소치'],
-    '내과': ['내과'],
-    '원진실': ['원진실'],
-    '원스톱': ['원스톱'],
-    '임플란트': ['임플란트'],
-    '병리': ['병리']
-}
+
 professors_dict = {
     '소치': ['김현태', '장기택', '김정욱', '현홍근', '김영재', '신터전', '송지수'],
     '보존': ['이인복', '금기연', '이우철', '유연지', '서덕규', '이창하', '김선영', '손원준'],
@@ -1053,6 +1039,16 @@ if st.session_state.get('login_mode') == 'admin_mode':
             
             matched_users = []
             if all_patients_data:
+                # --- 환자 등록과에 따른 검색 시트 매핑 ---
+                patient_dept_to_sheet_map = {
+                    '보철': ['보철', '임플란트'],
+                    '치주': ['치주', '임플란트'],
+                    '외과': ['외과', '원스톱', '임플란트'],
+                    # 나머지 진료과는 기본값으로 해당 과만 검색
+                    '교정': ['교정'], '내과': ['내과'], '보존': ['보존'],
+                    '소치': ['소치'], '원내생': ['원내생'], '병리': ['병리']
+                }
+
                 for uid_safe, registered_patients_for_this_user in all_patients_data.items():
                     user_email = recover_email(uid_safe)
                     user_display_name = user_email
@@ -1073,27 +1069,36 @@ if st.session_state.get('login_mode') == 'admin_mode':
                             })
                     
                     matched_rows_for_user = []
-                    for sheet_name_excel_raw, df_sheet in excel_data_dfs.items():
-                        excel_sheet_name_lower = sheet_name_excel_raw.strip().lower()
-                        excel_sheet_department = None
-                        for keyword, department_name in sorted(sheet_keyword_to_department_map.items(), key=lambda item: len(item[0]), reverse=True):
-                            if keyword.lower() in excel_sheet_name_lower:
-                                excel_sheet_department = department_name
-                                break
-                        if not excel_sheet_department:
-                            continue
-                        for _, excel_row in df_sheet.iterrows():
-                            excel_patient_name = excel_row["환자명"].strip()
-                            excel_patient_pid = excel_row["진료번호"].strip().zfill(8)
-                            for registered_patient in registered_patients_data:
-                                if (registered_patient["환자명"] == excel_patient_name and
-                                        registered_patient["진료번호"] == excel_patient_pid and
-                                        registered_patient["등록과"] == excel_sheet_department):
-                                    matched_row_copy = excel_row.copy()
-                                    matched_row_copy["시트"] = sheet_name_excel_raw
-                                    matched_row_copy["등록과"] = excel_sheet_department
-                                    matched_rows_for_user.append(matched_row_copy)
+                    for registered_patient in registered_patients_data:
+                        patient_dept = registered_patient["등록과"]
+                        # 환자의 등록과에 따라 검색할 시트 목록을 가져옵니다.
+                        sheets_to_search = patient_dept_to_sheet_map.get(patient_dept, [patient_dept])
+
+                        for sheet_name_excel_raw, df_sheet in excel_data_dfs.items():
+                            excel_sheet_name_lower = sheet_name_excel_raw.strip().lower()
+                            excel_sheet_department = None
+                            for keyword, department_name in sorted(sheet_keyword_to_department_map.items(), key=lambda item: len(item[0]), reverse=True):
+                                if keyword.lower() in excel_sheet_name_lower:
+                                    excel_sheet_department = department_name
                                     break
+                            
+                            # 검색할 시트 목록에 현재 엑셀 시트가 포함되어 있는지 확인
+                            if excel_sheet_department in sheets_to_search:
+                                for _, excel_row in df_sheet.iterrows():
+                                    excel_patient_name = excel_row.get("환자명", "").strip()
+                                    excel_patient_pid = excel_row.get("진료번호", "").strip().zfill(8)
+                                    if (registered_patient["환자명"] == excel_patient_name and
+                                            registered_patient["진료번호"] == excel_patient_pid):
+                                        matched_row_copy = excel_row.copy()
+                                        matched_row_copy["시트"] = sheet_name_excel_raw
+                                        matched_row_copy["등록과"] = registered_patient["등록과"] # DB의 등록과 사용
+                                        matched_rows_for_user.append(matched_row_copy)
+                                        # 매칭되면 더 이상 이 시트에서 찾지 않고 다음 환자로 넘어감
+                                        break
+                                # 한 환자 매칭 후 다른 시트 검색은 중단
+                                if any(row.get("진료번호") == registered_patient["진료번호"] for row in matched_rows_for_user):
+                                    break
+                    
                     if matched_rows_for_user:
                         combined_matched_df = pd.DataFrame(matched_rows_for_user)
                         matched_users.append({"email": user_email, "name": user_display_name, "data": combined_matched_df, "safe_key": uid_safe})
@@ -1207,8 +1212,20 @@ if st.session_state.get('login_mode') == 'admin_mode':
             # 엑셀 파일과 매칭되는 치과의사만 필터링
             matched_doctors = []
             if doctors and excel_data_dfs:
+                # --- 치과의사 등록과에 따른 검색 시트 매핑 ---
+                doctor_dept_to_sheet_map = {
+                    '보철': ['보철', '임플란트'],
+                    '치주': ['치주', '임플란트'],
+                    '외과': ['외과', '원스톱', '임플란트'],
+                    '교정': ['교정'], '내과': ['내과'], '보존': ['보존'],
+                    '소치': ['소치'], '원내생': ['원내생'], '병리': ['병리']
+                }
+
                 for res in doctors:
                     found_match = False
+                    doctor_dept = res['department']
+                    sheets_to_search = doctor_dept_to_sheet_map.get(doctor_dept, [doctor_dept])
+
                     for sheet_name_excel_raw, df_sheet in excel_data_dfs.items():
                         excel_sheet_name_lower = sheet_name_excel_raw.strip().lower().replace(' ', '')
                         
@@ -1220,13 +1237,15 @@ if st.session_state.get('login_mode') == 'admin_mode':
                         if not excel_sheet_department:
                             continue
                         
-                        for _, excel_row in df_sheet.iterrows():
-                            excel_doctor_name_from_row = str(excel_row.get('예약의사', '')).strip().replace("'", "").replace("‘", "").replace("’", "").strip()
-                            
-                            if excel_doctor_name_from_row == res['name'] and excel_sheet_department == res['department']:
-                                matched_doctors.append(res)
-                                found_match = True
-                                break 
+                        # 치과의사의 등록과가 검색할 시트 목록에 있는지 확인
+                        if excel_sheet_department in sheets_to_search:
+                            for _, excel_row in df_sheet.iterrows():
+                                excel_doctor_name_from_row = str(excel_row.get('예약의사', '')).strip().replace("'", "").replace("‘", "").replace("’", "").strip()
+                                
+                                if excel_doctor_name_from_row == res['name']:
+                                    matched_doctors.append(res)
+                                    found_match = True
+                                    break 
                         if found_match:
                             break
             
@@ -1263,10 +1282,12 @@ if st.session_state.get('login_mode') == 'admin_mode':
                             else:
                                 for res in selected_doctors_data:
                                     matched_rows_for_doctor = []
+                                    doctor_dept = res['department']
+                                    sheets_to_search = doctor_dept_to_sheet_map.get(doctor_dept, [doctor_dept])
+
                                     if excel_data_dfs:
                                         for sheet_name_excel_raw, df_sheet in excel_data_dfs.items():
                                             excel_sheet_name_lower = sheet_name_excel_raw.strip().lower().replace(' ', '')
-                                            
                                             excel_sheet_department = None
                                             for keyword, department_name in sorted(sheet_keyword_to_department_map.items(), key=lambda item: len(item[0]), reverse=True):
                                                 if keyword.lower().replace(' ', '') in excel_sheet_name_lower:
@@ -1276,11 +1297,12 @@ if st.session_state.get('login_mode') == 'admin_mode':
                                                 st.warning(f"시트 '{sheet_name_excel_raw}'을(를) 인식할 수 없습니다. 건너뜁니다.")
                                                 continue
                                             
-                                            for _, excel_row in df_sheet.iterrows():
-                                                excel_doctor_name_from_row = str(excel_row.get('예약의사', '')).strip().replace("'", "").replace("‘", "").replace("’", "").strip()
-                                                
-                                                if excel_doctor_name_from_row == res['name'] and excel_sheet_department == res['department']:
-                                                    matched_rows_for_doctor.append(excel_row.copy())
+                                            if excel_sheet_department in sheets_to_search:
+                                                for _, excel_row in df_sheet.iterrows():
+                                                    excel_doctor_name_from_row = str(excel_row.get('예약의사', '')).strip().replace("'", "").replace("‘", "").replace("’", "").strip()
+                                                    
+                                                    if excel_doctor_name_from_row == res['name']:
+                                                        matched_rows_for_doctor.append(excel_row.copy())
                                                 
                                     if matched_rows_for_doctor:
                                         df_matched = pd.DataFrame(matched_rows_for_doctor)
@@ -1308,6 +1330,9 @@ if st.session_state.get('login_mode') == 'admin_mode':
                                         service = build('calendar', 'v3', credentials=creds)
                                         
                                         found_matched_data = False
+                                        doctor_dept = res['department']
+                                        sheets_to_search = doctor_dept_to_sheet_map.get(doctor_dept, [doctor_dept])
+
                                         if excel_data_dfs:
                                             for sheet_name_excel_raw, df_sheet in excel_data_dfs.items():
                                                 excel_sheet_name_lower = sheet_name_excel_raw.strip().lower().replace(' ', '')
@@ -1319,37 +1344,38 @@ if st.session_state.get('login_mode') == 'admin_mode':
                                                 if not excel_sheet_department:
                                                     continue
                                                 
-                                                for _, excel_row in df_sheet.iterrows():
-                                                    excel_doctor_name_from_row = str(excel_row.get('예약의사', '')).strip().replace("'", "").replace("‘", "").replace("’", "").strip()
-                                                    if excel_doctor_name_from_row == res['name'] and excel_sheet_department == res['department']:
-                                                        found_matched_data = True
-                                                        
-                                                        patient_name = excel_row.get('환자명', '이름 없음')
-                                                        pid = excel_row.get('진료번호', '번호 없음')
-                                                        department = res['department']
-                                                        
-                                                        # 👇 '예약일시'와 '예약시간'을 합쳐서 하나의 문자열로 만듭니다.
-                                                        reservation_date_str = excel_row.get('예약일시', '')
-                                                        reservation_time_str = excel_row.get('예약시간', '')
-                                                        patient_name = excel_row.get('환자명', '')
-                                                        patient_pid = excel_row.get('진료번호', '')
-                                                        department = excel_row.get('등록과', '')
-                                                        doctor_name = excel_row.get('예약의사', '')
-                                                        treatment_details = excel_row.get('진료내역', '')
-                                                        
-                                                        doctor_name = res['name']
-                                                        treatment_details = excel_row.get('진료내역', '정보 없음')
-                                                        
-                                                        # 합쳐진 문자열을 datetime 객체로 변환
-                                                        try:
-                                                            full_datetime_str = f"{str(reservation_date_str).strip()} {str(reservation_time_str).strip()}"
-                                                            reservation_datetime = datetime.datetime.strptime(full_datetime_str, '%Y/%m/%d %H:%M')
-                                                        except ValueError:
-                                                            st.warning(f"**{res['name']}** 치과의사의 '{patient_name}' 환자 예약일시 형식이 잘못되었습니다: {full_datetime_str}")
-                                                            continue
-                                                        event_prefix = "✨:" if is_daily else "?:"
-                                                        event_title = f"{event_prefix}{patient_name}({pid})"
-                                                        create_calendar_event(service, event_title, pid, department, reservation_datetime, doctor_name, treatment_details)
+                                                if excel_sheet_department in sheets_to_search:
+                                                    for _, excel_row in df_sheet.iterrows():
+                                                        excel_doctor_name_from_row = str(excel_row.get('예약의사', '')).strip().replace("'", "").replace("‘", "").replace("’", "").strip()
+                                                        if excel_doctor_name_from_row == res['name']:
+                                                            found_matched_data = True
+                                                            
+                                                            patient_name = excel_row.get('환자명', '이름 없음')
+                                                            pid = excel_row.get('진료번호', '번호 없음')
+                                                            department = res['department']
+                                                            
+                                                            # 👇 '예약일시'와 '예약시간'을 합쳐서 하나의 문자열로 만듭니다.
+                                                            reservation_date_str = excel_row.get('예약일시', '')
+                                                            reservation_time_str = excel_row.get('예약시간', '')
+                                                            patient_name = excel_row.get('환자명', '')
+                                                            patient_pid = excel_row.get('진료번호', '')
+                                                            department = excel_row.get('등록과', '')
+                                                            doctor_name = excel_row.get('예약의사', '')
+                                                            treatment_details = excel_row.get('진료내역', '')
+                                                            
+                                                            doctor_name = res['name']
+                                                            treatment_details = excel_row.get('진료내역', '정보 없음')
+                                                            
+                                                            # 합쳐진 문자열을 datetime 객체로 변환
+                                                            try:
+                                                                full_datetime_str = f"{str(reservation_date_str).strip()} {str(reservation_time_str).strip()}"
+                                                                reservation_datetime = datetime.datetime.strptime(full_datetime_str, '%Y/%m/%d %H:%M')
+                                                            except ValueError:
+                                                                st.warning(f"**{res['name']}** 치과의사의 '{patient_name}' 환자 예약일시 형식이 잘못되었습니다: {full_datetime_str}")
+                                                                continue
+                                                            event_prefix = "✨:" if is_daily else "?:"
+                                                            event_title = f"{event_prefix}{patient_name}({pid})"
+                                                            create_calendar_event(service, event_title, pid, department, reservation_datetime, doctor_name, treatment_details)
                                             
                                         if found_matched_data:
                                             st.success(f"**{res['name']}**님 캘린더에 매칭된 모든 환자 일정을 추가했습니다.")
@@ -1477,8 +1503,8 @@ if st.session_state.get('login_mode') == 'admin_mode':
                                 st.rerun()
                     with col2:
                         if st.button("아니오, 취소합니다", key="cancel_delete_tab1"):
-                            st.session_state.delete_confirm_tab1 = False
-                            st.session_state.users_to_delete_tab1 = []
+                            st.session_state.delete_patient_confirm = False
+                            st.session_state.patients_to_delete = []
                             st.rerun()
     
             # 탭 2: 치과의사 사용자 관리
