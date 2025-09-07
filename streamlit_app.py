@@ -473,10 +473,17 @@ def process_excel_file_and_style(file_bytes_io):
     for sheet_name_raw in wb_raw.sheetnames:
         sheet_name_lower = sheet_name_raw.strip().lower()
         sheet_key = None
-        for keyword, department_name in sorted(sheet_keyword_to_department_map.items(), key=lambda item: len(item[0]), reverse=True):
-            if keyword.lower() in sheet_name_lower:
-                sheet_key = department_name
-                break
+        
+        # 딕셔너리에서 직접 시트 이름을 찾아 매핑합니다.
+        # 기존 코드의 복잡한 이중 반복문을 대체합니다.
+        if sheet_name_lower in sheet_keyword_to_department_map:
+            sheet_key = sheet_keyword_to_department_map[sheet_name_lower]
+        else:
+            # 매핑이 없는 경우, 부분 문자열 매칭으로 대체
+            for keyword, department_name in sheet_keyword_to_department_map.items():
+                if keyword.lower() in sheet_name_lower:
+                    sheet_key = department_name
+                    break
         if not sheet_key:
             st.warning(f"시트 '{sheet_name_raw}'을(를) 인식할 수 없습니다. 건너뜁니다.")
             continue
