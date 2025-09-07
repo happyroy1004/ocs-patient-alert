@@ -1172,9 +1172,8 @@ if st.session_state.get('login_mode') == 'admin_mode':
                                                 excel_sheet_name_lower = sheet_name_excel_raw.strip().lower().replace(' ', '')
                                                 excel_sheet_department = None
                                                 for keyword, department_name in sorted(sheet_keyword_to_department_map.items(), key=lambda item: len(item[0]), reverse=True):
-                                                    if keyword.lower().replace(' ', '') in excel_sheet_name_lower:
-                                                        excel_sheet_department = department_name
-                                                        break
+                                                    excel_sheet_department = department_name
+                                                    break
                                                 if not excel_sheet_department:
                                                     st.warning(f"시트 '{sheet_name_excel_raw}'을(를) 인식할 수 없습니다. 건너뜁니다.")
                                                     continue
