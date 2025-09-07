@@ -1245,7 +1245,7 @@ if st.session_state.get('login_mode') == 'admin_mode':
                         
                         if excel_sheet_department in sheets_to_search:
                             for _, excel_row in df_sheet.iterrows():
-                                excel_doctor_name_from_row = str(excel_row.get('예약의사', '')).strip().replace("'", "").replace("‘", "").replace("’", "").strip()
+                                excel_doctor_name_from_row = str(excel_row.get('예약의사', '')).strip().replace("'", "").replace("‘", "").replace("’", "").replace("`", "").strip()
                                 
                                 if excel_doctor_name_from_row == res['name']:
                                     matched_doctors_unique.add((res['email'], res['name']))
