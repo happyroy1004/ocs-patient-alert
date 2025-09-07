@@ -1201,7 +1201,7 @@ if st.session_state.get('login_mode') == 'admin_mode':
                                             event_title = f"{event_prefix}{patient_name} ({department}, {doctor_name})"
                                             event_description = f"환자명 : {patient_name}\n진료번호 : {patient_pid}\n진료내역 : {treatment_details}"
                                             create_calendar_event(service, event_title, patient_pid, department, reservation_datetime, doctor_name, event_description)
-                                            st.success(f"**{user_name}**님의 캘린더에 일정을 추가했습니다.")
+                                        st.success(f"**{user_name}**님의 캘린더에 일정을 추가했습니다.")
                                 except Exception as e:
                                     st.error(f"**{user_name}**님의 캘린더 일정 추가 실패: {e}")
                             else:
