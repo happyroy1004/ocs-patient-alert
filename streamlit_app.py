@@ -1214,7 +1214,6 @@ if st.session_state.get('login_mode') == 'admin_mode':
                         })
             
             # 엑셀 파일과 매칭되는 치과의사만 필터링
-            matched_doctors_unique = set()
             matched_doctors_list = []
             if doctors and excel_data_dfs:
                 # --- 치과의사 등록과에 따른 검색 시트 매핑 ---
@@ -1225,6 +1224,9 @@ if st.session_state.get('login_mode') == 'admin_mode':
                     '교정': ['교정'], '내과': ['내과'], '보존': ['보존'],
                     '소치': ['소치'], '원내생': ['원내생'], '병리': ['병리']
                 }
+                
+                # 중복을 방지하기 위한 set
+                matched_doctors_unique = set()
 
                 for res in doctors:
                     doctor_dept = res['department']
@@ -1241,7 +1243,6 @@ if st.session_state.get('login_mode') == 'admin_mode':
                         if not excel_sheet_department:
                             continue
                         
-                        # 치과의사의 등록과가 검색할 시트 목록에 있는지 확인
                         if excel_sheet_department in sheets_to_search:
                             for _, excel_row in df_sheet.iterrows():
                                 excel_doctor_name_from_row = str(excel_row.get('예약의사', '')).strip().replace("'", "").replace("‘", "").replace("’", "").strip()
