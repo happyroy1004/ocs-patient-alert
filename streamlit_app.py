@@ -1285,9 +1285,44 @@ if st.session_state.get('login_mode') == 'admin_mode':
 
                 if selected_doctors_data:
                     st.markdown("---")
-                    st.write("**선택된 치과의사 목록:**")
+                    st.subheader("매칭된 환자 데이터 미리보기")
+                    
+                    # ------------------ 👇 추가할 코드 시작 👇 ------------------
                     for res in selected_doctors_data:
-                        st.write(f"- {res['name']} ({res['email']})")
+                        # 이전에 매칭된 데이터를 가져오기 위해 다시 한번 매칭 로직을 실행합니다.
+                        matched_rows_for_doctor = []
+                        doctor_info_db = doctor_users_ref.child(sanitize_path(res['email'])).get()
+                        if doctor_info_db:
+                            doctor_dept = doctor_info_db.get('department')
+                            sheets_to_search = doctor_dept_to_sheet_map.get(doctor_dept, [doctor_dept])
+                
+                            if excel_data_dfs:
+                                for sheet_name_excel_raw, df_sheet in excel_data_dfs.items():
+                                    excel_sheet_name_lower = sheet_name_excel_raw.strip().lower().replace(' ', '')
+                                    
+                                    excel_sheet_department = None
+                                    for keyword, department_name in sorted(sheet_keyword_to_department_map.items(), key=lambda item: len(item[0]), reverse=True):
+                                        if keyword.lower().replace(' ', '') in excel_sheet_name_lower:
+                                            excel_sheet_department = department_name
+                                            break
+                                    if not excel_sheet_department:
+                                        continue
+                                    
+                                    if excel_sheet_department in sheets_to_search:
+                                        for _, excel_row in df_sheet.iterrows():
+                                            excel_doctor_name_from_row = str(excel_row.get('예약의사', '')).strip().replace("'", "").replace("‘", "").replace("’", "").strip()
+                                            
+                                            if excel_doctor_name_from_row == res['name']:
+                                                matched_rows_for_doctor.append(excel_row.copy())
+                                                
+                        if matched_rows_for_doctor:
+                            df_matched = pd.DataFrame(matched_rows_for_doctor)
+                            st.markdown(f"**수신자:** {res['name']} ({res['email']})")
+                            st.dataframe(df_matched)
+                        else:
+                            st.markdown(f"**수신자:** {res['name']} ({res['email']})")
+                            st.info("이 치과의사에게 매칭된 데이터가 없습니다.")
+
 
                     mail_col, calendar_col = st.columns(2)
                     with mail_col:
