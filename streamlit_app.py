@@ -1084,6 +1084,7 @@ if st.session_state.get('login_mode') == 'admin_mode':
                             
                             # 검색할 시트 목록에 현재 엑셀 시트가 포함되어 있는지 확인
                             if excel_sheet_department in sheets_to_search:
+                                # 모든 매칭 항목을 찾기 위해 이중 루프를 유지
                                 for _, excel_row in df_sheet.iterrows():
                                     excel_patient_name = excel_row.get("환자명", "").strip()
                                     excel_patient_pid = excel_row.get("진료번호", "").strip().zfill(8)
@@ -1093,7 +1094,6 @@ if st.session_state.get('login_mode') == 'admin_mode':
                                         matched_row_copy["시트"] = sheet_name_excel_raw
                                         matched_row_copy["등록과"] = registered_patient["등록과"] # DB의 등록과 사용
                                         matched_rows_for_user.append(matched_row_copy)
-                                        # 매칭되면 더 이상 이 시트에서 찾지 않고 다음 환자로 넘어감
                                     
                     
                     if matched_rows_for_user:
@@ -1247,12 +1247,11 @@ if st.session_state.get('login_mode') == 'admin_mode':
                                 excel_doctor_name_from_row = str(excel_row.get('예약의사', '')).strip().replace("'", "").replace("‘", "").replace("’", "").strip()
                                 
                                 if excel_doctor_name_from_row == res['name']:
-                                    matched_doctors.append(res)
-                                    found_match = True
-                                    break 
-                        if found_match:
-                            break
-            
+                                    # 중복 체크 로직 추가
+                                    is_already_matched = any(d['name'] == res['name'] and d['department'] == res['department'] for d in matched_doctors)
+                                    if not is_already_matched:
+                                        matched_doctors.append(res)
+                                        
             if not matched_doctors:
                 st.info("현재 엑셀 파일에 등록된 진료가 있는 치과의사 계정이 없습니다.")
             else:
