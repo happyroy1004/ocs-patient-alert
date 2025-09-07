@@ -1393,62 +1393,62 @@ if st.session_state.get('login_mode') == 'admin_mode':
                                         
                                         found_matched_data = False
                                         doctor_info_db = doctor_users_ref.child(sanitize_path(res['email'])).get()
-                                        if doctor_info_db:
-                                            doctor_dept = doctor_info_db.get('department')
-                                            sheets_to_search = doctor_dept_to_sheet_map.get(doctor_dept, [doctor_dept])
-
-                                        if excel_data_dfs:
-                                            for sheet_name_excel_raw, df_sheet in excel_data_dfs.items():
-                                                excel_sheet_name_lower = sheet_name_excel_raw.strip().lower().replace(' ', '')
-                                                excel_sheet_department = None
-                                                for keyword, department_name in sorted(sheet_keyword_to_department_map.items(), key=lambda item: len(item[0]), reverse=True):
-                                                    if keyword.lower().replace(' ', '') in excel_sheet_name_lower:
-                                                        excel_sheet_department = department_name
-                                                        break
-                                                if not excel_sheet_department:
-                                                    continue
-                                                
-                                                for _, excel_row in df_sheet.iterrows():
-                                                    excel_doctor_name_from_row = str(excel_row.get('예약의사', '')).strip().replace("'", "").replace("‘", "").replace("’", "").strip()
-                                                    if excel_doctor_name_from_row == res['name'] and excel_sheet_department == res['department']:
-                                                        found_matched_data = True
-                                                        
-                                                        patient_name = excel_row.get('환자명', '이름 없음')
-                                                        pid = excel_row.get('진료번호', '번호 없음')
-                                                        department = res['department']
-                                                        
-                                                        # 👇 '예약일시'와 '예약시간'을 합쳐서 하나의 문자열로 만듭니다.
-                                                        reservation_date_str = excel_row.get('예약일시', '')
-                                                        reservation_time_str = excel_row.get('예약시간', '')
-                                                        patient_name = excel_row.get('환자명', '')
-                                                        patient_pid = excel_row.get('진료번호', '')
-                                                        department = excel_row.get('등록과', '')
-                                                        doctor_name = excel_row.get('예약의사', '')
-                                                        treatment_details = excel_row.get('진료내역', '')
-                                                        
-                                                        doctor_name = res['name']
-                                                        treatment_details = excel_row.get('진료내역', '정보 없음')
-                                                        
-                                                        # 합쳐진 문자열을 datetime 객체로 변환
-                                                        try:
-                                                            full_datetime_str = f"{str(reservation_date_str).strip()} {str(reservation_time_str).strip()}"
-                                                            reservation_datetime = datetime.datetime.strptime(full_datetime_str, '%Y/%m/%d %H:%M')
-                                                        except ValueError:
-                                                            st.warning(f"**{res['name']}** 치과의사의 '{patient_name}' 환자 예약일시 형식이 잘못되었습니다: {full_datetime_str}")
-                                                            continue
-                                                        event_prefix = "✨:" if is_daily else "?:"
-                                                        event_title = f"{event_prefix}{patient_name}({pid})"
-                                                        create_calendar_event(service, event_title, pid, department, reservation_datetime, doctor_name, treatment_details)
-                                            
-                                        if found_matched_data:
-                                            st.success(f"**{res['name']}**님 캘린더에 매칭된 모든 환자 일정을 추가했습니다.")
-                                        else:
-                                            st.warning(f"**{res['name']}** 치과의사의 매칭 데이터가 엑셀 파일에 없습니다.")
-                                    else:
-                                        st.warning(f"**{res['name']}**님은 Google Calendar 계정이 연동되지 않았습니다. 해당 사용자가 Google Calendar 탭에서 인증을 완료해야 합니다.")
-                                except Exception as e:
-                                    st.error(f"**{res['name']}**님에게 일정 추가 실패: {e}")    
+                                            if doctor_info_db:
+                                                doctor_dept = doctor_info_db.get('department')
+                                                sheets_to_search = doctor_dept_to_sheet_map.get(doctor_dept, [doctor_dept])
     
+                                            if excel_data_dfs:
+                                                for sheet_name_excel_raw, df_sheet in excel_data_dfs.items():
+                                                    excel_sheet_name_lower = sheet_name_excel_raw.strip().lower().replace(' ', '')
+                                                    excel_sheet_department = None
+                                                    for keyword, department_name in sorted(sheet_keyword_to_department_map.items(), key=lambda item: len(item[0]), reverse=True):
+                                                        if keyword.lower().replace(' ', '') in excel_sheet_name_lower:
+                                                            excel_sheet_department = department_name
+                                                            break
+                                                    if not excel_sheet_department:
+                                                        continue
+                                                    
+                                                    for _, excel_row in df_sheet.iterrows():
+                                                        excel_doctor_name_from_row = str(excel_row.get('예약의사', '')).strip().replace("'", "").replace("‘", "").replace("’", "").strip()
+                                                        if excel_doctor_name_from_row == res['name'] and excel_sheet_department == res['department']:
+                                                            found_matched_data = True
+                                                            
+                                                            patient_name = excel_row.get('환자명', '이름 없음')
+                                                            pid = excel_row.get('진료번호', '번호 없음')
+                                                            department = res['department']
+                                                            
+                                                            # 👇 '예약일시'와 '예약시간'을 합쳐서 하나의 문자열로 만듭니다.
+                                                            reservation_date_str = excel_row.get('예약일시', '')
+                                                            reservation_time_str = excel_row.get('예약시간', '')
+                                                            patient_name = excel_row.get('환자명', '')
+                                                            patient_pid = excel_row.get('진료번호', '')
+                                                            department = excel_row.get('등록과', '')
+                                                            doctor_name = excel_row.get('예약의사', '')
+                                                            treatment_details = excel_row.get('진료내역', '')
+                                                            
+                                                            doctor_name = res['name']
+                                                            treatment_details = excel_row.get('진료내역', '정보 없음')
+                                                            
+                                                            # 합쳐진 문자열을 datetime 객체로 변환
+                                                            try:
+                                                                full_datetime_str = f"{str(reservation_date_str).strip()} {str(reservation_time_str).strip()}"
+                                                                reservation_datetime = datetime.datetime.strptime(full_datetime_str, '%Y/%m/%d %H:%M')
+                                                            except ValueError:
+                                                                st.warning(f"**{res['name']}** 치과의사의 '{patient_name}' 환자 예약일시 형식이 잘못되었습니다: {full_datetime_str}")
+                                                                continue
+                                                            event_prefix = "✨:" if is_daily else "?:"
+                                                            event_title = f"{event_prefix}{patient_name}({pid})"
+                                                            create_calendar_event(service, event_title, pid, department, reservation_datetime, doctor_name, treatment_details)
+                                                
+                                            if found_matched_data:
+                                                st.success(f"**{res['name']}**님 캘린더에 매칭된 모든 환자 일정을 추가했습니다.")
+                                            else:
+                                                st.warning(f"**{res['name']}** 치과의사의 매칭 데이터가 엑셀 파일에 없습니다.")
+                                        else:
+                                            st.warning(f"**{res['name']}**님은 Google Calendar 계정이 연동되지 않았습니다. 해당 사용자가 Google Calendar 탭에서 인증을 완료해야 합니다.")
+                                    except Exception as e:
+                                        st.error(f"**{res['name']}**님에게 일정 추가 실패: {e}")    
+        
     st.markdown("---")
     st.subheader("🛠️ Administer password")
     admin_password_input = st.text_input("관리자 비밀번호를 입력하세요", type="password", key="admin_password")
