@@ -1393,9 +1393,9 @@ if st.session_state.get('login_mode') == 'admin_mode':
                                         
                                         found_matched_data = False
                                         doctor_info_db = doctor_users_ref.child(sanitize_path(res['email'])).get()
-                                            if doctor_info_db:
-                                                doctor_dept = doctor_info_db.get('department')
-                                                sheets_to_search = doctor_dept_to_sheet_map.get(doctor_dept, [doctor_dept])
+                                        if doctor_info_db:
+                                            doctor_dept = doctor_info_db.get('department')
+                                            sheets_to_search = doctor_dept_to_sheet_map.get(doctor_dept, [doctor_dept])
     
                                             if excel_data_dfs:
                                                 for sheet_name_excel_raw, df_sheet in excel_data_dfs.items():
