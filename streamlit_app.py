@@ -1184,7 +1184,7 @@ if st.session_state.get('login_mode') == 'admin_mode':
                                             except ValueError as e:
                                                 st.error(f"❌ {patient_name} 환자의 날짜/시간 형식 파싱 최종 실패: {e}. 일정 추가를 건너뜁니다.")
                                                 continue
-                                            event_prefix = "✨ 내원 : " if is_daily else "내원? : "
+                                            event_prefix = "✨ 내원 : " if is_daily else "❓내원 : "
                                             
                                             event_title = f"{event_prefix}{patient_name} ({department}, {doctor_name})"
                                             event_description = f"환자명 : {patient_name}\n진료번호 : {patient_pid}\n진료내역 : {treatment_details}"
