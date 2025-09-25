@@ -1310,7 +1310,7 @@ if st.session_state.get('login_mode') == 'admin_mode':
                                                 
                                     if matched_rows_for_doctor:
                                         df_matched = pd.DataFrame(matched_rows_for_doctor)
-                                        reservation_date = df_matched.iloc[0].get('예약일시', '날짜 미정')
+                                        reservation_date = df_matched.iloc[0].get('예약일시', '달신 전 조사')
                                         
                                         # --- 🐛 오류 수정: 필요한 컬럼이 존재하는지 확인하고 DataFrame 구성 ---
                                         email_cols = ['환자명', '진료번호', '예약의사', '진료내역', '예약일시', '예약시간']
