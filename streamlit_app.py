@@ -1310,7 +1310,8 @@ if st.session_state.get('login_mode') == 'admin_mode':
                                                 
                                     if matched_rows_for_doctor:
                                         df_matched = pd.DataFrame(matched_rows_for_doctor)
-                                        reservation_date = df_matched.iloc[0].get('예약일시', '달신 전 조사')
+                                        reservation_date = df_matched.iloc[0].get('예약일시', '날짜 미정')
+                                        latest_file_name = db.reference("ocs_analysis/latest_file_name").get()
                                         
                                         # --- 🐛 오류 수정: 필요한 컬럼이 존재하는지 확인하고 DataFrame 구성 ---
                                         email_cols = ['환자명', '진료번호', '예약의사', '진료내역', '예약일시', '예약시간']
@@ -1321,12 +1322,12 @@ if st.session_state.get('login_mode') == 'admin_mode':
 
                                         email_body = f"""
                                         <p>안녕하세요, {res['name']} 치과의사님.</p>
-                                        <p>{reservation_date}에 내원할 환자 정보입니다.</p>
+                                        <p>{latest_file_name}에서 가져온 내원할 환자 정보입니다.</p>
                                         {df_html}
                                         <p>확인 부탁드립니다.</p>
                                         """
                                         try:
-                                            send_email(receiver=res['email'], rows=df_matched.to_dict('records'), sender=st.secrets["gmail"]["sender"], password=st.secrets["gmail"]["app_password"], custom_message=email_body, date_str=reservation_date)
+                                            send_email(receiver=res['email'], rows=df_matched.to_dict('records'), sender=st.secrets["gmail"]["sender"], password=st.secrets["gmail"]["app_password"], custom_message=email_body, date_str=latest_file_name)
                                             st.success(f"**{res['name']}**님에게 환자 정보 메일 전송 완료!")
                                         except Exception as e:
                                             st.error(f"**{res['name']}**님에게 메일 전송 실패: {e}")
