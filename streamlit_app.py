@@ -1128,7 +1128,9 @@ if st.session_state.get('login_mode') == 'admin_mode':
                             user_name = user_match_info['name']
                             if not df_matched.empty:
                                 reservation_date = df_matched.iloc[0].get('예약일시', '날짜 미정')
-                                email_subject = f"내원 알림: {reservation_date} 치과 예약 정보"
+                                latest_file_name = db.reference("ocs_analysis/latest_file_name").get()
+                                email_subject = f"내원 알림: {latest_file_name} 치과 예약 정보"
+                                
                                 
                                 # --- 🐛 오류 수정: 필요한 컬럼이 존재하는지 확인하고 DataFrame 구성 ---
                                 # 모든 시트에 예약일시, 예약시간이 없을 수 있으므로 이메일 전송 직전에 컬럼 존재 여부 확인
@@ -1140,7 +1142,7 @@ if st.session_state.get('login_mode') == 'admin_mode':
                                 
                                 email_body = f"""
                                 <p>안녕하세요, {user_name}님.</p>
-                                <p>{reservation_date}에 내원 예정인 환자 진료 정보입니다.</p>
+                                <p>{latest_file_name}분석 결과, 내원 예정인 환자 진료 정보입니다.</p>
                                 {df_html}
                                 <p>확인 부탁드립니다.</p>
                                 """
