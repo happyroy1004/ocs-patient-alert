@@ -472,6 +472,19 @@ if 'google_calendar_auth_needed' not in st.session_state:
     st.session_state.google_calendar_auth_needed = False
 if 'google_creds' not in st.session_state:
     st.session_state['google_creds'] = {}
+if "clear" in st.query_params and st.query_params["clear"] == "true":
+    st.session_state.clear()
+    st.query_params["clear"] = "false"
+    st.rerun()
+if 'email_change_mode' not in st.session_state:
+    st.session_state.email_change_mode = False
+# ... (다른 기존 초기화 코드) ...
+if 'google_creds' not in st.session_state:
+    st.session_state['google_creds'] = {}
+# 💡 여기에 'auto_run_confirmed' 플래그를 추가합니다.
+if 'auto_run_confirmed' not in st.session_state:
+    # 초기에는 None으로 설정하여, 사용자가 '자동' 또는 '수동'을 선택하기 전임을 나타냅니다.
+    st.session_state.auto_run_confirmed = None 
 
 users_ref = db.reference("users")
 doctor_users_ref = db.reference("doctor_users")
