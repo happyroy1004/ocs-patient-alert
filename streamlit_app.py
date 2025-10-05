@@ -1089,3 +1089,391 @@ if st.session_state.get('login_mode') == 'admin_mode':
             # ... (사용자 관리 탭 로직은 그대로 유지) ...
             
     elif admin_password_input and admin_password_input != secret_admin_password: st.error("비밀번호가 틀렸습니다."); st.session_state.admin_password_correct = False
+
+
+
+# --- 8. Regular User Mode ---
+# --- 일반 사용자 & 치과의사 모드 ---
+import streamlit as st
+import pandas as pd
+import io
+import re
+                        
+if st.session_state.get('login_mode') in ['user_mode', 'new_user_registration', 'doctor_mode', 'new_doctor_registration', 'doctor_name_input']:
+    user_name = st.session_state.get('current_user_name', "")
+    user_id_final = st.session_state.get('found_user_email', "")
+    firebase_key = st.session_state.get('current_firebase_key', "")
+    user_role = st.session_state.get('current_user_role', 'user')
+    
+    # 올바른 데이터베이스 참조를 결정
+    if user_role == 'doctor':
+        target_users_ref = doctor_users_ref
+    else:
+        target_users_ref = users_ref
+    
+    if firebase_key: # firebase_key가 있을 때만 이 코드를 실행합니다.
+        
+        # 이메일 주소 변경 기능으로 인해 유저 정보가 바뀔 수 있으므로 매번 업데이트
+        if not st.session_state.get('email_change_mode'):
+            current_user_meta_data = target_users_ref.child(firebase_key).get()
+            if not current_user_meta_data or current_user_meta_data.get("name") != user_name or current_user_meta_data.get("email") != user_id_final:
+                # name, email을 업데이트 (다른 필드는 유지)
+                update_data = {"name": user_name, "email": user_id_final}
+                target_users_ref.child(firebase_key).update(update_data)
+                # st.success(f"사용자 정보가 업데이트되었습니다: {user_name} ({user_id_final})")
+            st.session_state.current_firebase_key = firebase_key
+            st.session_state.current_user_name = user_name
+            st.session_state.found_user_email = user_id_final
+            st.session_state.current_user_role = user_role
+
+        if not user_name or not user_id_final:
+            st.info("내원 알람 노티를 받을 이메일 주소와 사용자 이름을 입력해주세요.")
+            st.stop()
+    
+        if st.session_state.get('login_mode') == 'doctor_mode' or st.session_state.get('login_mode') == 'new_doctor_registration':
+            st.header(f"🧑‍⚕️Dr. {user_name}")
+            st.subheader("🗓️ Google Calendar 연동")
+            st.info("구글 캘린더와 연동하여 내원 일정을 자동으로 등록할 수 있습니다.")
+
+            if 'google_calendar_service' not in st.session_state:
+                st.session_state.google_calendar_service = None
+            
+            # firebase_key가 존재할 때만 함수를 호출하도록 수정
+            if firebase_key:
+                try:
+                    google_calendar_service = get_google_calendar_service(firebase_key)
+                    st.session_state.google_calendar_service = google_calendar_service
+                except Exception as e:
+                    st.error(f"❌ Google Calendar 서비스 로딩에 실패했습니다: {e}")
+                    st.info("로그인/인증 정보가 올바른지 확인해주세요.")
+                    st.session_state.google_calendar_service = None
+
+            if st.session_state.google_calendar_service:
+                st.success("✅ 캘린더 추가 기능이 허용되어 있습니다.")
+            else:
+                pass
+
+            st.markdown("---")
+            st.header("🔑 비밀번호 변경")
+            new_password = st.text_input("새 비밀번호를 입력하세요", type="password", key="res_new_password_input")
+            confirm_password = st.text_input("새 비밀번호를 다시 입력하세요", type="password", key="res_confirm_password_input")
+            
+            if st.button("비밀번호 변경", key="res_password_change_btn"):
+                if not new_password or not confirm_password:
+                    st.error("새 비밀번호와 확인용 비밀번호를 모두 입력해주세요.")
+                elif new_password != confirm_password:
+                    st.error("새 비밀번호가 일치하지 않습니다. 다시 확인해주세요.")
+                else:
+                    try:
+                        doctor_users_ref.child(st.session_state.current_firebase_key).update({"password": new_password})
+                        st.success("🎉 비밀번호가 성공적으로 변경되었습니다!")
+                    except Exception as e:
+                        st.error(f"비밀번호 변경 중 오류가 발생했습니다: {e}")
+            
+        elif st.session_state.get('login_mode') in ['user_mode', 'new_user_registration']:
+            patients_ref_for_user = db.reference(f"patients/{firebase_key}")
+
+            registration_tab, analysis_tab = st.tabs(['✅ 환자 등록 및 관리', '📈 OCS 분석 결과'])
+        
+            with registration_tab:
+                st.subheader("Google Calendar 연동")
+                st.info("환자 등록 시 입력된 이메일 계정의 구글 캘린더에 자동으로 일정이 추가됩니다.")
+                if 'google_calendar_service' not in st.session_state:
+                    st.session_state.google_calendar_service = None
+                
+                try:
+                    google_calendar_service = get_google_calendar_service(firebase_key)
+                    st.session_state.google_calendar_service = google_calendar_service
+                except Exception as e:
+                    st.error(f"❌ Google Calendar 서비스 로딩에 실패했습니다: {e}")
+                    st.session_state.google_calendar_service = None
+        
+                if st.session_state.google_calendar_service:
+                    st.success("✅ 캘린더 추가 기능이 허용되어 있습니다.")
+                else:
+                    pass
+        
+                st.markdown("---")
+                st.subheader(f"{user_name}님의 토탈 환자 목록")
+                existing_patient_data = patients_ref_for_user.get()
+        
+                if existing_patient_data:
+                    patient_list = list(existing_patient_data.items())
+                    # 유효성 검사: 데이터가 딕셔너리 형태가 아닌 손상된 데이터를 제거
+                    valid_patient_list = [item for item in patient_list if isinstance(item[1], dict)]
+                    # --- [핵심 변경: 진료과 플래그 우선순위 정렬] ---
+                    # 1. 소치(0) > 보철(1) > 내과(2) > 교정(3) 순서로 높은 우선순위를 부여
+                    # 2. 동일 우선순위 내에서는 환자이름 순으로 정렬
+                    sorted_patient_list = sorted(valid_patient_list, key=lambda item: (
+                        0 if item[1].get('소치', False) else
+                        1 if item[1].get('외과', False) else
+                        2 if item[1].get('내과', False) else
+                        3 if item[1].get('교정', False) else
+                        4 if item[1].get('보철', False) else
+                        5, # 나머지 과목 (원진실, 보존 등)은 4순위로 밀립니다.
+                        item[1].get('환자이름', 'zzz')
+                    ))
+                    cols_count = 3
+                    cols = st.columns(cols_count)
+        
+                    for idx, (pid_key, val) in enumerate(sorted_patient_list): # pid_key가 환자번호
+                        with cols[idx % cols_count]:
+                            with st.container(border=True):
+                                info_col, btn_col = st.columns([4, 1])
+                                with info_col:
+                                    # True인 진료과만 추출하여 표시
+                                    registered_depts = [
+                                        dept.capitalize() 
+                                        for dept in PATIENT_DEPT_FLAGS + ['보존', '치주', '원진실'] # 모든 가능한 과
+                                        if val.get(dept.lower()) is True or val.get(dept.lower()) == 'True' or val.get(dept.lower()) == 'true'
+                                    ]
+
+                                    depts_str = ", ".join(registered_depts) if registered_depts else "미지정"
+                                    
+                                    st.markdown(f"**{val.get('환자이름', '이름 없음')}** / {pid_key} / {depts_str}") # pid_key는 진료번호
+                                with btn_col:
+                                    if st.button("X", key=f"delete_button_{pid_key}"): # pid_key 사용
+                                        patients_ref_for_user.child(pid_key).delete()
+                                        st.rerun()
+                else:
+                    st.info("등록된 환자가 없습니다.")
+                st.markdown("---")
+
+                # --- 환자 정보 대량 등록 섹션 추가 (구조 변경 반영) ---
+                st.subheader("📋 환자 정보 대량 등록")
+                st.markdown("엑셀에서 **환자명, 진료번호, 등록과** 순서의 데이터를 그대로 붙여넣어주세요.")
+                st.markdown("예시: 홍길동	1046769	보존")
+                st.markdown(f"등록 가능 과: {', '.join(DEPARTMENTS_FOR_REGISTRATION)}")
+                
+                
+                paste_area = st.text_area("", height=200, placeholder="여기에 엑셀 데이터를 붙여넣으세요.")
+                
+                if st.button("붙여넣은 환자 등록"):
+                    if paste_area:
+                        try:
+                            data_io = io.StringIO(paste_area)
+                            
+                            # header=None으로 헤더가 없음을 명시하고, names로 열 이름을 수동 지정
+                            df = pd.read_csv(data_io, sep='\s+', header=None, names=['환자명', '진료번호', '등록과'])
+                            
+                            # 기존 환자 데이터 가져오기
+                            existing_patient_data = patients_ref_for_user.get()
+                            if not existing_patient_data:
+                                existing_patient_data = {}
+                            
+                            success_count = 0
+                            for index, row in df.iterrows():
+                                name = str(row["환자명"]).strip()
+                                pid = str(row["진료번호"]).strip()
+                                department = str(row["등록과"]).strip()
+                                
+                                if not name or not pid or not department:
+                                    st.warning(f"{index+1}번째 행: 정보가 누락되어 건너킵니다.")
+                                    continue
+                                
+                                pid_key = pid.strip() # 진료번호를 키로 사용
+                                dept_key_lower = department.lower()
+                                
+                                # 1. 새 데이터 딕셔너리 생성 및 초기화 (환자이름, 진료번호, 5개 진료과 플래그)
+                                # 기존 데이터가 있으면 불러와서 업데이트
+                                new_patient_data = existing_patient_data.get(pid_key, {
+                                    "환자이름": name,
+                                    "진료번호": pid # 키로 사용되지만 데이터 내부에도 포함
+                                })
+                                
+                                # 진료과 플래그 초기화 및 업데이트 (기존 데이터와 병합)
+                                for dept_flag in PATIENT_DEPT_FLAGS + ['보존', '치주', '원진실']: # 모든 가능한 과 플래그 초기화
+                                    lower_dept = dept_flag.lower()
+                                    if lower_dept not in new_patient_data:
+                                        new_patient_data[lower_dept] = False
+
+                                # 2. 등록과에 해당하는 플래그 True로 설정
+                                if dept_key_lower in new_patient_data:
+                                    new_patient_data[dept_key_lower] = True
+                                else:
+                                    st.warning(f"{name} ({pid}): 알 수 없는 진료과 '{department}'가 입력되었습니다. 플래그를 설정하지 않습니다.")
+
+                                # 3. 환자번호(pid)를 키로 사용하여 데이터 저장 (덮어쓰기/업데이트)
+                                patients_ref_for_user.child(pid_key).set(new_patient_data) # <--- **핵심 변경점**
+                                success_count += 1
+                                st.success(f"{name} ({pid}) [{department}] 환자 등록/업데이트 완료")
+                                
+                            
+                            if success_count > 0:
+                                st.success(f"총 {success_count}명의 환자 정보 등록/업데이트가 완료되었습니다.")
+                            st.rerun()
+                            
+                        except pd.errors.ParserError:
+                            st.error("잘못된 형식입니다. 엑셀이나 구글 스프레드시트의 표를 복사하여 붙여넣었는지 확인해주세요. 데이터 구분자가 탭(Tab)이어야 합니다.")
+                        except Exception as e:
+                            st.error(f"예상치 못한 오류: {e}")
+                    else:
+                        st.warning("붙여넣을 환자 정보가 없습니다.")
+                        
+                st.markdown("---")
+        
+                # --- 환자 정보 일괄 삭제 섹션 추가 (구조 변경 반영) ---
+                st.subheader("🗑️ 환자 정보 일괄 삭제")
+                
+                if 'delete_patient_confirm' not in st.session_state:
+                    st.session_state.delete_patient_confirm = False
+                if 'patients_to_delete' not in st.session_state:
+                    st.session_state.patients_to_delete = []
+                if 'select_all_mode' not in st.session_state:
+                    st.session_state.select_all_mode = False
+                
+                all_patients_meta = patients_ref_for_user.get()
+                patient_list_for_dropdown = []
+                patient_key_map = {}
+                
+                if all_patients_meta:
+                    for pid_key, value in all_patients_meta.items(): # pid_key는 진료번호
+                        # True인 진료과를 모두 추출하여 표시
+                        registered_depts = [
+                            dept.capitalize() 
+                            for dept in PATIENT_DEPT_FLAGS + ['보존', '치주', '원진실'] # 모든 가능한 과
+                            if value.get(dept.lower()) is True or value.get(dept.lower()) == 'True' or value.get(dept.lower()) == 'true'
+                        ]
+                        depts_str = ", ".join(registered_depts) if registered_depts else "미지정"
+                        
+                        display_text = f"{value.get('환자이름', '이름 없음')} ({pid_key}) [{depts_str}]"
+                        patient_list_for_dropdown.append(display_text)
+                        patient_key_map[display_text] = pid_key # key가 이제 진료번호
+                
+                # "전체 선택" 버튼 추가
+                if st.button("전체 환자 선택/해제", key="select_all_patients_button"):
+                    st.session_state.select_all_mode = not st.session_state.select_all_mode # 상태 토글
+                    st.rerun()
+                
+                # '전체 선택' 모드에 따라 multiselect의 기본값 설정
+                default_selection = patient_list_for_dropdown if st.session_state.select_all_mode else []
+                
+                if not st.session_state.delete_patient_confirm:
+                    patients_to_delete_multiselect = st.multiselect(
+                        "삭제할 환자 선택",
+                        patient_list_for_dropdown,
+                        default=default_selection, # 기본값 설정
+                        key="delete_patient_multiselect"
+                    )
+                
+                    if st.button("선택한 환자 삭제", key="delete_patient_button"):
+                        if patients_to_delete_multiselect:
+                            st.session_state.delete_patient_confirm = True
+                            st.session_state.patients_to_delete = patients_to_delete_multiselect
+                            st.session_state.select_all_mode = False # 삭제 버튼 클릭 시 전체 선택 모드 초기화
+                            st.rerun()
+                        else:
+                            st.warning("삭제할 환자를 선택해주세요.")
+                else:
+                    st.warning("정말로 선택한 환자를 삭제하시겠습니까? 이 작업은 되돌릴 수 없습니다.")
+                    col1, col2 = st.columns(2)
+                    with col1:
+                        if st.button("예, 삭제합니다", key="confirm_delete_patient"):
+                            with st.spinner('삭제 중...'):
+                                for patient_to_del_str in st.session_state.patients_to_delete:
+                                    patient_key_to_del = patient_key_map.get(patient_to_del_str) # patient_key_to_del은 이제 진료번호
+                                    if patient_key_to_del:
+                                        patients_ref_for_user.child(patient_key_to_del).delete()
+                                
+                                st.success(f"선택한 환자 {st.session_state.patients_to_delete} 삭제 완료.")
+                                st.session_state.delete_patient_confirm = False
+                                st.session_state.patients_to_delete = []
+                                st.rerun()
+                    with col2:
+                        if st.button("아니오, 취소합니다", key="cancel_delete_patient"):
+                            st.session_state.delete_patient_confirm = False
+                            st.session_state.patients_to_delete = []
+                            st.rerun()
+                
+                st.markdown("---")
+        
+                with st.form("register_form"):
+                    name = st.text_input("환자명")
+                    pid = st.text_input("진료번호")
+                    
+                    # --- [핵심 변경: 다중 선택으로 변경] ---
+                    selected_departments = st.multiselect("등록할 진료과 (복수 선택 가능)", DEPARTMENTS_FOR_REGISTRATION)
+                    submitted = st.form_submit_button("등록")
+                    
+                    if submitted:
+                        if not name or not pid or not selected_departments:
+                            st.warning("환자명, 진료번호, 등록할 진료과를 모두 입력/선택해주세요.")
+                        else:
+                            pid_key = pid.strip()
+                            
+                            # 기존 데이터 불러오기 (없으면 새로 생성)
+                            new_patient_data = existing_patient_data.get(pid_key, {
+                                "환자이름": name,
+                                "진료번호": pid # 키로 사용되지만 데이터 내부에도 포함
+                            })
+                            
+                            # 기존에 저장된 모든 진료과 플래그를 False로 초기화 (선택되지 않은 과)
+                            for dept_flag in PATIENT_DEPT_FLAGS + ['보존', '치주', '원진실']:
+                                lower_dept = dept_flag.lower()
+                                new_patient_data[lower_dept] = False
+
+                            # 선택된 진료과만 True로 설정
+                            for dept in selected_departments:
+                                dept_key_lower = dept.lower()
+                                if dept_key_lower in new_patient_data:
+                                    new_patient_data[dept_key_lower] = True
+                                
+                            # 진료번호를 키로 사용하여 데이터 저장 (덮어쓰기/업데이트)
+                            patients_ref_for_user.child(pid_key).set(new_patient_data) # <--- **핵심 변경점**
+                            st.success(f"{name} ({pid}) [{', '.join(selected_departments)}] 환자 등록/업데이트 완료")
+                            st.rerun()
+
+
+            
+            with analysis_tab:
+                st.header("📈 OCS 분석 결과")
+                analysis_results = db.reference("ocs_analysis/latest_result").get()
+                latest_file_name = db.reference("ocs_analysis/latest_file_name").get()
+
+                if analysis_results and latest_file_name:
+                    st.markdown(f"**<h3 style='text-align: left;'>{latest_file_name} 분석 결과</h3>**", unsafe_allow_html=True)
+                    st.markdown("---")
+                    
+                    if '소치' in analysis_results:
+                        st.subheader("소아치과 현황 (단타)")
+                        st.info(f"오전: **{analysis_results['소치']['오전']}명**")
+                        st.info(f"오후: **{analysis_results['소치']['오후']}명**")
+                    else:
+                        st.warning("소아치과 데이터가 엑셀 파일에 없습니다.")
+                    st.markdown("---")
+                    
+                    if '보존' in analysis_results:
+                        st.subheader("보존과 현황 (단타)")
+                        st.info(f"오전: **{analysis_results['보존']['오전']}명**")
+                        st.info(f"오후: **{analysis_results['보존']['오후']}명**")
+                    else:
+                        st.warning("보존과 데이터가 엑셀 파일에 없습니다.")
+                    st.markdown("---")
+
+                    if '교정' in analysis_results:
+                        st.subheader("교정과 현황 (Bonding)")
+                        st.info(f"오전: **{analysis_results['교정']['오전']}명**")
+                        st.info(f"오후: **{analysis_results['교정']['오후']}명**")
+                    else:
+                        st.warning("교정과 데이터가 엑셀 파일에 없습니다.")
+                    st.markdown("---")
+                else:
+                    st.info("💡 분석 결과가 없습니다. 관리자가 엑셀 파일을 업로드하면 표시됩니다.")
+                    
+                
+                st.divider()
+                st.header("🔑 비밀번호 변경")
+                new_password = st.text_input("새 비밀번호를 입력하세요", type="password", key="user_new_password_input")
+                confirm_password = st.text_input("새 비밀번호를 다시 입력하세요", type="password", key="user_confirm_password_input")
+                
+                if st.button("비밀번호 변경", key="user_password_change_btn"):
+                    if not new_password or not confirm_password:
+                        st.error("새 비밀번호와 확인용 비밀번호를 모두 입력해주세요.")
+                    elif new_password != confirm_password:
+                        st.error("새 비밀번호가 일치하지 않습니다. 다시 확인해주세요.")
+                    else:
+                        try:
+                            users_ref.child(st.session_state.current_firebase_key).update({"password": new_password})
+                            st.success("🎉 비밀번호가 성공적으로 변경되었습니다!")
+                        except Exception as e:
+                            st.error(f"비밀번호 변경 중 오류가 발생했습니다: {e}")
