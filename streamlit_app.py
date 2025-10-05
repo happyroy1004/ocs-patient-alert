@@ -28,7 +28,7 @@ import base64
 # 환자 데이터의 진료과 플래그 키 목록
 PATIENT_DEPT_FLAGS = ["보철", "외과", "내과", "소치", "교정"]
 # 등록 시 선택할 수 있는 모든 진료과 (기존과 동일하게 사용)
-DEPARTMENTS_FOR_REGISTRATION = ["교정", "내과", "보존", "보철", "소치", "외과", "치주", "원진실"]
+DEPARTMENTS_FOR_REGISTRATION = ["교정", "내과", "보존", "보철", "소치", "외과", "원진실"]
 
 # --- 1. Imports, Validation Functions, and Firebase Initialization ---
 
