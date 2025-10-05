@@ -160,6 +160,105 @@ def load_google_creds_from_firebase(user_id_safe):
         st.error(f"Failed to load Google credentials: {e}")
         return None
 
+# 수정 코드 (Revised Code)
+def get_google_calendar_service(user_id_safe):
+    """
+    사용자별로 Google Calendar 서비스 객체를 반환하거나 인증 URL을 표시합니다.
+    """
+    creds = st.session_state.get(f"google_creds_{user_id_safe}")
+    
+    if not creds:
+        creds = load_google_creds_from_firebase(user_id_safe)
+        if creds:
+            st.session_state[f"google_creds_{user_id_safe}"] = creds
+
+    # secrets.toml에서 클라이언트 설정 불러오기
+    client_config = {
+        "web": {
+            "client_id": st.secrets["google_calendar"]["client_id"],
+            "client_secret": st.secrets["google_calendar"]["client_secret"],
+            "redirect_uris": [st.secrets["google_calendar"]["redirect_uri"]],
+            "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+            "token_uri": "https://oauth2.googleapis.com/token",
+            "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs"
+        }
+    }
+    
+    # 인증 플로우 생성
+    flow = InstalledAppFlow.from_client_config(client_config, SCOPES, redirect_uri=st.secrets["google_calendar"]["redirect_uri"])
+    
+    if not creds:
+        auth_code = st.query_params.get("code")
+        
+        if auth_code:
+            # 인증 코드를 사용하여 토큰을 교환
+            flow.fetch_token(code=auth_code)
+            creds = flow.credentials
+            st.session_state[f"google_creds_{user_id_safe}"] = creds
+            # Store credentials in Firebase
+            save_google_creds_to_firebase(user_id_safe, creds)
+            st.success("Google Calendar 인증이 완료되었습니다.")
+            st.query_params.clear()
+            st.rerun()
+        else:
+            auth_url, _ = flow.authorization_url(prompt='consent')
+            st.warning("Google Calendar 연동을 위해 인증이 필요합니다. 아래 링크를 클릭하여 권한을 부여하세요.")
+            st.markdown(f"**[Google Calendar 인증 링크]({auth_url})**")
+            return None
+
+    if creds.expired and creds.refresh_token:
+        creds.refresh(Request())
+        st.session_state[f"google_creds_{user_id_safe}"] = creds
+        # Update credentials in Firebase
+        save_google_creds_to_firebase(user_id_safe, creds)
+
+    try:
+        service = build('calendar', 'v3', credentials=creds)
+        return service
+    except HttpError as error:
+        st.error(f'Google Calendar 서비스 생성 실패: {error}')
+        st.session_state.pop(f"google_creds_{user_id_safe}", None)
+        # Clear invalid credentials from Firebase
+        db.reference(f"users/{user_id_safe}/google_creds").delete()
+        return None
+
+def create_calendar_event(service, patient_name, pid, department, reservation_datetime, doctor_name, treatment_details):
+    """
+    Google Calendar에 단일 이벤트를 생성합니다.
+    """
+    seoul_tz = datetime.timezone(datetime.timedelta(hours=9))
+
+    # reservation_datetime 객체를 사용합니다.
+    event_start = reservation_datetime.replace(tzinfo=seoul_tz)
+    event_end = event_start + datetime.timedelta(minutes=30)
+    
+    # 두 개의 요약(summary) 정보를 하나로 합칩니다.
+    summary_text = f'{patient_name}' 
+    
+    # 캘린더 이벤트에 필요한 모든 정보를 한 번에 정의합니다.
+    event = {
+        'summary': summary_text,
+        'location': pid,
+        'description': f"{treatment_details}\n",
+        'start': {
+            'dateTime': event_start.isoformat(),
+            'timeZone': 'Asia/Seoul',
+        },
+        'end': {
+            'dateTime': event_end.isoformat(),
+            'timeZone': 'Asia/Seoul',
+        },
+    }
+
+    try:
+        event = service.events().insert(calendarId='primary', body=event).execute()
+        st.success(f"'{patient_name}' 환자의 캘린더 일정이 추가되었습니다.")
+    except HttpError as error:
+        st.error(f"캘린더 이벤트 생성 중 오류 발생: {error}")
+        st.warning("구글 캘린더 인증 권한을 다시 확인해주세요.")
+    except Exception as e:
+        st.error(f"알 수 없는 오류 발생: {e}")
+        
 # --- OCS 분석 관련 함수 추가 ---
 
 # 엑셀 파일 암호화 여부 확인 (load_excel에서 사용)
