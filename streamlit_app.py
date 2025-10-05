@@ -462,7 +462,7 @@ def run_auto_notifications(matched_users, matched_doctors, excel_data_dfs, file_
             
             if matched_rows_for_doctor:
                 df_matched = pd.DataFrame(matched_rows_for_doctor); latest_file_name = db.reference("ocs_analysis/latest_file_name").get()
-                 email_cols = ['환자명', '진료번호', '예약의사', '진료내역', '예약일시', '예약시간']; 
+                email_cols = ['환자명', '진료번호', '예약의사', '진료내역', '예약일시', '예약시간']; 
                 # df_for_mail 생성 (이메일에 필요한 컬럼만 선택)
                 df_for_mail = df_matched[[col for col in email_cols if col in df_matched.columns]]
                 
