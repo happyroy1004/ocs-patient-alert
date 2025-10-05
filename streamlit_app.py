@@ -1321,7 +1321,9 @@ if st.session_state.get('login_mode') in ['user_mode', 'new_user_registration', 
                         2 if item[1].get('내과', False) else
                         3 if item[1].get('교정', False) else
                         4 if item[1].get('보철', False) else
-                        5, # 나머지 과목 (원진실, 보존 등)은 4순위로 밀립니다.
+                        5 if item[1].get('원진실', False) else
+                        6 if item[1].get('보존', False) else
+                        7, 
                         item[1].get('환자이름', 'zzz')
                     ))
                     cols_count = 3
