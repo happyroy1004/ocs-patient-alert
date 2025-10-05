@@ -40,6 +40,72 @@ def is_valid_email(email):
     email_regex = r"^[a-zA-Z0-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$"
     return re.match(email_regex, email) is not None
 
+# 이메일 전송 함수
+def send_email(receiver, rows, sender, password, date_str=None, custom_message=None):
+    # rows는 사용되지 않으므로 제거
+    try:
+        msg = MIMEMultipart()
+        msg['From'] = sender
+        msg['To'] = receiver
+
+        if custom_message:
+            msg['Subject'] = "단체 메일 알림" if date_str is None else f"[치과 내원 알림] {date_str} 예약 내역"
+            body = custom_message
+        else:
+            subject_prefix = ""
+            if date_str:
+                subject_prefix = f"{date_str}일에 내원하는 "
+            msg['Subject'] = f"{subject_prefix}등록 환자 내원 알림"
+            
+            # rows가 dict의 리스트일 경우 (매칭 환자 데이터)
+            if rows is not None and isinstance(rows, list):
+                # DataFrame으로 변환하여 HTML 테이블 생성
+                rows_df = pd.DataFrame(rows)
+                html_table = rows_df.to_html(index=False, escape=False)
+                
+                style = """
+                <style>
+                table {
+                    width: 100%; max-width: 100%;
+                    border-collapse: collapse;
+                    font-family: Arial, sans-serif;
+                    font-size: 14px;
+                    table-layout: fixed;
+                }
+                th, td {
+                    border: 1px solid #dddddd; text-align: left;
+                    padding: 8px;
+                    vertical-align: top;
+                    word-wrap: break-word;
+                    word-break: break-word;
+                }
+                th {
+                    background-color: #f2f2f2; font-weight: bold;
+                    white-space: nowrap;
+                }
+                tr:nth-child(even) {
+                    background-color: #f9f9f9;
+                }
+                .table-container {
+                    overflow-x: auto; -webkit-overflow-scrolling: touch;
+                }
+                </style>
+                """
+                body = f"다음 토탈 환자가 내일 내원예정입니다:<br><br><div class='table-container'>{style}{html_table}</div>"
+            else:
+                 body = "내원 환자 정보가 없습니다."
+
+        msg.attach(MIMEText(body, 'html'))
+        
+        server = smtplib.SMTP('smtp.gmail.com', 587)
+        server.starttls()
+        server.login(sender, password)
+        server.send_message(msg)
+        server.quit()
+        return True
+    except Exception as e:
+        return str(e)
+        
 # Firebase 초기화
 if not firebase_admin._apps:
     try:
