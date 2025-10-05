@@ -241,39 +241,37 @@ def create_calendar_event(service, patient_name, pid, department, reservation_da
 
 SCOPES = ["https://www.googleapis.com/auth/calendar.events"]
 
-# 수정 코드 (Revised Code)
 def get_google_calendar_service(user_id_safe):
     """
-    사용자별로 Google Calendar 서비스 객체를 반환하거나 인증 URL을 표시합니다.
+    사용자별로 Google Calendar 서비스 객체를 반환합니다. 
+    인증 정보가 없거나 유효하지 않으면 None을 반환합니다.
     """
+    # 1. 세션 상태에서 Creds 로드 시도
     creds = st.session_state.get(f"google_creds_{user_id_safe}")
     
+    # 2. 세션에 없으면 Firebase에서 로드 및 세션에 저장
     if not creds:
+        # **인자 이름 user_id_safe 사용**
         creds = load_google_creds_from_firebase(user_id_safe)
         if creds:
             st.session_state[f"google_creds_{user_id_safe}"] = creds
 
-    # secrets.toml에서 클라이언트 설정 불러오기
-    client_config = {
-        "web": {
-            "client_id": st.secrets["google_calendar"]["client_id"],
-            "client_secret": st.secrets["google_calendar"]["client_secret"],
-            "redirect_uris": [st.secrets["google_calendar"]["redirect_uri"]],
-            "auth_uri": "https://accounts.google.com/o/oauth2/auth",
-            "token_uri": "https://oauth2.googleapis.com/token",
-            "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs"
-        }
-    }
+    # Creds가 없는 경우 서비스 객체를 만들 수 없으므로 None 반환
+    if not creds:
+        return None
+
     try:
-        # 1. 인증 정보 로드
-        creds = load_google_creds_from_firebase(key)   
-        # 2. 서비스 빌드 (재귀 호출을 사용하지 않음)
+        # 3. 서비스 빌드 (이미 로드된 creds 사용)
+        # build 함수는 secrets.toml에 있는 정보를 자동으로 사용하므로 client_config는 불필요합니다.
         service = build('calendar', 'v3', credentials=creds)
         return service
+        
     except Exception as e:
-        # 실패 시 None 반환 (재시도하지 않음)
-        print(f"인증 오류: {e}")
-        return None 
+        # 서비스 빌드 실패 시 None 반환
+        # 오류 메시지 출력은 외부 호출부(try...except)에서 처리하는 것이 깔끔합니다.
+        # Streamlit 앱에서는 print 대신 st.warning/st.error를 사용하는 것이 좋습니다.
+        print(f"인증 오류: {e}") 
+        return None
         
 # 엑셀 파일 암호화 여부 확인 (load_excel에서 사용)
 def is_encrypted_excel(file_path):
