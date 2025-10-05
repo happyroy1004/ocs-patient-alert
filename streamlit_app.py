@@ -386,6 +386,7 @@ doctor_users_ref = db.reference("doctor_users")
 # --- 6. User and Admin and doctor Login and User Management ---
 # (중략: 로그인/등록 및 이메일 변경 로직은 그대로 유지)
 
+
 # --- 사용 설명서 PDF 다운로드 버튼 추가 ---
 pdf_file_path = "manual.pdf"
 pdf_display_name = "사용 설명서"
@@ -785,7 +786,11 @@ if st.session_state.get('login_mode') == 'admin_mode':
                 if st.button("메일 보내기", key="send_mail_button_tab1"):
                     if custom_message_tab1 and selected_users_for_mail_tab1:
                         sender = st.secrets["gmail"]["sender"]; sender_pw = st.secrets["gmail"]["app_password"]; email_list = []
-                        for user_str in selected_users_for_mail_tab1: match = re.search(r'\((.*?)\)', user_str); if match: email_list.append(match.group(1))
+                        for user_str in selected_users_for_mail_tab1: 
+                            match = re.search(r'\((.*?)\)', user_str)
+                            if match: 
+                                email_list.append(match.group(1))
+
                         if email_list:
                             with st.spinner("메일 전송 중..."):
                                 success_count = 0
