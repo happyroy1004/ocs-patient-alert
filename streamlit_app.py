@@ -264,13 +264,16 @@ def get_google_calendar_service(user_id_safe):
             "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs"
         }
     }
-    
     try:
-        google_calendar_service = get_google_calendar_service(firebase_key)
-        st.session_state.google_calendar_service = google_calendar_service
+        # 1. 인증 정보 로드
+        creds = load_google_creds_from_firebase(key)   
+        # 2. 서비스 빌드 (재귀 호출을 사용하지 않음)
+        service = build('calendar', 'v3', credentials=creds)
+        return service
     except Exception as e:
-        st.error(f"❌ Google Calendar 서비스 로딩에 실패했습니다: {e}") # 여기서 오류가 출력됩니다.
-        st.session_state.google_calendar_service = None
+        # 실패 시 None 반환 (재시도하지 않음)
+        print(f"인증 오류: {e}")
+        return None 
         
 # 엑셀 파일 암호화 여부 확인 (load_excel에서 사용)
 def is_encrypted_excel(file_path):
