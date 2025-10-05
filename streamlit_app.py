@@ -239,6 +239,8 @@ def create_calendar_event(service, patient_name, pid, department, reservation_da
         
 # --- OCS 분석 관련 함수 추가 ---
 
+SCOPES = ["https://www.googleapis.com/auth/calendar.events"]
+
 # 수정 코드 (Revised Code)
 def get_google_calendar_service(user_id_safe):
     """
