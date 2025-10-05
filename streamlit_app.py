@@ -1766,12 +1766,22 @@ if st.session_state.get('login_mode') in ['user_mode', 'new_user_registration', 
                 existing_patient_data = patients_ref_for_user.get()
         
                 if existing_patient_data:
-                    
-                    # --- [핵심 변경: 진료과 플래그를 읽어와 표시] ---
-                    # 기존 정렬 로직은 '등록과' 필드가 없으므로 제거 또는 변경해야 함. 이름순으로 정렬
-                    patient_list = list(existing_patient_data.items())
-                    sorted_patient_list = sorted(patient_list, key=lambda item: item[1].get('환자이름', 'zzz'))
-        
+                    
+                    patient_list = list(existing_patient_data.items())
+                    # 유효성 검사: 데이터가 딕셔너리 형태가 아닌 손상된 데이터를 제거
+                    valid_patient_list = [item for item in patient_list if isinstance(item[1], dict)] 
+                    
+                    # --- [핵심 변경: 진료과 플래그 우선순위 정렬] ---
+                    # 1. 소치(0) > 보철(1) > 내과(2) > 교정(3) 순서로 높은 우선순위를 부여
+                    # 2. 동일 우선순위 내에서는 환자이름 순으로 정렬
+                    sorted_patient_list = sorted(valid_patient_list, key=lambda item: (
+                        0 if item[1].get('소치', False) else
+                        1 if item[1].get('보철', False) else
+                        2 if item[1].get('내과', False) else
+                        3 if item[1].get('교정', False) else
+                        4, # 나머지 과목 (원진실, 보존 등)은 4순위로 밀립니다.
+                        item[1].get('환자이름', 'zzz')
+                    ))
                     cols_count = 3
                     cols = st.columns(cols_count)
         
