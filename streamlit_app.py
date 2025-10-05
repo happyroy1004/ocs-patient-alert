@@ -1766,7 +1766,7 @@ if st.session_state.get('login_mode') in ['user_mode', 'new_user_registration', 
                 existing_patient_data = patients_ref_for_user.get()
         
                 if existing_patient_data:
-                    # item[1]은 환자 데이터 딕셔너리입니다.
+                    # item[1]은 환자 데이터 딕셔너리입니다.
                     sorted_patient_list = sorted(patient_list, key=lambda item: (
                         # 1. 진료과 우선순위 (소치: 0, 보철: 1, 내과: 2, 교정: 3, 기타: 4)
                         0 if item[1].get('소치', False) else
