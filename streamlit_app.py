@@ -1767,18 +1767,18 @@ if st.session_state.get('login_mode') in ['user_mode', 'new_user_registration', 
         
                 if existing_patient_data:
                     # item[1]은 환자 데이터 딕셔너리입니다.
-                    sorted_patient_list = sorted(patient_list, key=lambda item: (
-                        # 1. 진료과 우선순위 (소치: 0, 보철: 1, 내과: 2, 교정: 3, 기타: 4)
-                        0 if item[1].get('소치', False) else
-                        1 if item[1].get('외과', False) else
-                        2 if item[1].get('내과', False) else
-                        3 if item[1].get('교정', False) else
-                        5 if item[1].get('보철', False) else 
-                        6 if item[1].get('원진실', False) else
-                        7,
-                        # 2. 이름순 (동일 우선순위 내에서)
-                        item[1].get('환자이름', 'zzz')
-                    ))        
+                    sorted_patient_list = sorted(patient_list, key=lambda item: (
+                        # 1. 진료과 우선순위 (소치: 0, 보철: 1, 내과: 2, 교정: 3, 기타: 4)
+                        0 if item[1].get('소치', False) else
+                        1 if item[1].get('외과', False) else
+                        2 if item[1].get('내과', False) else
+                        3 if item[1].get('교정', False) else
+                        4 if item[1].get('보철', False) else
+                        5 if item[1].get('원진실', False) else
+                        6,
+                        # 2. 이름순 (동일 우선순위 내에서)
+                        item[1].get('환자이름', 'zzz')
+                    ))      
                     cols_count = 3
                     cols = st.columns(cols_count)
         
