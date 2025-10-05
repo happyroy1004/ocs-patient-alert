@@ -386,7 +386,6 @@ doctor_users_ref = db.reference("doctor_users")
 # --- 6. User and Admin and doctor Login and User Management ---
 # (중략: 로그인/등록 및 이메일 변경 로직은 그대로 유지)
 
-
 # --- 사용 설명서 PDF 다운로드 버튼 추가 ---
 pdf_file_path = "manual.pdf"
 pdf_display_name = "사용 설명서"
