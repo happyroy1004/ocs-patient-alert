@@ -1768,8 +1768,7 @@ if st.session_state.get('login_mode') in ['user_mode', 'new_user_registration', 
                 if existing_patient_data:
                     patient_list = list(existing_patient_data.items())
                     # 유효성 검사: 데이터가 딕셔너리 형태가 아닌 손상된 데이터를 제거
-                    valid_patient_list = [item for item in patient_list if isinstance(item[1], dict)] 
-                    
+                    valid_patient_list = [item for item in patient_list if isinstance(item[1], dict)]
                     # --- [핵심 변경: 진료과 플래그 우선순위 정렬] ---
                     # 1. 소치(0) > 보철(1) > 내과(2) > 교정(3) 순서로 높은 우선순위를 부여
                     # 2. 동일 우선순위 내에서는 환자이름 순으로 정렬
