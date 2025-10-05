@@ -1764,11 +1764,16 @@ if st.session_state.get('login_mode') in ['user_mode', 'new_user_registration', 
                 st.markdown("---")
                 st.subheader(f"{user_name}님의 토탈 환자 목록")
                 existing_patient_data = patients_ref_for_user.get()
-        
-                if existing_patient_data:
-                    # item[1]은 환자 데이터 딕셔너리입니다.
-                    sorted_patient_list = sorted(patient_list, key=lambda item: (
-                        # 1. 진료과 우선순위 (소치: 0, 보철: 1, 내과: 2, 교정: 3, 기타: 4)
+
+                if existing_patient_data and isinstance(existing_patient_data, dict)
+                    patient_list = list(existing_patient_data.items())
+
+                    # --- [추가된 필터링 로직: 유효한 데이터만 남김] ---
+                    # item[1] (환자 데이터)이 딕셔너리가 아닌 데이터를 미리 제거합니다.
+                    valid_patient_list = [item for item in patient_list if isinstance(item[1], dict)] 
+                    
+                    # 유효한 리스트를 사용하여 정렬
+                    sorted_patient_list = sorted(valid_patient_list, key=lambda item: (
                         0 if item[1].get('소치', False) else
                         1 if item[1].get('외과', False) else
                         2 if item[1].get('내과', False) else
@@ -1776,9 +1781,9 @@ if st.session_state.get('login_mode') in ['user_mode', 'new_user_registration', 
                         4 if item[1].get('보철', False) else
                         5 if item[1].get('원진실', False) else
                         6,
-                        # 2. 이름순 (동일 우선순위 내에서)
-                        item[1].get('환자이름', 'zzz')
-                    ))      
+                        # 2. 이름순 
+                        item[1].get('환자이름', 'zzz')
+                    ))
                     cols_count = 3
                     cols = st.columns(cols_count)
         
