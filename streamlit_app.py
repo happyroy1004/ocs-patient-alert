@@ -1822,7 +1822,7 @@ if st.session_state.get('login_mode') in ['user_mode', 'new_user_registration', 
                             data_io = io.StringIO(paste_area)
                             
                             # header=None으로 헤더가 없음을 명시하고, names로 열 이름을 수동 지정
-                            df = pd.read_csv(data_io, sep='\t', header=None, names=['환자명', '진료번호', '등록과'])
+                            df = pd.read_csv(data_io, sep='\s+', header=None, names=['환자명', '진료번호', '등록과'])
                             
                             # 기존 환자 데이터 가져오기
                             existing_patient_data = patients_ref_for_user.get()
