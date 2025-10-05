@@ -1778,7 +1778,7 @@ if st.session_state.get('login_mode') in ['user_mode', 'new_user_registration', 
                         6,
                         # 2. 이름순 (동일 우선순위 내에서)
                         item[1].get('환자이름', 'zzz')
-                    ))      
+                    ))      
                     cols_count = 3
                     cols = st.columns(cols_count)
         
