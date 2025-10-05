@@ -160,29 +160,7 @@ def load_google_creds_from_firebase(user_id_safe):
         st.error(f"Failed to load Google credentials: {e}")
         return None
 
-# 수정 코드 (Revised Code)
-def get_google_calendar_service(user_id_safe):
-    """
-    사용자별로 Google Calendar 서비스 객체를 반환하거나 인증 URL을 표시합니다.
-    """
-    creds = st.session_state.get(f"google_creds_{user_id_safe}")
-    
-    if not creds:
-        creds = load_google_creds_from_firebase(user_id_safe)
-        if creds:
-            st.session_state[f"google_creds_{user_id_safe}"] = creds
 
-    # secrets.toml에서 클라이언트 설정 불러오기
-    client_config = {
-        "web": {
-            "client_id": st.secrets["google_calendar"]["client_id"],
-            "client_secret": st.secrets["google_calendar"]["client_secret"],
-            "redirect_uris": [st.secrets["google_calendar"]["redirect_uri"]],
-            "auth_uri": "https://accounts.google.com/o/oauth2/auth",
-            "token_uri": "https://oauth2.googleapis.com/token",
-            "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs"
-        }
-    }
     
     # 인증 플로우 생성
     flow = InstalledAppFlow.from_client_config(client_config, SCOPES, redirect_uri=st.secrets["google_calendar"]["redirect_uri"])
@@ -261,6 +239,29 @@ def create_calendar_event(service, patient_name, pid, department, reservation_da
         
 # --- OCS 분석 관련 함수 추가 ---
 
+# 수정 코드 (Revised Code)
+def get_google_calendar_service(user_id_safe):
+    """
+    사용자별로 Google Calendar 서비스 객체를 반환하거나 인증 URL을 표시합니다.
+    """
+    creds = st.session_state.get(f"google_creds_{user_id_safe}")
+    
+    if not creds:
+        creds = load_google_creds_from_firebase(user_id_safe)
+        if creds:
+            st.session_state[f"google_creds_{user_id_safe}"] = creds
+
+    # secrets.toml에서 클라이언트 설정 불러오기
+    client_config = {
+        "web": {
+            "client_id": st.secrets["google_calendar"]["client_id"],
+            "client_secret": st.secrets["google_calendar"]["client_secret"],
+            "redirect_uris": [st.secrets["google_calendar"]["redirect_uri"]],
+            "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+            "token_uri": "https://oauth2.googleapis.com/token",
+            "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs"
+        }
+    }
 # 엑셀 파일 암호화 여부 확인 (load_excel에서 사용)
 def is_encrypted_excel(file_path):
     try:
