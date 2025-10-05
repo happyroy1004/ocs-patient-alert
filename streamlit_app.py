@@ -1766,7 +1766,6 @@ if st.session_state.get('login_mode') in ['user_mode', 'new_user_registration', 
                 existing_patient_data = patients_ref_for_user.get()
         
                 if existing_patient_data:
-                    
                     patient_list = list(existing_patient_data.items())
                     # 유효성 검사: 데이터가 딕셔너리 형태가 아닌 손상된 데이터를 제거
                     valid_patient_list = [item for item in patient_list if isinstance(item[1], dict)] 
