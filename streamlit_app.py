@@ -1337,7 +1337,7 @@ if st.session_state.get('login_mode') in ['user_mode', 'new_user_registration', 
                                     # True인 진료과만 추출하여 표시
                                     registered_depts = [
                                         dept.capitalize() 
-                                        for dept in PATIENT_DEPT_FLAGS + ['보존', '치주', '원진실'] # 모든 가능한 과
+                                        for dept in PATIENT_DEPT_FLAGS # 모든 가능한 과
                                         if val.get(dept.lower()) is True or val.get(dept.lower()) == 'True' or val.get(dept.lower()) == 'true'
                                     ]
 
