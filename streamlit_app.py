@@ -833,7 +833,11 @@ if st.session_state.get('login_mode') == 'admin_mode':
                 if st.button("메일 보내기", key="send_mail_button_tab2"):
                     if custom_message_tab2 and selected_users_for_mail_tab2:
                         sender = st.secrets["gmail"]["sender"]; sender_pw = st.secrets["gmail"]["app_password"]; email_list = []
-                        for user_str in selected_users_for_mail_tab2: match = re.search(r'\((.*?)\)', user_str); if match: email_list.append(match.group(1))
+                        # 👇👇👇 안전하게 수정된 코드 👇👇👇
+                        for user_str in selected_users_for_mail_tab2: 
+                            match = re.search(r'\((.*?)\)', user_str)
+                            if match: 
+                                email_list.append(match.group(1))
                         if email_list:
                             with st.spinner("메일 전송 중..."):
                                 success_count = 0
