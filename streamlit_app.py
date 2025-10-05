@@ -468,13 +468,10 @@ def run_auto_notifications(matched_users, matched_doctors, excel_data_dfs, file_
                 
                 # 🔑 수정 1: df_for_mail을 HTML로 변환하여 df_html 변수에 할당 (제안해주신 방식)
                 # escape=False는 HTML 태그를 그대로 사용하기 위함이며, border=1을 추가하면 더 깔끔한 테이블이 됩니다.
-                df_html = df_for_mail.to_html(index=False, border=1) # border=1을 추가하면 가독성 향상
-                
+                df_html = df_for_mail.to_html(index=False, border=1) # border=1을 추가하면 가독성 향상
                 rows_as_dict = df_for_mail.to_dict('records')
-
                 # 🔑 수정 2: email_body에서 df_html 변수를 사용
-                email_body = f"""<p>안녕하세요, {res['name']} 치과의사님.</p><p>{latest_file_name}에서 가져온 내원할 환자 정보입니다.</p>{df_html}<p>확인 부탁드립니다.</p>"""
-          
+                email_body = f"""<p>안녕하세요, {res['name']} 치과의사님.</p><p>{latest_file_name}에서 가져온 내원할 환자 정보입니다.</p>{df_html}<p>확인 부탁드립니다.</p>"""
                 try:
                     send_email(receiver=res['email'], rows=rows_as_dict, sender=sender, password=sender_pw, custom_message=email_body, date_str=latest_file_name)
                     st.write(f"✔️ **메일:** Dr. {res['name']}에게 전송 완료!")
