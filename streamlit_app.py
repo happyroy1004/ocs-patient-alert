@@ -1774,10 +1774,11 @@ if st.session_state.get('login_mode') in ['user_mode', 'new_user_registration', 
                     # 2. 동일 우선순위 내에서는 환자이름 순으로 정렬
                     sorted_patient_list = sorted(valid_patient_list, key=lambda item: (
                         0 if item[1].get('소치', False) else
-                        1 if item[1].get('보철', False) else
+                        1 if item[1].get('외과', False) else
                         2 if item[1].get('내과', False) else
                         3 if item[1].get('교정', False) else
-                        4, # 나머지 과목 (원진실, 보존 등)은 4순위로 밀립니다.
+                        4 if item[1].get('보철', False) else
+                        5, # 나머지 과목 (원진실, 보존 등)은 4순위로 밀립니다.
                         item[1].get('환자이름', 'zzz')
                     ))
                     cols_count = 3
