@@ -10,14 +10,14 @@ import re
 # 💡 Bycrypt 추가
 import bcrypt
 
-# local imports
+# local imports: 상대 경로 임포트(.)를 절대 경로 임포트로 수정
 from config import (
     DEFAULT_PASSWORD, DEPARTMENTS_FOR_REGISTRATION, PATIENT_DEPT_FLAGS, 
     SHEET_KEYWORD_TO_DEPARTMENT_MAP, PATIENT_DEPT_TO_SHEET_MAP
 )
 from firebase_utils import (
     get_db_refs, sanitize_path, recover_email, 
-    get_google_calendar_service, save_google_creds_to_firebase
+    get_google_calendar_service, save_google_creds_to_firebase, load_google_creds_from_firebase
 )
 from excel_utils import (
     is_daily_schedule, is_encrypted_excel, load_excel, 
@@ -31,10 +31,9 @@ from notification_utils import (
 # DB 레퍼런스 초기 로드 (전역에서 사용할 수 있도록 설정)
 users_ref, doctor_users_ref, db_ref_func = get_db_refs()
 
-# 🔑 비밀번호 암호화 및 확인 유틸리티 함수 추가
+# 🔑 비밀번호 암호화 및 확인 유틸리티 함수
 def hash_password(password):
     """비밀번호를 bcrypt로 해시합니다."""
-    # salt를 생성하고, 비밀번호를 UTF-8로 인코딩한 후 해시합니다.
     salt = bcrypt.gensalt()
     return bcrypt.hashpw(password.encode('utf-8'), salt).decode('utf-8')
 
@@ -42,12 +41,9 @@ def check_password(password, hashed_password):
     """비밀번호와 해시된 비밀번호를 비교합니다."""
     if not hashed_password or not isinstance(hashed_password, str):
         return False
-    # 안전하게 비교하기 위해 try-except 블록을 사용합니다.
     try:
-        # bcrypt.checkpw는 자동으로 해시에서 salt를 추출하여 비교합니다.
         return bcrypt.checkpw(password.encode('utf-8'), hashed_password.encode('utf-8'))
     except ValueError:
-        # 해시 형식이 아니거나 데이터 손상 시
         return False
     except Exception:
         return False
@@ -98,6 +94,11 @@ def show_title_and_manual():
 
 def _handle_user_login(user_name, password_input):
     """학생 로그인 로직을 처리합니다."""
+    # 💡 DB 연결 오류 방어 로직
+    if users_ref is None:
+        st.error("🚨 데이터베이스 연결에 문제가 있습니다. 관리자에게 문의하세요.")
+        return
+        
     if not user_name: st.error("사용자 이름을 입력해주세요.")
     elif user_name.strip().lower() == "admin": 
         st.session_state.login_mode = 'admin_mode'; st.rerun()
@@ -116,17 +117,15 @@ def _handle_user_login(user_name, password_input):
         if matched_user:
             user_password_db = matched_user.get("password")
 
-            # 💡 비밀번호 인증 로직: bcrypt 해시 검사 or 기존 평문 비밀번호/기본 비밀번호 검사
+            # 💡 비밀번호 인증 및 마이그레이션 로직
             login_success = check_password(password_input, user_password_db)
             is_plaintext_or_default = False
             
-            # **마이그레이션 로직:** 저장된 비밀번호가 해시가 아닌 평문이거나(초기 등록 시 평문 저장되었을 경우) 
-            # 기본 비밀번호(평문)일 경우, 평문 비교를 시도합니다.
+            # 마이그레이션 로직: 저장된 비밀번호가 해시가 아닌 평문이거나 기본 비밀번호일 경우 평문 비교 시도
             if not login_success:
                 if password_input == user_password_db:
                     login_success = True
                     is_plaintext_or_default = True
-                # 비밀번호가 아예 없거나 기본 비밀번호와 일치하는 경우 (초기 설정)
                 elif (not user_password_db or user_password_db == DEFAULT_PASSWORD) and password_input == DEFAULT_PASSWORD:
                     login_success = True
                     is_plaintext_or_default = True
@@ -138,7 +137,7 @@ def _handle_user_login(user_name, password_input):
                     'current_user_name': user_name, 
                     'login_mode': 'user_mode'
                 })
-                # 🚨 평문이거나 기본 비밀번호로 로그인 성공 시, 즉시 bcrypt로 해시하여 업데이트 (마이그레이션)
+                # 🚨 평문 로그인 성공 시, 즉시 bcrypt로 해시하여 업데이트 (마이그레이션)
                 if is_plaintext_or_default:
                     hashed_pw = hash_password(password_input if password_input else DEFAULT_PASSWORD)
                     users_ref.child(safe_key_found).update({"password": hashed_pw})
@@ -146,7 +145,7 @@ def _handle_user_login(user_name, password_input):
 
                 st.info(f"**{user_name}**님으로 로그인되었습니다.")
                 st.rerun()
-            else: st.error("비밀번호가 일치하지 않습니다. 초기 비밀번호는 1234입니다. 비밀번호를 잊었다면 관리자에게 문의하세요.")
+            else: st.error("비밀번호가 일치하지 않습니다. 신규 등록 시 이름에 알파벳이나 숫자를 붙여주세요.")
         else:
             st.session_state.current_user_name = user_name
             st.session_state.login_mode = 'new_user_registration'
@@ -154,6 +153,11 @@ def _handle_user_login(user_name, password_input):
 
 def _handle_doctor_login(doctor_email, password_input_doc):
     """치과의사 로그인 로직을 처리합니다."""
+    # 💡 DB 연결 오류 방어 로직
+    if doctor_users_ref is None:
+        st.error("🚨 데이터베이스 연결에 문제가 있습니다. 관리자에게 문의하세요.")
+        return
+
     if not doctor_email: st.warning("치과의사 이메일 주소를 입력해주세요.")
     else:
         safe_key = sanitize_path(doctor_email)
@@ -162,11 +166,11 @@ def _handle_doctor_login(doctor_email, password_input_doc):
         if matched_doctor:
             doctor_password_db = matched_doctor.get("password")
             
-            # 💡 비밀번호 인증 로직: bcrypt 해시 검사 or 기존 평문 비밀번호/기본 비밀번호 검사
+            # 💡 비밀번호 인증 및 마이그레이션 로직
             login_success = check_password(password_input_doc, doctor_password_db)
             is_plaintext_or_default = False
             
-            # **마이그레이션 로직:**
+            # 마이그레이션 로직:
             if not login_success:
                 if password_input_doc == doctor_password_db:
                     login_success = True
@@ -184,7 +188,7 @@ def _handle_doctor_login(doctor_email, password_input_doc):
                     'current_user_role': 'doctor',
                     'login_mode': 'doctor_mode'
                 })
-                # 🚨 평문이거나 기본 비밀번호로 로그인 성공 시, 즉시 bcrypt로 해시하여 업데이트 (마이그레이션)
+                # 🚨 평문 로그인 성공 시, 즉시 bcrypt로 해시하여 업데이트 (마이그레이션)
                 if is_plaintext_or_default:
                     hashed_pw = hash_password(password_input_doc if password_input_doc else DEFAULT_PASSWORD)
                     doctor_users_ref.child(safe_key).update({"password": hashed_pw})
@@ -238,8 +242,10 @@ def show_login_and_registration():
                 new_firebase_key = sanitize_path(new_email_input)
                 
                 # 중복 이메일 검사 (Firebase 키가 중복되는지 확인)
-                if users_ref.child(new_firebase_key).get():
+                if users_ref and users_ref.child(new_firebase_key).get():
                     st.error("이미 등록된 이메일 주소입니다. 다른 주소를 사용해주세요.")
+                elif users_ref is None:
+                    st.error("🚨 데이터베이스 연결 오류로 등록할 수 없습니다.")
                 else:
                     # 🔑 비밀번호를 해시하여 저장
                     hashed_pw = hash_password(password_input)
@@ -267,7 +273,7 @@ def show_login_and_registration():
         department = st.selectbox("등록 과", DEPARTMENTS_FOR_REGISTRATION, key="new_doctor_dept_selectbox")
 
         if st.button("치과의사 등록 완료", key="new_doc_reg_button"):
-            if new_doctor_name_input and is_valid_email(user_id_input) and password_input and department:
+            if new_doctor_name_input and is_valid_email(user_id_input) and password_input and department and doctor_users_ref:
                 new_firebase_key = sanitize_path(user_id_input)
                 
                 # 🔑 비밀번호를 해시하여 저장
@@ -286,6 +292,8 @@ def show_login_and_registration():
                 })
                 st.success(f"새로운 치과의사 **{new_doctor_name_input}**님 ({user_id_input}) 정보가 등록되었습니다.")
                 st.rerun()
+            elif doctor_users_ref is None:
+                 st.error("🚨 데이터베이스 연결 오류로 등록할 수 없습니다.")
             else: st.error("이름, 올바른 이메일 주소, 비밀번호, 그리고 등록 과를 입력해주세요.")
 
 
@@ -408,7 +416,6 @@ def show_admin_mode_ui():
                                 for user_match_info in selected_matched_users_data:
                                     # ... (개별 캘린더 전송 로직 - notification_utils.py의 로직 참조)
                                     user_safe_key = user_match_info['safe_key']; user_name = user_match_info['name']; df_matched = user_match_info['data']
-                                    # Note: load_google_creds_from_firebase 함수는 firebase_utils.py에 있다고 가정합니다.
                                     creds = load_google_creds_from_firebase(user_safe_key) 
                                     if creds and creds.valid and not creds.expired:
                                         try:
@@ -460,7 +467,6 @@ def show_admin_mode_ui():
                             if st.button("선택된 치과의사에게 Google Calendar 일정 추가", key="manual_send_calendar_doctor"):
                                 for res in selected_doctors_to_act:
                                     # 캘린더 전송 로직
-                                    # Note: load_google_creds_from_firebase 함수는 firebase_utils.py에 있다고 가정합니다.
                                     creds = load_google_creds_from_firebase(res['safe_key'])
                                     if creds and creds.valid and not creds.expired:
                                         try:
