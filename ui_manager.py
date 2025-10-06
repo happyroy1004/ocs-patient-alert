@@ -146,7 +146,7 @@ def _handle_user_login(user_name, password_input):
 
                 st.info(f"**{user_name}**님으로 로그인되었습니다.")
                 st.rerun()
-            else: st.error("비밀번호가 일치하지 않습니다. 신규 등록 시 이름에 알파벳이나 숫자를 붙여주세요.")
+            else: st.error("비밀번호가 일치하지 않습니다. 초기 비밀번호는 1234입니다. 비밀번호를 잊었다면 관리자에게 문의하세요.")
         else:
             st.session_state.current_user_name = user_name
             st.session_state.login_mode = 'new_user_registration'
