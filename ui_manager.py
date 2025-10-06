@@ -540,7 +540,7 @@ def show_user_mode_ui(firebase_key, user_name):
             "엑셀 또는 다른 곳에서 복사한 데이터를 여기에 붙여넣으세요 (환자명, 진료번호, 진료과를 탭/공백으로 구분).", 
             height=150, 
             key="bulk_paste_area",
-            placeholder="예시: 홍길동\t12345678\t교정,보철\n김철수\t87654321\t소치\n(진료과는 쉼표로 구분 가능)"
+            placeholder="예시: 홍길동\t12345678\t교정"
         )
         bulk_submit = st.button("대량 등록 실행", key="bulk_reg_button")
         
