@@ -132,7 +132,6 @@ def load_google_creds_from_firebase(safe_key):
     data_old = get_old_creds_data(safe_key)
     
     if data_old and data_old.get('refresh_token'):
-        st.warning("🚨 기존 Google Credentials를 감지했습니다. 새 형식으로 마이그레이션합니다.")
         try:
             # Scopes 데이터 처리: DB에 딕셔너리로 저장되어 있을 수 있으므로 값만 추출
             scopes_data = data_old.get('scopes')
@@ -155,7 +154,6 @@ def load_google_creds_from_firebase(safe_key):
             
             # 마이그레이션: 올바른 형식/위치로 저장
             save_google_creds_to_firebase(safe_key, creds)
-            st.success("✅ 기존 인증 정보를 성공적으로 로드하고 마이그레이션했습니다.")
             return creds
 
         except Exception as e:
