@@ -577,54 +577,6 @@ def show_user_mode_ui(firebase_key, user_name):
                 st.error("등록할 유효한 환자 정보가 없습니다. 형식을 확인해주세요.")
 
         st.markdown("---")
-        
-        ## 🗑️ 환자 정보 일괄 삭제 섹션 (복원)
-        st.subheader("🗑️ 환자 정보 일괄 삭제")
-        
-        if existing_patient_data:
-            patient_options = {
-                f"{val.get('환자이름', '이름 없음')} ({pid_key})": pid_key
-                for pid_key, val in existing_patient_data.items() 
-                if isinstance(val, dict) # 유효한 데이터만 필터링
-            }
-            
-            # 사용자에게 삭제할 환자 선택 요청
-            selected_patients_str = st.multiselect(
-                "삭제할 환자를 선택하세요:", 
-                options=list(patient_options.keys()), 
-                default=[], 
-                key="delete_patient_multiselect"
-            )
-            
-            # 실제 삭제할 환자 PID 목록 추출
-            patients_to_delete = [patient_options[name_str] for name_str in selected_patients_str]
-
-            if patients_to_delete:
-                st.session_state.patients_to_delete = patients_to_delete
-                st.session_state.delete_patient_confirm = True
-            else:
-                st.session_state.delete_patient_confirm = False
-                
-            
-            # 삭제 확인 버튼 및 로직
-            if st.session_state.delete_patient_confirm:
-                st.warning(f"⚠️ **{len(st.session_state.patients_to_delete)}명**의 환자 정보를 영구적으로 삭제하시겠습니까?")
-                
-                if st.button("예, 선택된 환자 일괄 삭제", key="confirm_delete_button"):
-                    deleted_count = 0
-                    for pid_key in st.session_state.patients_to_delete:
-                        patients_ref_for_user.child(pid_key).delete()
-                        deleted_count += 1
-                        
-                    st.session_state.delete_patient_confirm = False
-                    st.session_state.patients_to_delete = []
-                    st.success(f"🎉 **{deleted_count}명**의 환자 정보가 성공적으로 삭제되었습니다.")
-                    st.rerun()
-            
-        else:
-            st.info("현재 등록된 환자가 없어 삭제할 항목이 없습니다.")
-
-        st.markdown("---")
 
         # 단일 환자 등록 폼
         with st.form("register_form"):
