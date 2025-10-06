@@ -243,11 +243,10 @@ def get_google_calendar_service(safe_key):
             # 신규 사용자에게 연동 방법을 명확히 안내
             st.info("""
             ### 🔑 구글 캘린더 연동 방법
-            1. **[Google Calendar 인증 링크]**를 클릭하여 Google 로그인 및 권한 부여 페이지로 이동합니다.
-            2. 권한을 승인하면, **Google은 이 페이지(Streamlit 앱)로 자동으로 리다이렉트**됩니다.
-            3. 리다이렉트 후, 앱이 자동으로 연동을 완료하고 로그인 페이지로 돌아옵니다.
-            
-            **주의: 인증 완료 후에도 이 화면이 계속 나타난다면, 상단의 URL이 Google Cloud Console에 '승인된 리디렉션 URI'로 등록되었는지 확인해 주세요.**
+            1. [Google Calendar 인증 링크]를 클릭하여 Google 로그인 및 권한 부여 페이지로 이동합니다.
+            2. Warning이 나타나도 무시하고, Advanced를 누른 후, 밑줄로 나타나는 사이트를 클릭합니다.
+            3. 그 후, 권한을 승인하면, **Google은 이 페이지(Streamlit 앱)로 자동으로 돌아옵니다.
+            4. 로그인하면 권한이 허용되어 있는 것을 확인할 수 있습니다. 
             """)
             return None
 
