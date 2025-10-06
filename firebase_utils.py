@@ -3,7 +3,6 @@
 import streamlit as st
 import firebase_admin
 from firebase_admin import credentials, db, auth
-# InstalledAppFlow를 사용하여 리다이렉트 기반 OAuth 플로우 구현
 from google_auth_oauthlib.flow import InstalledAppFlow, Flow 
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
@@ -18,13 +17,10 @@ from config import SCOPES
 
 # 💡 st.secrets를 사용하여 인증 정보를 로드하고 전역 변수로 설정
 try:
-    # 1. Firebase Admin SDK 인증 정보 로드
     FIREBASE_CREDENTIALS = dict(st.secrets["firebase"]) 
-    
-    # 2. DB URL 로드
     DB_URL = st.secrets["database_url"] 
 
-    # 3. Google Calendar Client Secret 로드 (Plain structure)
+    # Google Calendar Client Secret 로드: redirect_uri가 포함된 평면 딕셔너리
     GOOGLE_CALENDAR_CLIENT_SECRET = dict(st.secrets["google_calendar"])
     
 except KeyError as e:
@@ -115,7 +111,6 @@ def load_google_creds_from_firebase(safe_key):
     # 2. 🚨 기존 경로 (Plaintext 형식)에서 로드 시도 (마이그레이션 레이어)
     
     def get_old_creds_data(safe_key):
-        # 3가지 가능한 경로를 확인: {safe_key}/google_creds, users/{safe_key}/google_creds, doctor_users/{safe_key}/google_creds
         db_ref = db.reference()
         
         paths_to_check = [
@@ -132,8 +127,8 @@ def load_google_creds_from_firebase(safe_key):
     data_old = get_old_creds_data(safe_key)
     
     if data_old and data_old.get('refresh_token'):
+        st.warning("🚨 기존 Google Credentials를 감지했습니다. 새 형식으로 마이그레이션합니다.")
         try:
-            # Scopes 데이터 처리: DB에 딕셔너리로 저장되어 있을 수 있으므로 값만 추출
             scopes_data = data_old.get('scopes')
             if isinstance(scopes_data, dict):
                  scopes_list = list(scopes_data.values())
@@ -142,7 +137,6 @@ def load_google_creds_from_firebase(safe_key):
             else:
                  scopes_list = SCOPES
 
-            # Plaintext 데이터를 사용하여 Credentials 객체 재구성
             creds = Credentials(
                 token=data_old.get('token'),
                 refresh_token=data_old.get('refresh_token'),
@@ -152,8 +146,8 @@ def load_google_creds_from_firebase(safe_key):
                 scopes=scopes_list
             )
             
-            # 마이그레이션: 올바른 형식/위치로 저장
             save_google_creds_to_firebase(safe_key, creds)
+            st.success("✅ 기존 인증 정보를 성공적으로 로드하고 마이그레이션했습니다.")
             return creds
 
         except Exception as e:
@@ -201,14 +195,14 @@ def get_google_calendar_service(safe_key):
 
     # 4. 🚨 인증 플로우 시작 (리다이렉트 로직)
     
-    # redirect_uri 유효성 검사
+    # redirect_uri 유효성 검사 및 추출
     redirect_uri = google_secrets_flat.get("redirect_uri")
     if not redirect_uri:
         st.error("🚨 Google Calendar Secrets에 'redirect_uri'가 정의되어 있지 않습니다. secrets.toml을 확인해주세요.")
+        # 인증 플로우를 시작할 수 없으므로 여기서 종료
         return
 
     # 인증 플로우 생성 (InstalledAppFlow 사용)
-    # InstalledAppFlow를 사용하면 redirect_uri가 자동으로 승인됩니다.
     flow = InstalledAppFlow.from_client_config(
         client_config, 
         SCOPES, 
@@ -227,38 +221,29 @@ def get_google_calendar_service(safe_key):
             
             st.success("Google Calendar 인증이 완료되었습니다.")
             
-            # 리디렉션으로 인한 쿼리 파라미터 정리 및 앱 리로드
-            # **주의:** Streamlit의 redirect_uri는 앱의 공개 URL과 일치해야 합니다.
+            # 리다이렉션으로 인한 쿼리 파라미터 정리 및 앱 리로드
             st.query_params.clear() 
             st.rerun() 
             
         else:
             # 인증 URL 생성 및 사용자에게 표시
             auth_url, _ = flow.authorization_url(prompt='consent')
-            st.warning("Google Calendar 연동을 위해 인증이 필요합니다. 아래 링크를 클릭하여 권한을 부여하세요.")
+            st.warning("구글 캘린더 연동을 위해 인증이 필요합니다. 아래 링크를 클릭하여 권한을 부여하세요.")
             st.markdown(f"**[Google Calendar 인증 링크]({auth_url})**")
+            
+            # 💡 신규 사용자에게 연동 방법을 명확히 안내
+            st.info("""
+            ### 🔑 구글 캘린더 연동 방법
+            1. **[Google Calendar 인증 링크]**를 클릭하여 Google 로그인 및 권한 부여 페이지로 이동합니다.
+            2. 권한을 승인하면, **Google은 이 페이지(Streamlit 앱)로 자동으로 리다이렉트**됩니다.
+            3. 리다이렉트 후, 인증 코드가 쿼리 파라미터로 전달되며, 앱이 자동으로 연동을 완료합니다.
+            
+            **주의: 인증 완료 후에도 이 화면이 다시 나타난다면, 상단의 URL(공개 URL)이 Google Cloud Console에 '승인된 리디렉션 URI'로 등록되었는지 확인해 주세요.**
+            """)
             return None
 
-    # 5. 인증 완료 후 서비스 객체 생성 (이 지점에 도달하면 creds는 유효함)
     if creds:
          st.session_state.google_calendar_service = build('calendar', 'v3', credentials=creds)
          return
     
-    return None
-
-
-def recover_email(safe_key):
-    """Firebase의 user 노드에서 safe_key에 해당하는 실제 이메일을 찾습니다."""
-    db_ref = db.reference()
-    
-    paths_to_check = [f'users/{safe_key}', f'doctor_users/{safe_key}', safe_key]
-    
-    for path in paths_to_check:
-        try:
-            data = db_ref.child(path).get()
-            if data and 'email' in data:
-                return data['email']
-        except Exception:
-            continue
-            
     return None
