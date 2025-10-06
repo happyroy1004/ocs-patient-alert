@@ -17,18 +17,17 @@ from config import SCOPES
 
 # 💡 st.secrets를 사용하여 인증 정보를 로드하고 전역 변수로 설정
 try:
-    # 1. Firebase Admin SDK 인증 정보 로드: [firebase] 섹션 전체를 로드합니다.
-    #    (secrets.toml의 [firebase] 섹션이 서비스 계정 속성 개별 키로 정의되어야 함)
-    FIREBASE_CREDENTIALS = st.secrets["firebase"] 
+    # 1. Firebase Admin SDK 인증 정보 로드: [firebase] 섹션 전체를 딕셔너리로 변환하여 로드
+    # 🚨 수정: dict() 생성자를 사용해 st.secrets 객체를 안전하게 복사/변환합니다.
+    FIREBASE_CREDENTIALS = dict(st.secrets["firebase"]) 
     
-    # 2. 🚨 DB URL 로드: 최상위 database_url 키를 참조하도록 통일합니다.
+    # 2. DB URL 로드: 최상위 database_url 키를 참조하도록 통일
     DB_URL = st.secrets["database_url"] 
 
     # 3. Google Calendar Client Secret 로드
-    GOOGLE_CALENDAR_CLIENT_SECRET = st.secrets["google_calendar"]
+    GOOGLE_CALENDAR_CLIENT_SECRET = dict(st.secrets["google_calendar"])
     
 except KeyError as e:
-    # 로드 실패 시 명시적 오류를 표시하고 None을 할당하여 앱 크래시 방지
     st.error(f"🚨 중요: Secrets.toml 설정 오류. '{e.args[0]}' 키를 찾을 수 없습니다. secrets.toml 파일의 키 이름과 위치를 확인해 주세요.")
     FIREBASE_CREDENTIALS = None
     DB_URL = None
@@ -54,14 +53,15 @@ def get_db_refs():
     # Firebase Admin SDK 초기화 확인 및 실행
     if not firebase_admin._apps:
         try:
-            # 💡 Secrets 로드 실패 시 초기화 시도 자체를 건너뜀
+            # Secrets 로드 실패 시 초기화 시도 자체를 건너뜀
             if FIREBASE_CREDENTIALS is None or DB_URL is None:
                 st.warning("DB 연결 정보가 불완전하여 초기화를 건너뜁니다.")
                 return None, None, None
 
-            # 🚨 Admin SDK에 전달하기 전에 DB URL 관련 키(Admin SDK는 필요 없음)는 제거합니다.
+            # Admin SDK에 전달하기 전에 DB URL 관련 키(Admin SDK는 필요 없음)는 제거합니다.
+            # FIREBASE_CREDENTIALS는 이미 dict 객체이므로 안전하게 copy() 호출 가능
             creds_for_init = FIREBASE_CREDENTIALS.copy()
-            if 'FIREBASE_DATABASE_URL' in creds_for_init: # 혹시 모를 내부 URL 키 제거
+            if 'FIREBASE_DATABASE_URL' in creds_for_init: 
                  del creds_for_init['FIREBASE_DATABASE_URL']
             
             # Firebase Admin SDK가 기대하는 딕셔너리(서비스 계정)를 전달합니다.
@@ -71,7 +71,6 @@ def get_db_refs():
             firebase_admin.initialize_app(cred, {'databaseURL': DB_URL})
             
         except Exception as e:
-            # 초기화 실패 시 반환되는 오류를 명확히 표시
             st.error(f"❌ Firebase 앱 초기화 실패: {e}")
             return None, None, None # 초기화 실패 시 None 반환
 
