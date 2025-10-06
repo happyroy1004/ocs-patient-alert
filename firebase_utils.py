@@ -21,7 +21,7 @@ try:
     FIREBASE_CREDENTIALS = st.secrets["firebase"]
     
     # 2. 🚨 DB URL 로드: secrets.toml의 [firebase] 섹션 내부의 키 참조
-    DB_URL = st.secrets["database url"]
+    DB_URL = st.secrets["database_url"]
 
     # 3. Google Calendar Client Secret 로드
     GOOGLE_CALENDAR_CLIENT_SECRET = st.secrets["google_calendar"]
