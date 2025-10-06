@@ -1,6 +1,6 @@
 # firebase_utils.py
 
-import streamlit as st # 💡 캐싱을 위해 Streamlit 임포트
+import streamlit as st # 💡 st.secrets 및 캐싱을 위해 필요
 import firebase_admin
 from firebase_admin import credentials, db, auth
 from google_auth_oauthlib.flow import Flow
@@ -12,11 +12,32 @@ import io
 import pickle
 import json
 
-# local imports: 상대 경로 임포트(.)를 절대 경로 임포트로 수정
-from config import (
-    SCOPES, FIREBASE_CREDENTIALS, GOOGLE_CALENDAR_CLIENT_SECRET, 
-    GOOGLE_CALENDAR_CREDENTIAL_FILE, DB_URL
-)
+# local imports: config에서 순수한 상수(SCOPES)만 가져옵니다.
+from config import SCOPES
+
+# 💡 st.secrets를 사용하여 인증 정보를 로드하고 전역 변수로 설정
+try:
+    # 1. Firebase Admin SDK 인증 정보 로드
+    FIREBASE_CREDENTIALS = st.secrets["firebase"]
+    
+    # 2. 🚨 DB URL 로드: secrets.toml의 [firebase] 섹션 내부의 키 참조
+    DB_URL = st.secrets["firebase"]["FIREBASE_DATABASE_URL"] 
+
+    # 3. Google Calendar Client Secret 로드
+    GOOGLE_CALENDAR_CLIENT_SECRET = st.secrets["google_calendar"]
+    
+except KeyError as e:
+    # 로드 실패 시 명시적 오류를 표시하고 None을 할당하여 앱 크래시 방지
+    st.error(f"🚨 중요: Secrets.toml 설정 오류. '{e.args[0]}' 키를 찾을 수 없습니다. secrets.toml 파일의 키 이름과 위치를 확인해 주세요.")
+    FIREBASE_CREDENTIALS = None
+    DB_URL = None
+    GOOGLE_CALENDAR_CLIENT_SECRET = None
+except Exception as e:
+    st.error(f"🚨 Secrets 로드 중 예상치 못한 오류 발생: {e}")
+    FIREBASE_CREDENTIALS = None
+    DB_URL = None
+    GOOGLE_CALENDAR_CLIENT_SECRET = None
+
 
 # --- 1. DB 레퍼런스 및 초기화 ---
 
@@ -32,14 +53,13 @@ def get_db_refs():
     # Firebase Admin SDK 초기화 확인 및 실행
     if not firebase_admin._apps:
         try:
-            # FIREBASE_CREDENTIALS는 secrets.toml에서 로드된 딕셔너리여야 합니다.
-            if isinstance(FIREBASE_CREDENTIALS, dict):
-                cred = credentials.Certificate(FIREBASE_CREDENTIALS)
-            else:
-                # 딕셔너리가 아닌 경우 (예: 로드 실패 또는 잘못된 형식), 초기화 실패를 명확히 함
-                st.error("🚨 Firebase 인증 정보를 딕셔너리 형태로 로드하지 못했습니다. Secrets 설정을 확인하세요.")
+            # 💡 secrets 로드 실패 시 초기화 시도 자체를 건너뜀
+            if FIREBASE_CREDENTIALS is None or DB_URL is None:
+                st.warning("DB 연결 정보가 불완전하여 초기화를 건너뜁니다.")
                 return None, None, None
 
+            # FIREBASE_CREDENTIALS는 secrets.toml에서 로드된 딕셔너리여야 합니다.
+            cred = credentials.Certificate(FIREBASE_CREDENTIALS)
             firebase_admin.initialize_app(cred, {'databaseURL': DB_URL})
             
         except Exception as e:
@@ -66,22 +86,16 @@ def get_db_refs():
 def sanitize_path(email):
     """
     이메일 주소를 Firebase Realtime Database 키로 사용할 수 있도록 정리합니다.
-    (., $, #, [, ], /, \ 등 특수 문자 제거)
     """
-    # 2024년 4월 기준, RTDB 키로 사용할 수 없는 문자들을 대체합니다.
-    # '.'을 '_'로 대체하는 것은 일반적인 관례입니다.
     safe_email = email.replace('.', '_')
     return safe_email
 
 
 def save_google_creds_to_firebase(safe_key, creds):
     """Google 캘린더 OAuth2 Credentials 객체를 Firebase에 저장합니다 (pickle 직렬화)."""
-    # Google Calendar 인증 정보 저장을 위한 Firebase 레퍼런스
     creds_ref = db.reference(f'google_calendar_creds/{safe_key}')
     
-    # Credentials 객체를 pickle로 직렬화
     pickled_creds = pickle.dumps(creds)
-    # 바이너리 데이터를 Base64로 인코딩하여 문자열로 저장
     encoded_creds = pickled_creds.hex()
     
     creds_ref.set({'creds': encoded_creds})
@@ -94,9 +108,7 @@ def load_google_creds_from_firebase(safe_key):
     
     if data and 'creds' in data:
         encoded_creds = data['creds']
-        # Base64 문자열을 디코딩
         pickled_creds = bytes.fromhex(encoded_creds)
-        # pickle 역직렬화
         creds = pickle.loads(pickled_creds)
         return creds
     return None
@@ -113,14 +125,11 @@ def get_google_calendar_service(safe_key):
     creds = load_google_creds_from_firebase(safe_key)
 
     if creds and creds.expired and creds.refresh_token:
-        # 토큰 갱신이 필요하면 갱신
         creds.refresh(Request())
         save_google_creds_to_firebase(safe_key, creds)
     
     elif not creds or not creds.valid:
-        # 인증 또는 재인증이 필요한 경우
         
-        # client_secret.json 파일 내용 로드
         if isinstance(GOOGLE_CALENDAR_CLIENT_SECRET, dict):
             client_config = GOOGLE_CALENDAR_CLIENT_SECRET
         else:
@@ -146,7 +155,6 @@ def get_google_calendar_service(safe_key):
                 flow.fetch_token(code=verification_code)
                 creds = flow.credentials
                 
-                # Firebase에 Credentials 객체 저장
                 save_google_creds_to_firebase(safe_key, creds)
 
                 st.session_state.google_calendar_auth_needed = False
@@ -158,7 +166,6 @@ def get_google_calendar_service(safe_key):
                 return
 
     if creds and creds.valid:
-        # 인증된 서비스 객체 생성
         st.session_state.google_calendar_service = build('calendar', 'v3', credentials=creds)
 
 
