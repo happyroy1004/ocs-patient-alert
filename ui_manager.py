@@ -241,11 +241,11 @@ def show_login_and_registration():
             if is_valid_email(new_email_input) and password_input:
                 new_firebase_key = sanitize_path(new_email_input)
                 
-                # 중복 이메일 검사 (Firebase 키가 중복되는지 확인)
-                if users_ref and users_ref.child(new_firebase_key).get():
-                    st.error("이미 등록된 이메일 주소입니다. 다른 주소를 사용해주세요.")
-                elif users_ref is None:
+                # 중복 이메일 검사 및 DB 연결 방어
+                if users_ref is None:
                     st.error("🚨 데이터베이스 연결 오류로 등록할 수 없습니다.")
+                elif users_ref.child(new_firebase_key).get():
+                    st.error("이미 등록된 이메일 주소입니다. 다른 주소를 사용해주세요.")
                 else:
                     # 🔑 비밀번호를 해시하여 저장
                     hashed_pw = hash_password(password_input)
@@ -273,27 +273,29 @@ def show_login_and_registration():
         department = st.selectbox("등록 과", DEPARTMENTS_FOR_REGISTRATION, key="new_doctor_dept_selectbox")
 
         if st.button("치과의사 등록 완료", key="new_doc_reg_button"):
-            if new_doctor_name_input and is_valid_email(user_id_input) and password_input and department and doctor_users_ref:
+            if new_doctor_name_input and is_valid_email(user_id_input) and password_input and department:
                 new_firebase_key = sanitize_path(user_id_input)
                 
-                # 🔑 비밀번호를 해시하여 저장
-                hashed_pw = hash_password(password_input)
+                # DB 연결 방어
+                if doctor_users_ref is None:
+                    st.error("🚨 데이터베이스 연결 오류로 등록할 수 없습니다.")
+                else:
+                    # 🔑 비밀번호를 해시하여 저장
+                    hashed_pw = hash_password(password_input)
 
-                doctor_users_ref.child(new_firebase_key).set({
-                    "name": new_doctor_name_input, "email": user_id_input, "password": hashed_pw, 
-                    "role": 'doctor', "department": department
-                })
-                st.session_state.update({
-                    'current_firebase_key': new_firebase_key, 
-                    'found_user_email': user_id_input, 
-                    'current_user_name': new_doctor_name_input,
-                    'current_user_dept': department,
-                    'login_mode': 'doctor_mode'
-                })
-                st.success(f"새로운 치과의사 **{new_doctor_name_input}**님 ({user_id_input}) 정보가 등록되었습니다.")
-                st.rerun()
-            elif doctor_users_ref is None:
-                 st.error("🚨 데이터베이스 연결 오류로 등록할 수 없습니다.")
+                    doctor_users_ref.child(new_firebase_key).set({
+                        "name": new_doctor_name_input, "email": user_id_input, "password": hashed_pw, 
+                        "role": 'doctor', "department": department
+                    })
+                    st.session_state.update({
+                        'current_firebase_key': new_firebase_key, 
+                        'found_user_email': user_id_input, 
+                        'current_user_name': new_doctor_name_input,
+                        'current_user_dept': department,
+                        'login_mode': 'doctor_mode'
+                    })
+                    st.success(f"새로운 치과의사 **{new_doctor_name_input}**님 ({user_id_input}) 정보가 등록되었습니다.")
+                    st.rerun()
             else: st.error("이름, 올바른 이메일 주소, 비밀번호, 그리고 등록 과를 입력해주세요.")
 
 
