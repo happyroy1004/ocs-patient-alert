@@ -7,6 +7,8 @@ import datetime
 from googleapiclient.discovery import build
 import os
 import re
+# 💡 Bycrypt 추가
+import bcrypt
 
 # local imports
 from .config import (
@@ -28,6 +30,28 @@ from .notification_utils import (
 
 # DB 레퍼런스 초기 로드 (전역에서 사용할 수 있도록 설정)
 users_ref, doctor_users_ref, db_ref_func = get_db_refs()
+
+# 🔑 비밀번호 암호화 및 확인 유틸리티 함수 추가
+def hash_password(password):
+    """비밀번호를 bcrypt로 해시합니다."""
+    # salt를 생성하고, 비밀번호를 UTF-8로 인코딩한 후 해시합니다.
+    salt = bcrypt.gensalt()
+    return bcrypt.hashpw(password.encode('utf-8'), salt).decode('utf-8')
+
+def check_password(password, hashed_password):
+    """비밀번호와 해시된 비밀번호를 비교합니다."""
+    if not hashed_password or not isinstance(hashed_password, str):
+        return False
+    # 안전하게 비교하기 위해 try-except 블록을 사용합니다.
+    try:
+        # bcrypt.checkpw는 자동으로 해시에서 salt를 추출하여 비교합니다.
+        return bcrypt.checkpw(password.encode('utf-8'), hashed_password.encode('utf-8'))
+    except ValueError:
+        # 해시 형식이 아니거나 데이터 손상 시
+        return False
+    except Exception:
+        return False
+
 
 # --- 1. 세션 상태 초기화 및 전역 UI ---
 
@@ -90,17 +114,36 @@ def _handle_user_login(user_name, password_input):
                     break
 
         if matched_user:
-            user_password = matched_user.get("password")
-            # 기존 사용자 인증 로직
-            if password_input == user_password or (not user_password and password_input == DEFAULT_PASSWORD):
+            user_password_db = matched_user.get("password")
+
+            # 💡 비밀번호 인증 로직: bcrypt 해시 검사 or 기존 평문 비밀번호/기본 비밀번호 검사
+            login_success = check_password(password_input, user_password_db)
+            is_plaintext_or_default = False
+            
+            # **마이그레이션 로직:** 저장된 비밀번호가 해시가 아닌 평문이거나(초기 등록 시 평문 저장되었을 경우) 
+            # 기본 비밀번호(평문)일 경우, 평문 비교를 시도합니다.
+            if not login_success:
+                if password_input == user_password_db:
+                    login_success = True
+                    is_plaintext_or_default = True
+                # 비밀번호가 아예 없거나 기본 비밀번호와 일치하는 경우 (초기 설정)
+                elif (not user_password_db or user_password_db == DEFAULT_PASSWORD) and password_input == DEFAULT_PASSWORD:
+                    login_success = True
+                    is_plaintext_or_default = True
+            
+            if login_success:
                 st.session_state.update({
                     'found_user_email': matched_user["email"], 
                     'current_firebase_key': safe_key_found, 
                     'current_user_name': user_name, 
                     'login_mode': 'user_mode'
                 })
-                # 초기 비밀번호가 설정되지 않은 경우 설정
-                if not user_password: users_ref.child(safe_key_found).update({"password": DEFAULT_PASSWORD})
+                # 🚨 평문이거나 기본 비밀번호로 로그인 성공 시, 즉시 bcrypt로 해시하여 업데이트 (마이그레이션)
+                if is_plaintext_or_default:
+                    hashed_pw = hash_password(password_input if password_input else DEFAULT_PASSWORD)
+                    users_ref.child(safe_key_found).update({"password": hashed_pw})
+                    st.warning("⚠️ 보안 강화를 위해 비밀번호가 자동으로 암호화되었습니다. 다음 로그인부터는 변경된 비밀번호로 로그인됩니다.")
+
                 st.info(f"**{user_name}**님으로 로그인되었습니다.")
                 st.rerun()
             else: st.error("비밀번호가 일치하지 않습니다. 신규 등록 시 이름에 알파벳이나 숫자를 붙여주세요.")
@@ -117,7 +160,22 @@ def _handle_doctor_login(doctor_email, password_input_doc):
         matched_doctor = doctor_users_ref.child(safe_key).get()
         
         if matched_doctor:
-            if password_input_doc == matched_doctor.get("password"):
+            doctor_password_db = matched_doctor.get("password")
+            
+            # 💡 비밀번호 인증 로직: bcrypt 해시 검사 or 기존 평문 비밀번호/기본 비밀번호 검사
+            login_success = check_password(password_input_doc, doctor_password_db)
+            is_plaintext_or_default = False
+            
+            # **마이그레이션 로직:**
+            if not login_success:
+                if password_input_doc == doctor_password_db:
+                    login_success = True
+                    is_plaintext_or_default = True
+                elif (not doctor_password_db or doctor_password_db == DEFAULT_PASSWORD) and password_input_doc == DEFAULT_PASSWORD:
+                    login_success = True
+                    is_plaintext_or_default = True
+
+            if login_success:
                 st.session_state.update({
                     'found_user_email': matched_doctor["email"], 
                     'current_firebase_key': safe_key, 
@@ -126,30 +184,27 @@ def _handle_doctor_login(doctor_email, password_input_doc):
                     'current_user_role': 'doctor',
                     'login_mode': 'doctor_mode'
                 })
+                # 🚨 평문이거나 기본 비밀번호로 로그인 성공 시, 즉시 bcrypt로 해시하여 업데이트 (마이그레이션)
+                if is_plaintext_or_default:
+                    hashed_pw = hash_password(password_input_doc if password_input_doc else DEFAULT_PASSWORD)
+                    doctor_users_ref.child(safe_key).update({"password": hashed_pw})
+                    st.warning("⚠️ 보안 강화를 위해 비밀번호가 자동으로 암호화되었습니다. 다음 로그인부터는 변경된 비밀번호로 로그인됩니다.")
+
                 st.info(f"치과의사 **{st.session_state.current_user_name}**님으로 로그인되었습니다.")
                 st.rerun()
             else: st.error("비밀번호가 일치하지 않습니다. 다시 확인해주세요.")
         else:
+            st.session_state.update({
+                'found_user_email': doctor_email, 
+                'current_firebase_key': "",
+                'current_user_name': None,
+                'current_user_role': 'doctor',
+                'current_user_dept': None,
+                'login_mode': 'new_doctor_registration'
+            })
             if password_input_doc == DEFAULT_PASSWORD:
-                st.info("💡 새로운 치과의사 계정으로 인식되었습니다. 초기 비밀번호 '1234'로 등록을 완료합니다.")
-                st.session_state.update({
-                    'found_user_email': doctor_email, 
-                    'current_firebase_key': "",
-                    'current_user_name': None,
-                    'current_user_role': 'doctor',
-                    'current_user_dept': None,
-                    'login_mode': 'new_doctor_registration'
-                })
-                st.rerun()
-            else:
-                st.session_state.update({
-                    'found_user_email': doctor_email, 
-                    'current_firebase_key': "",
-                    'current_user_name': None,
-                    'current_user_role': 'doctor',
-                    'login_mode': 'new_doctor_registration'
-                })
-                st.rerun()
+                st.info("💡 새로운 치과의사 계정으로 인식되었습니다. 초기 비밀번호로 등록을 진행합니다.")
+            st.rerun()
 
 
 def show_login_and_registration():
@@ -186,10 +241,13 @@ def show_login_and_registration():
                 if users_ref.child(new_firebase_key).get():
                     st.error("이미 등록된 이메일 주소입니다. 다른 주소를 사용해주세요.")
                 else:
+                    # 🔑 비밀번호를 해시하여 저장
+                    hashed_pw = hash_password(password_input)
+
                     users_ref.child(new_firebase_key).set({
                         "name": st.session_state.current_user_name,
                         "email": new_email_input,
-                        "password": password_input
+                        "password": hashed_pw
                     })
                     st.session_state.update({
                         'current_firebase_key': new_firebase_key, 
@@ -211,8 +269,12 @@ def show_login_and_registration():
         if st.button("치과의사 등록 완료", key="new_doc_reg_button"):
             if new_doctor_name_input and is_valid_email(user_id_input) and password_input and department:
                 new_firebase_key = sanitize_path(user_id_input)
+                
+                # 🔑 비밀번호를 해시하여 저장
+                hashed_pw = hash_password(password_input)
+
                 doctor_users_ref.child(new_firebase_key).set({
-                    "name": new_doctor_name_input, "email": user_id_input, "password": password_input, 
+                    "name": new_doctor_name_input, "email": user_id_input, "password": hashed_pw, 
                     "role": 'doctor', "department": department
                 })
                 st.session_state.update({
@@ -346,7 +408,8 @@ def show_admin_mode_ui():
                                 for user_match_info in selected_matched_users_data:
                                     # ... (개별 캘린더 전송 로직 - notification_utils.py의 로직 참조)
                                     user_safe_key = user_match_info['safe_key']; user_name = user_match_info['name']; df_matched = user_match_info['data']
-                                    creds = load_google_creds_from_firebase(user_safe_key)
+                                    # Note: load_google_creds_from_firebase 함수는 firebase_utils.py에 있다고 가정합니다.
+                                    creds = load_google_creds_from_firebase(user_safe_key) 
                                     if creds and creds.valid and not creds.expired:
                                         try:
                                             service = build('calendar', 'v3', credentials=creds)
@@ -397,6 +460,7 @@ def show_admin_mode_ui():
                             if st.button("선택된 치과의사에게 Google Calendar 일정 추가", key="manual_send_calendar_doctor"):
                                 for res in selected_doctors_to_act:
                                     # 캘린더 전송 로직
+                                    # Note: load_google_creds_from_firebase 함수는 firebase_utils.py에 있다고 가정합니다.
                                     creds = load_google_creds_from_firebase(res['safe_key'])
                                     if creds and creds.valid and not creds.expired:
                                         try:
@@ -515,7 +579,9 @@ def show_user_mode_ui(firebase_key, user_name):
         
         if st.button("비밀번호 변경", key="user_password_change_btn"):
             if new_password and new_password == confirm_password:
-                users_ref.child(firebase_key).update({"password": new_password})
+                # 🔑 새 비밀번호를 해시하여 저장
+                hashed_pw = hash_password(new_password)
+                users_ref.child(firebase_key).update({"password": hashed_pw})
                 st.success("🎉 비밀번호가 성공적으로 변경되었습니다!")
             else: st.error("새 비밀번호가 일치하지 않거나 입력되지 않았습니다.")
 
@@ -536,6 +602,8 @@ def show_doctor_mode_ui(firebase_key, user_name):
 
     if st.button("비밀번호 변경", key="res_password_change_btn"):
         if new_password and new_password == confirm_password:
-            doctor_users_ref.child(firebase_key).update({"password": new_password})
+            # 🔑 새 비밀번호를 해시하여 저장
+            hashed_pw = hash_password(new_password)
+            doctor_users_ref.child(firebase_key).update({"password": hashed_pw})
             st.success("🎉 비밀번호가 성공적으로 변경되었습니다!")
         else: st.error("새 비밀번호가 일치하지 않거나 입력되지 않았습니다.")
