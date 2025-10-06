@@ -8,8 +8,8 @@ from email.mime.multipart import MIMEMultipart
 import datetime
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
-from .firebase_utils import load_google_creds_from_firebase, recover_email
-from .config import PATIENT_DEPT_FLAGS, PATIENT_DEPT_TO_SHEET_MAP, SHEET_KEYWORD_TO_DEPARTMENT_MAP
+from firebase_utils import load_google_creds_from_firebase, recover_email
+from config import PATIENT_DEPT_FLAGS, PATIENT_DEPT_TO_SHEET_MAP, SHEET_KEYWORD_TO_DEPARTMENT_MAP
 
 # --- 유효성 검사 ---
 def is_valid_email(email):
