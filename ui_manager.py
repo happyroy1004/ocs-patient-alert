@@ -102,6 +102,7 @@ def _handle_user_login(user_name, password_input):
         
     if not user_name: st.error("사용자 이름을 입력해주세요.")
     elif user_name.strip().lower() == "admin": 
+        # 'admin' 입력 시 관리자 모드 플래그만 설정하고 reru
         st.session_state.login_mode = 'admin_mode'; st.rerun()
     else:
         all_users_meta = users_ref.get()
@@ -305,6 +306,35 @@ def show_login_and_registration():
 def show_admin_mode_ui():
     """관리자 모드 (엑셀 업로드, 알림 전송) UI를 표시합니다."""
     
+    # 🚨 Admin 비밀번호 확인 로직 복원 🚨
+    if not st.session_state.admin_password_correct:
+        st.subheader("🛠️ Administer Login")
+        admin_password_input = st.text_input("관리자 비밀번호를 입력하세요.", type="password", key="admin_password_check")
+        
+        # 1. DB에서 Admin 비밀번호 로드 (secrets.toml에 정의된 비밀번호와 비교)
+        # 💡 st.secrets를 사용하여 secrets.toml에 정의된 Admin 비밀번호를 가져옵니다.
+        try:
+            admin_pw_hash = st.secrets["admin"]["password"]
+        except KeyError:
+            admin_pw_hash = DEFAULT_PASSWORD # secrets에 없으면 기본 비밀번호 사용
+            st.warning("⚠️ secrets.toml에 관리자 비밀번호가 정의되어 있지 않아 기본 비밀번호로 인증합니다.")
+        
+        # 2. 비밀번호 확인
+        if st.button("관리자 인증", key="admin_auth_button"):
+            # 기존 비밀번호가 평문이 아닌 해시인지 확인하고 비교
+            if check_password(admin_password_input, admin_pw_hash) or (admin_password_input == admin_pw_hash and not admin_pw_hash.startswith('$2b')):
+                # 임시적으로 비밀번호가 평문으로 secrets에 설정된 경우도 통과시키나, 보안상 해시를 권장
+                st.session_state.admin_password_correct = True
+                st.info("✅ 관리자 인증 성공! 관리자 기능을 사용하실 수 있습니다.")
+                st.rerun()
+            else:
+                st.error("비밀번호가 일치하지 않습니다.")
+        return # 비밀번호가 맞을 때까지 여기서 함수 종료
+    
+    # --- 인증 성공 후 관리자 기능 실행 ---
+    st.markdown("---")
+    st.title("💻 관리자 모드 (인증됨)")
+    
     # DB 레퍼런스 및 Gmail 정보 로드
     db_ref = db_ref_func
     sender = st.secrets["gmail"]["sender"]; sender_pw = st.secrets["gmail"]["app_password"]
@@ -355,7 +385,7 @@ def show_admin_mode_ui():
             if st.button("NO: 수동으로 사용자 선택", key="auto_run_no"):
                 st.session_state.auto_run_confirmed = False; st.rerun()
                 
-        # 4. 실행 로직 분기
+        # 4. 실행 로직 분기 (나머지 관리자 로직은 그대로 유지)
         if 'last_processed_data' in st.session_state and st.session_state.last_processed_data:
             
             all_users_meta = users_ref.get(); all_patients_data = db_ref("patients").get()
@@ -484,10 +514,10 @@ def show_admin_mode_ui():
                                     else: st.warning(f"⚠️ **Dr. {res['name']}**님은 Google Calendar 계정이 연동되지 않았습니다.")
                     else: st.info("매칭된 치과의사 계정이 없습니다.")
             
-    # Admin 비밀번호 및 사용자 관리 탭 로직 (길어서 생략, 기존 코드 참조)
+    # Admin 비밀번호 및 사용자 관리 탭 로직 (하단)
     st.markdown("---")
     st.subheader("🛠️ Administer password")
-    # ... (admin_password_input 로직 및 사용자 관리 탭 로직) ...
+    # ... (사용자 관리 탭 로직은 생략) ...
 
 
 # --- 4. 일반 사용자 모드 UI ---
@@ -538,10 +568,10 @@ def show_user_mode_ui(firebase_key, user_name):
         st.subheader("📋 환자 정보 대량 등록")
         
         paste_area = st.text_area(
-            "엑셀 또는 다른 곳에서 복사한 데이터를 여기에 붙여넣으세요 (환자명, 진료번호, 진료과를 띄어쓰기로 구분).", 
+            "엑셀 또는 다른 곳에서 복사한 데이터를 여기에 붙여넣으세요 (환자명, 진료번호, 진료과를 탭/공백으로 구분).", 
             height=150, 
             key="bulk_paste_area",
-            placeholder="예시: 홍길동\t12345678\t교정"
+            placeholder="예시: 홍길동\t12345678\t교정,보철\n김철수\t87654321\t소치\n(진료과는 쉼표로 구분 가능)"
         )
         bulk_submit = st.button("대량 등록 실행", key="bulk_reg_button")
         
@@ -575,6 +605,54 @@ def show_user_mode_ui(firebase_key, user_name):
                 st.rerun()
             else:
                 st.error("등록할 유효한 환자 정보가 없습니다. 형식을 확인해주세요.")
+
+        st.markdown("---")
+        
+        ## 🗑️ 환자 정보 일괄 삭제 섹션 (복원)
+        st.subheader("🗑️ 환자 정보 일괄 삭제")
+        
+        if existing_patient_data:
+            patient_options = {
+                f"{val.get('환자이름', '이름 없음')} ({pid_key})": pid_key
+                for pid_key, val in existing_patient_data.items() 
+                if isinstance(val, dict) # 유효한 데이터만 필터링
+            }
+            
+            # 사용자에게 삭제할 환자 선택 요청
+            selected_patients_str = st.multiselect(
+                "삭제할 환자를 선택하세요:", 
+                options=list(patient_options.keys()), 
+                default=[], 
+                key="delete_patient_multiselect"
+            )
+            
+            # 실제 삭제할 환자 PID 목록 추출
+            patients_to_delete = [patient_options[name_str] for name_str in selected_patients_str]
+
+            if patients_to_delete:
+                st.session_state.patients_to_delete = patients_to_delete
+                st.session_state.delete_patient_confirm = True
+            else:
+                st.session_state.delete_patient_confirm = False
+                
+            
+            # 삭제 확인 버튼 및 로직
+            if st.session_state.delete_patient_confirm:
+                st.warning(f"⚠️ **{len(st.session_state.patients_to_delete)}명**의 환자 정보를 영구적으로 삭제하시겠습니까?")
+                
+                if st.button("예, 선택된 환자 일괄 삭제", key="confirm_delete_button"):
+                    deleted_count = 0
+                    for pid_key in st.session_state.patients_to_delete:
+                        patients_ref_for_user.child(pid_key).delete()
+                        deleted_count += 1
+                        
+                    st.session_state.delete_patient_confirm = False
+                    st.session_state.patients_to_delete = []
+                    st.success(f"🎉 **{deleted_count}명**의 환자 정보가 성공적으로 삭제되었습니다.")
+                    st.rerun()
+            
+        else:
+            st.info("현재 등록된 환자가 없어 삭제할 항목이 없습니다.")
 
         st.markdown("---")
 
