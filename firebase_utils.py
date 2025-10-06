@@ -1,6 +1,6 @@
 # firebase_utils.py
 
-import streamlit as st
+import streamlit as st # 💡 st.secrets 및 캐싱을 위해 필요
 import firebase_admin
 from firebase_admin import credentials, db, auth
 from google_auth_oauthlib.flow import InstalledAppFlow, Flow 
@@ -17,22 +17,32 @@ from config import SCOPES
 
 # 💡 st.secrets를 사용하여 인증 정보를 로드하고 전역 변수로 설정
 try:
+    # 1. Firebase Admin SDK 인증 정보 로드
     FIREBASE_CREDENTIALS = dict(st.secrets["firebase"]) 
+    
+    # 2. DB URL 로드
     DB_URL = st.secrets["database_url"] 
 
-    # Google Calendar Client Secret 로드: redirect_uri가 포함된 평면 딕셔너리
-    GOOGLE_CALENDAR_CLIENT_SECRET = dict(st.secrets["google_calendar"])
+    # 3. Google Calendar Client Secret 로드: 섹션이 없는 경우를 대비해 안전하게 처리
+    google_calendar_secrets = st.secrets.get("google_calendar")
+    if google_calendar_secrets:
+        # 딕셔너리로 변환하여 사용
+        GOOGLE_CALENDAR_CLIENT_SECRET = dict(google_calendar_secrets)
+    else:
+        st.error("🚨 Secrets.toml에 [google_calendar] 섹션이 누락되었습니다. Google Calendar 기능을 사용할 수 없습니다.")
+        GOOGLE_CALENDAR_CLIENT_SECRET = {} # 빈 딕셔너리로 초기화
     
 except KeyError as e:
+    # 'firebase'나 'database_url' 같은 필수 키가 누락되었을 때 앱이 멈추지 않도록 처리
     st.error(f"🚨 중요: Secrets.toml 설정 오류. '{e.args[0]}' 키를 찾을 수 없습니다. secrets.toml 파일의 키 이름과 위치를 확인해 주세요.")
     FIREBASE_CREDENTIALS = None
     DB_URL = None
-    GOOGLE_CALENDAR_CLIENT_SECRET = None
+    GOOGLE_CALENDAR_CLIENT_SECRET = {}
 except Exception as e:
     st.error(f"🚨 Secrets 로드 중 예상치 못한 오류 발생: {e}")
     FIREBASE_CREDENTIALS = None
     DB_URL = None
-    GOOGLE_CALENDAR_CLIENT_SECRET = None
+    GOOGLE_CALENDAR_CLIENT_SECRET = {}
 
 
 # --- 1. DB 레퍼런스 및 초기화 ---
@@ -127,7 +137,7 @@ def load_google_creds_from_firebase(safe_key):
     data_old = get_old_creds_data(safe_key)
     
     if data_old and data_old.get('refresh_token'):
-        st.warning("🚨 기존 Google Credentials를 감지했습니다. 새 형식으로 마이그레이션합니다.")
+        st.warning("🚨 기존 Google Credentials를 감지했습니다. 새 형식으로 마이그레이션을 시도합니다.")
         try:
             scopes_data = data_old.get('scopes')
             if isinstance(scopes_data, dict):
@@ -171,8 +181,8 @@ def get_google_calendar_service(safe_key):
 
     # 2. Secrets에서 client_config 준비 (OAuth 라이브러리 형식에 맞게)
     google_secrets_flat = GOOGLE_CALENDAR_CLIENT_SECRET 
-    if not isinstance(google_secrets_flat, dict):
-        st.warning("Google Client Secret 정보가 올바른 딕셔너리 형식이 아닙니다. Secrets 설정을 확인하세요.")
+    if not isinstance(google_secrets_flat, dict) or not google_secrets_flat:
+        st.info("구글 캘린더 Secrets 설정이 불완전합니다. Secrets.toml을 확인해주세요.")
         return
 
     # OAuth 라이브러리가 기대하는 'installed' 구조로 감싸기
@@ -199,7 +209,6 @@ def get_google_calendar_service(safe_key):
     redirect_uri = google_secrets_flat.get("redirect_uri")
     if not redirect_uri:
         st.error("🚨 Google Calendar Secrets에 'redirect_uri'가 정의되어 있지 않습니다. secrets.toml을 확인해주세요.")
-        # 인증 플로우를 시작할 수 없으므로 여기서 종료
         return
 
     # 인증 플로우 생성 (InstalledAppFlow 사용)
@@ -221,7 +230,7 @@ def get_google_calendar_service(safe_key):
             
             st.success("Google Calendar 인증이 완료되었습니다.")
             
-            # 리다이렉션으로 인한 쿼리 파라미터 정리 및 앱 리로드
+            # 리디렉션으로 인한 쿼리 파라미터 정리 및 앱 리로드
             st.query_params.clear() 
             st.rerun() 
             
@@ -231,14 +240,14 @@ def get_google_calendar_service(safe_key):
             st.warning("구글 캘린더 연동을 위해 인증이 필요합니다. 아래 링크를 클릭하여 권한을 부여하세요.")
             st.markdown(f"**[Google Calendar 인증 링크]({auth_url})**")
             
-            # 💡 신규 사용자에게 연동 방법을 명확히 안내
+            # 신규 사용자에게 연동 방법을 명확히 안내
             st.info("""
             ### 🔑 구글 캘린더 연동 방법
             1. **[Google Calendar 인증 링크]**를 클릭하여 Google 로그인 및 권한 부여 페이지로 이동합니다.
             2. 권한을 승인하면, **Google은 이 페이지(Streamlit 앱)로 자동으로 리다이렉트**됩니다.
-            3. 리다이렉트 후, 인증 코드가 쿼리 파라미터로 전달되며, 앱이 자동으로 연동을 완료합니다.
+            3. 리다이렉트 후, 앱이 자동으로 연동을 완료하고 로그인 페이지로 돌아옵니다.
             
-            **주의: 인증 완료 후에도 이 화면이 다시 나타난다면, 상단의 URL(공개 URL)이 Google Cloud Console에 '승인된 리디렉션 URI'로 등록되었는지 확인해 주세요.**
+            **주의: 인증 완료 후에도 이 화면이 계속 나타난다면, 상단의 URL이 Google Cloud Console에 '승인된 리디렉션 URI'로 등록되었는지 확인해 주세요.**
             """)
             return None
 
@@ -246,4 +255,21 @@ def get_google_calendar_service(safe_key):
          st.session_state.google_calendar_service = build('calendar', 'v3', credentials=creds)
          return
     
+    return None
+
+
+def recover_email(safe_key):
+    """Firebase의 user 노드에서 safe_key에 해당하는 실제 이메일을 찾습니다."""
+    db_ref = db.reference()
+    
+    paths_to_check = [f'users/{safe_key}', f'doctor_users/{safe_key}', safe_key]
+    
+    for path in paths_to_check:
+        try:
+            data = db_ref.child(path).get()
+            if data and 'email' in data:
+                return data['email']
+        except Exception:
+            continue
+            
     return None
