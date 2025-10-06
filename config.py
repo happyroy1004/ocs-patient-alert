@@ -8,7 +8,7 @@ try:
     # Firebase Realtime Database 및 Admin SDK 인증 정보
     # secrets.toml에 [firebase] 섹션으로 저장된 내용을 딕셔너리로 로드합니다.
     FIREBASE_CREDENTIALS = st.secrets["firebase"]
-    DB_URL = st.secrets["database_url"] 
+    DB_URL = st.secrets["firebase"]["FIREBASE_DATABASE_URL"] 
 
     # Google Calendar OAuth 인증 정보
     # secrets.toml에 [google_calendar] 섹션으로 저장된 내용을 딕셔너리로 로드합니다.
