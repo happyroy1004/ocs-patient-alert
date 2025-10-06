@@ -534,7 +534,46 @@ def show_user_mode_ui(firebase_key, user_name):
 
         # 환자 정보 대량 등록 섹션 (기존 코드의 로직을 그대로 가져와야 함)
         st.subheader("📋 환자 정보 대량 등록")
-        # ... (paste_area 및 등록 버튼 로직) ...
+        paste_area = st.text_area(
+                    "엑셀 또는 다른 곳에서 복사한 데이터를 여기에 붙여넣으세요 (환자명, 진료번호, 진료과를 탭/공백으로 구분).", 
+                    height=150, 
+                    key="bulk_paste_area",
+                    placeholder="예시: 홍길동\t12345678\t교정,보철\n김철수\t87654321\t소치\n(진료과는 쉼표로 구분 가능)"
+        )
+        bulk_submit = st.button("대량 등록 실행", key="bulk_reg_button")
+        
+        if bulk_submit and paste_area:
+            lines = paste_area.strip().split('\n')
+            success_count = 0
+            
+            for line in lines:
+                parts = re.split(r'[\t\s]+', line.strip(), 2) # 탭, 공백 등으로 3부분 분리
+                if len(parts) >= 3:
+                    name, pid, depts_str = parts[0], parts[1], parts[2]
+                    pid_key = pid.strip()
+                    
+                    # 진료과 목록 파싱 (쉼표로 구분된 경우)
+                    selected_departments = [d.strip() for d in depts_str.replace(",", " ").split()]
+                    
+                    if name and pid_key and selected_departments:
+                        # 기존 데이터 또는 새 데이터 준비
+                        current_data = existing_patient_data.get(pid_key, {"환자이름": name, "진료번호": pid_key})
+                        
+                        # 진료과 플래그 업데이트
+                        for dept_flag in PATIENT_DEPT_FLAGS + ['치주', '원진실']: current_data[dept_flag.lower()] = False
+                        for dept in selected_departments: current_data[dept.lower()] = True
+                        
+                        patients_ref_for_user.child(pid_key).set(current_data)
+                        success_count += 1
+                    else:
+                        st.warning(f"데이터 형식 오류로 건너뜀: {line}")
+            
+            if success_count > 0:
+                st.success(f"🎉 총 {success_count}명의 환자 정보가 등록/업데이트되었습니다.")
+                st.rerun()
+            else:
+                st.error("등록할 유효한 환자 정보가 없습니다. 형식을 확인해주세요.")
+
         st.markdown("---")
         
         # 환자 정보 일괄 삭제 섹션 (기존 코드의 로직을 그대로 가져와야 함)
