@@ -8,7 +8,7 @@ from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
-from .config import SCOPES
+from config import SCOPES
 
 # --- Firebase 초기화 및 전역 레퍼런스 ---
 users_ref = None
