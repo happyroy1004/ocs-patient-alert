@@ -7,7 +7,7 @@ import msoffcrypto
 import re
 from openpyxl import load_workbook
 from openpyxl.styles import Font
-from .config import PROFESSORS_DICT, SHEET_KEYWORD_TO_DEPARTMENT_MAP
+from config import PROFESSORS_DICT, SHEET_KEYWORD_TO_DEPARTMENT_MAP
 
 # --- 유효성 검사 ---
 def is_daily_schedule(file_name):
