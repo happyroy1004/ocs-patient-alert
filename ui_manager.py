@@ -102,7 +102,7 @@ def _handle_user_login(user_name, password_input):
         
     if not user_name: st.error("사용자 이름을 입력해주세요.")
     elif user_name.strip().lower() == "admin": 
-        # 'admin' 입력 시 관리자 모드 플래그만 설정하고 reru
+        # 'admin' 입력 시 비밀번호 없이 바로 관리자 모드 진입 (Admin 우회 접속)
         st.session_state.login_mode = 'admin_mode'; st.rerun()
     else:
         all_users_meta = users_ref.get()
@@ -306,42 +306,18 @@ def show_login_and_registration():
 def show_admin_mode_ui():
     """관리자 모드 (엑셀 업로드, 알림 전송) UI를 표시합니다."""
     
-    # 💡 Admin 비밀번호 확인 로직
-    if not st.session_state.admin_password_correct:
-        st.subheader("🛠️ Administer Login")
-        admin_password_input = st.text_input("관리자 비밀번호를 입력하세요.", type="password", key="admin_password_check")
-        
-        # 1. secrets.toml에서 Admin 비밀번호 로드 (bcrypt 해시와 비교)
-        try:
-            admin_pw_hash = st.secrets["admin"]["password"]
-        except KeyError:
-            admin_pw_hash = DEFAULT_PASSWORD 
-            st.warning("⚠️ secrets.toml에 관리자 비밀번호가 정의되어 있지 않아 기본 비밀번호로 인증합니다.")
-        
-        # 2. 비밀번호 확인
-        if st.button("관리자 인증", key="admin_auth_button"):
-            # bcrypt 해시 또는 평문 비교 (평문은 마이그레이션하지 않음, secrets에 직접 저장된 값)
-            if check_password(admin_password_input, admin_pw_hash) or (admin_password_input == admin_pw_hash and not admin_pw_hash.startswith('$2b')):
-                st.session_state.admin_password_correct = True
-                st.info("✅ 관리자 인증 성공! 관리자 기능을 사용하실 수 있습니다.")
-                st.rerun()
-            else:
-                st.error("비밀번호가 일치하지 않습니다.")
-        return # 비밀번호가 맞을 때까지 여기서 함수 종료
-    
-    # --- 인증 성공 후 관리자 기능 실행 ---
     st.markdown("---")
-    st.title("💻 관리자 모드 (인증됨)")
-    
-    # 탭 분리: 알림/엑셀 처리 vs 사용자 관리
-    tab_excel, tab_user_mgmt = st.tabs(["📊 OCS 파일 처리 및 알림", "🧑‍💻 사용자 목록 및 관리"])
+    st.title("💻 관리자 모드")
     
     # DB 레퍼런스 및 Gmail 정보 로드
     db_ref = db_ref_func
     sender = st.secrets["gmail"]["sender"]; sender_pw = st.secrets["gmail"]["app_password"]
 
+    # 탭 분리: OCS 파일 처리 (비번 없이 접근) vs 사용자 관리 (비번 필요)
+    tab_excel, tab_user_mgmt = st.tabs(["📊 OCS 파일 처리 및 알림", "🧑‍💻 사용자 목록 및 관리"])
+    
     # -----------------------------------------------------
-    # 탭 1: OCS 파일 처리 및 알림 로직 (기존 로직 유지)
+    # 탭 1: OCS 파일 처리 및 알림 로직 (Admin 이름 입력 후 즉시 접근 가능)
     # -----------------------------------------------------
     with tab_excel:
         st.subheader("💻 Excel File Processor")
@@ -519,91 +495,197 @@ def show_admin_mode_ui():
                         else: st.info("매칭된 치과의사 계정이 없습니다.")
     
     # -----------------------------------------------------
-    # 탭 2: 사용자 목록 및 관리 로직 복원 🚨
+    # 탭 2: 사용자 목록 및 관리 로직 복원 (인증 필요) 🚨
     # -----------------------------------------------------
     with tab_user_mgmt:
+        # 🚨 Admin 비밀번호 확인 로직
+        if not st.session_state.admin_password_correct:
+            st.subheader("🔑 사용자 관리 권한 인증")
+            admin_password_input = st.text_input("관리자 비밀번호를 입력하세요.", type="password", key="admin_password_check_tab2")
+            
+            try:
+                admin_pw_hash = st.secrets["admin"]["password"]
+            except KeyError:
+                admin_pw_hash = DEFAULT_PASSWORD
+            
+            if st.button("사용자 관리 인증", key="admin_auth_button_tab2"):
+                if check_password(admin_password_input, admin_pw_hash) or (admin_password_input == admin_pw_hash and not admin_pw_hash.startswith('$2b')):
+                    st.session_state.admin_password_correct = True
+                    st.success("✅ 사용자 관리 인증 성공! 기능을 로드합니다.")
+                    st.rerun()
+                else:
+                    st.error("비밀번호가 일치하지 않습니다. 관리자 계정을 확인하세요.")
+            
+            # 인증 전에는 아래 기능들을 표시하지 않고 여기서 함수 종료
+            return 
+        
+        # --- 인증 성공 후 사용자 관리 기능 실행 ---
         st.subheader("👥 사용자 목록 및 계정 관리")
         
-        # 1. 학생 사용자 관리
-        st.markdown("#### 학생 사용자 목록")
+        tab_student, tab_doctor, tab_test_mail = st.tabs(["📚 학생 사용자 관리", "🧑‍⚕️ 치과의사 사용자 관리", "📧 테스트 메일 발송"])
+
+        # DB 사용자 데이터 로드
         user_meta = users_ref.get()
         user_list = [{"name": u.get('name'), "email": u.get('email'), "key": k} for k, u in user_meta.items() if u] if user_meta else []
-        
-        if user_list:
-            df_users = pd.DataFrame(user_list)
-            st.dataframe(df_users[['name', 'email']], use_container_width=True)
-            
-            st.markdown("---")
-            # 1-1. 학생 사용자 선택 및 삭제
-            st.markdown("##### 학생 계정 삭제")
-            selected_user_to_delete = st.selectbox(
-                "삭제할 학생 계정을 선택하세요:", 
-                options=[f"{u['name']} ({u['email']})" for u in user_list], 
-                key="student_delete_select"
-            )
-            
-            if selected_user_to_delete and st.button("선택된 학생 계정 삭제", key="delete_student_btn"):
-                selected_user_key = next((u['key'] for u in user_list if f"{u['name']} ({u['email']})" == selected_user_to_delete), None)
-                if selected_user_key:
-                    users_ref.child(selected_user_key).delete()
-                    st.success(f"학생 계정 {selected_user_to_delete}가 삭제되었습니다.")
-                    st.rerun()
-        else:
-            st.info("등록된 학생 사용자가 없습니다.")
-        
-        st.markdown("<br>", unsafe_allow_html=True)
-        
-        # 2. 치과의사 사용자 관리
-        st.markdown("#### 치과의사 사용자 목록")
         doctor_meta = doctor_users_ref.get()
         doctor_list = [{"name": d.get('name'), "email": d.get('email'), "key": k, "dept": d.get('department')} for k, d in doctor_meta.items() if d] if doctor_meta else []
-        
-        if doctor_list:
-            df_doctors = pd.DataFrame(doctor_list)
-            st.dataframe(df_doctors[['name', 'email', 'dept']], use_container_width=True)
 
-            st.markdown("---")
-            # 2-1. 치과의사 사용자 선택 및 삭제
-            st.markdown("##### 치과의사 계정 삭제")
-            selected_doctor_to_delete = st.selectbox(
-                "삭제할 치과의사 계정을 선택하세요:", 
-                options=[f"{d['name']} ({d['email']})" for d in doctor_list], 
-                key="doctor_delete_select"
-            )
-            
-            if selected_doctor_to_delete and st.button("선택된 치과의사 계정 삭제", key="delete_doctor_btn"):
-                selected_doctor_key = next((d['key'] for d in doctor_list if f"{d['name']} ({d['email']})" == selected_doctor_to_delete), None)
-                if selected_doctor_key:
-                    doctor_users_ref.child(selected_doctor_key).delete()
-                    st.success(f"치과의사 계정 {selected_doctor_to_delete}가 삭제되었습니다.")
-                    st.rerun()
-        else:
-            st.info("등록된 치과의사 사용자가 없습니다.")
-            
-        st.markdown("---")
-        
-        # 3. 테스트 메일 발송
-        st.subheader("📧 테스트 메일 발송")
-        test_email_recipient = st.text_input("테스트 메일 수신자 이메일 주소", key="test_email_recipient")
-        
-        if st.button("테스트 메일 발송", key="send_test_mail_btn"):
-            if is_valid_email(test_email_recipient):
-                try:
-                    # 빈 환자 목록과 파일 정보로 테스트 메일 발송
-                    send_email(
-                        recipient=test_email_recipient, 
-                        patient_data=[], 
-                        sender=sender, 
-                        sender_password=sender_pw, 
-                        custom_message="""<p>이 메일은 환자 내원 확인 시스템에서 발송한 테스트 메일입니다. 시스템 정상 작동을 확인해 주세요.</p>""",
-                        date_str=datetime.datetime.now().strftime("%Y-%m-%d")
-                    )
-                    st.success(f"테스트 메일이 {test_email_recipient}에게 성공적으로 발송되었습니다.")
-                except Exception as e:
-                    st.error(f"테스트 메일 발송 실패: {e}. secrets.toml의 [gmail] 정보를 확인해주세요.")
+        # --- 탭 2-1: 학생 사용자 관리 ---
+        with tab_student:
+            st.markdown("#### 학생 사용자 목록")
+            if user_list:
+                df_users = pd.DataFrame(user_list)
+                st.dataframe(df_users[['name', 'email']], use_container_width=True)
+
+                st.markdown("---")
+                
+                # 1-1. 학생 사용자 선택 (Multiselect)
+                user_options = [f"{u['name']} ({u['email']})" for u in user_list]
+                selected_users_to_act = st.multiselect(
+                    "메일 발송 또는 삭제할 학생을 선택하세요:", 
+                    options=user_options, 
+                    key="student_multiselect_act"
+                )
+                
+                selected_user_data = [u for u in user_list if f"{u['name']} ({u['email']})" in selected_users_to_act]
+                
+                if selected_user_data:
+                    
+                    # 1-2. 메일 발송 기능
+                    with st.expander("📧 선택된 학생에게 메일 발송"):
+                        mail_subject = st.text_input("메일 제목 (선택사항)", key="student_mail_subject")
+                        mail_body = st.text_area("메일 내용", key="student_mail_body")
+                        
+                        if st.button(f"선택된 {len(selected_user_data)}명에게 메일 발송 실행", key="send_bulk_student_mail_btn"):
+                            success_count = 0
+                            for user_info in selected_user_data:
+                                try:
+                                    send_email(
+                                        recipient=user_info['email'], 
+                                        patient_data=[], 
+                                        sender=sender, 
+                                        sender_password=sender_pw, 
+                                        custom_message=f"<h4>{mail_subject}</h4><p>{mail_body}</p>",
+                                        date_str="Admin 발송 테스트"
+                                    )
+                                    success_count += 1
+                                except Exception as e:
+                                    st.error(f"❌ {user_info['email']} 메일 발송 실패: {e}")
+                            st.success(f"✅ 총 {success_count}명에게 메일 발송 완료!")
+
+                    # 1-3. 일괄 삭제 기능
+                    if st.session_state.get('student_delete_confirm', False) is False:
+                        if st.button(f"선택된 {len(selected_user_data)}명 일괄 삭제 준비", key="init_student_delete_btn"):
+                            st.session_state.student_delete_confirm = True
+                            st.rerun()
+
+                    if st.session_state.get('student_delete_confirm', False):
+                        st.warning(f"⚠️ **{len(selected_user_data)}명**의 학생 계정을 영구적으로 삭제하시겠습니까?")
+                        col_yes, col_no = st.columns(2)
+                        if col_yes.button("예, 학생 계정 일괄 삭제", key="confirm_bulk_student_delete_btn"):
+                            deleted_count = 0
+                            for user_info in selected_user_data:
+                                users_ref.child(user_info['key']).delete()
+                                deleted_count += 1
+                            st.session_state.student_delete_confirm = False
+                            st.success(f"🎉 {deleted_count}명의 학생 계정이 삭제되었습니다.")
+                            st.rerun()
+                        if col_no.button("아니오, 취소", key="cancel_bulk_student_delete_btn"):
+                            st.session_state.student_delete_confirm = False
+                            st.rerun()
+                            
             else:
-                st.error("유효한 이메일 주소를 입력해주세요.")
+                st.info("등록된 학생 사용자가 없습니다.")
 
+        # --- 탭 2-2: 치과의사 사용자 관리 ---
+        with tab_doctor:
+            st.markdown("#### 치과의사 사용자 목록")
+            if doctor_list:
+                df_doctors = pd.DataFrame(doctor_list)
+                st.dataframe(df_doctors[['name', 'email', 'dept']], use_container_width=True)
+
+                st.markdown("---")
+                
+                # 2-1. 치과의사 사용자 선택 (Multiselect)
+                doctor_options = [f"{d['name']} ({d['email']})" for d in doctor_list]
+                selected_doctors_to_act = st.multiselect(
+                    "메일 발송 또는 삭제할 치과의사를 선택하세요:", 
+                    options=doctor_options, 
+                    key="doctor_multiselect_act"
+                )
+                
+                selected_doctor_data = [d for d in doctor_list if f"{d['name']} ({d['email']})" in selected_doctors_to_act]
+                
+                if selected_doctor_data:
+                    
+                    # 2-2. 메일 발송 기능
+                    with st.expander("📧 선택된 치과의사에게 메일 발송"):
+                        mail_subject = st.text_input("메일 제목 (선택사항)", key="doctor_mail_subject")
+                        mail_body = st.text_area("메일 내용", key="doctor_mail_body")
+                        
+                        if st.button(f"선택된 {len(selected_doctor_data)}명에게 메일 발송 실행", key="send_bulk_doctor_mail_btn"):
+                            success_count = 0
+                            for doctor_info in selected_doctor_data:
+                                try:
+                                    send_email(
+                                        recipient=doctor_info['email'], 
+                                        patient_data=[], 
+                                        sender=sender, 
+                                        sender_password=sender_pw, 
+                                        custom_message=f"<h4>{mail_subject}</h4><p>{mail_body}</p>",
+                                        date_str="Admin 발송 테스트"
+                                    )
+                                    success_count += 1
+                                except Exception as e:
+                                    st.error(f"❌ {doctor_info['email']} 메일 발송 실패: {e}")
+                            st.success(f"✅ 총 {success_count}명에게 메일 발송 완료!")
+
+                    # 2-3. 일괄 삭제 기능
+                    if st.session_state.get('doctor_delete_confirm', False) is False:
+                        if st.button(f"선택된 {len(selected_doctor_data)}명 일괄 삭제 준비", key="init_doctor_delete_btn"):
+                            st.session_state.doctor_delete_confirm = True
+                            st.rerun()
+
+                    if st.session_state.get('doctor_delete_confirm', False):
+                        st.warning(f"⚠️ **{len(selected_doctor_data)}명**의 치과의사 계정을 영구적으로 삭제하시겠습니까?")
+                        col_yes, col_no = st.columns(2)
+                        if col_yes.button("예, 치과의사 계정 일괄 삭제", key="confirm_bulk_doctor_delete_btn"):
+                            deleted_count = 0
+                            for doctor_info in selected_doctor_data:
+                                doctor_users_ref.child(doctor_info['key']).delete()
+                                deleted_count += 1
+                            st.session_state.doctor_delete_confirm = False
+                            st.success(f"🎉 {deleted_count}명의 치과의사 계정이 삭제되었습니다.")
+                            st.rerun()
+                        if col_no.button("아니오, 취소", key="cancel_bulk_doctor_delete_btn"):
+                            st.session_state.doctor_delete_confirm = False
+                            st.rerun()
+                            
+            else:
+                st.info("등록된 치과의사 사용자가 없습니다.")
+        
+        # --- 탭 2-3: 테스트 메일 발송 ---
+        with tab_test_mail:
+            st.subheader("📧 테스트 메일 발송")
+            test_email_recipient = st.text_input("테스트 메일 수신자 이메일 주소", key="test_email_recipient")
+            
+            if st.button("테스트 메일 발송", key="send_test_mail_btn"):
+                if is_valid_email(test_email_recipient):
+                    try:
+                        # 빈 환자 목록과 파일 정보로 테스트 메일 발송
+                        send_email(
+                            recipient=test_email_recipient, 
+                            patient_data=[], 
+                            sender=sender, 
+                            sender_password=sender_pw, 
+                            custom_message="""<p>이 메일은 환자 내원 확인 시스템에서 발송한 테스트 메일입니다. 시스템 정상 작동을 확인해 주세요.</p>""",
+                            date_str=datetime.datetime.now().strftime("%Y-%m-%d")
+                        )
+                        st.success(f"테스트 메일이 {test_email_recipient}에게 성공적으로 발송되었습니다.")
+                    except Exception as e:
+                        st.error(f"테스트 메일 발송 실패: {e}. secrets.toml의 [gmail] 정보를 확인해주세요.")
+                else:
+                    st.error("유효한 이메일 주소를 입력해주세요.")
 
 # --- 4. 일반 사용자 모드 UI ---
 
