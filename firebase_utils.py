@@ -5,7 +5,7 @@ import firebase_admin
 from firebase_admin import credentials, db, auth
 from google_auth_oauthlib.flow import Flow
 from google.auth.transport.requests import Request
-from google.oauth2.credentials import Credentials
+from google.oauth2.credentials import Credentials # 💡 Credentials 객체 임포트
 from googleapiclient.discovery import build
 import os
 import io
@@ -52,7 +52,7 @@ def get_db_refs():
     # Firebase Admin SDK 초기화 확인 및 실행
     if not firebase_admin._apps:
         try:
-            # Secrets 로드 실패 시 초기화 시도 자체를 건너뜀
+            # Secrets 로드 실패 시 초기화 시도 자체를 건너김
             if FIREBASE_CREDENTIALS is None or DB_URL is None:
                 st.warning("DB 연결 정보가 불완전하여 초기화를 건너뜠습니다.")
                 return None, None, None
@@ -98,7 +98,8 @@ def sanitize_path(email):
 
 
 def save_google_creds_to_firebase(safe_key, creds):
-    """Google 캘린더 OAuth2 Credentials 객체를 Firebase에 저장합니다 (pickle 직렬화)."""
+    """Google 캘린더 OAuth2 Credentials 객체를 Firebase의 새 형식에 맞게 저장합니다 (pickle 직렬화)."""
+    # 💡 새롭고 안정적인 경로에 저장
     creds_ref = db.reference(f'google_calendar_creds/{safe_key}')
     
     pickled_creds = pickle.dumps(creds)
@@ -109,14 +110,70 @@ def save_google_creds_to_firebase(safe_key, creds):
 
 def load_google_creds_from_firebase(safe_key):
     """Firebase에서 Google Calendar OAuth2 Credentials 객체를 로드합니다."""
-    creds_ref = db.reference(f'google_calendar_creds/{safe_key}')
-    data = creds_ref.get()
     
-    if data and 'creds' in data:
-        encoded_creds = data['creds']
+    # 1. 새롭고 올바른 경로 (Pickle/Hex 형식)에서 로드 시도
+    creds_ref_new = db.reference(f'google_calendar_creds/{safe_key}')
+    data_new = creds_ref_new.get()
+    
+    if data_new and 'creds' in data_new:
+        # 올바른 형식 발견: 로드하고 반환
+        encoded_creds = data_new['creds']
         pickled_creds = bytes.fromhex(encoded_creds)
         creds = pickle.loads(pickled_creds)
         return creds
+
+    # 2. 🚨 기존 경로 (Plaintext 형식)에서 로드 시도 (호환성 레이어)
+    
+    def get_old_creds_data(safe_key):
+        # 사용자 이미지 기반 경로: {safe_key}/google_creds
+        data = db.reference(f'{safe_key}/google_creds').get()
+        if data: return data
+        
+        # 기본 사용자 노드 아래 경로: users/{safe_key}/google_creds
+        data = db.reference(f'users/{safe_key}/google_creds').get()
+        if data: return data
+        
+        # 의사 사용자 노드 아래 경로: doctor_users/{safe_key}/google_creds
+        data = db.reference(f'doctor_users/{safe_key}/google_creds').get()
+        if data: return data
+
+        return None
+
+    data_old = get_old_creds_data(safe_key)
+    
+    if data_old and data_old.get('refresh_token'):
+        st.warning("🚨 기존 Google Credentials를 감지했습니다. 마이그레이션을 시도합니다.")
+        try:
+            # Scopes 데이터 처리: DB에 딕셔너리 형태로 저장되어 있을 수 있으므로 값만 추출
+            scopes_data = data_old.get('scopes')
+            if isinstance(scopes_data, dict):
+                 scopes_list = list(scopes_data.values())
+            elif isinstance(scopes_data, list):
+                 scopes_list = scopes_data
+            else:
+                 # 알 수 없는 형식일 경우 config.SCOPES의 기본값 사용
+                 scopes_list = SCOPES
+
+            # Plaintext 데이터를 사용하여 Credentials 객체 재구성
+            creds = Credentials(
+                token=data_old.get('token'),
+                refresh_token=data_old.get('refresh_token'),
+                token_uri=data_old.get('token_uri') or 'https://oauth2.googleapis.com/token',
+                client_id=data_old.get('client_id'),
+                client_secret=data_old.get('client_secret'),
+                scopes=scopes_list
+            )
+            
+            # 마이그레이션: 올바른 형식/위치로 저장 (future loads will use the new path)
+            save_google_creds_to_firebase(safe_key, creds)
+            
+            st.success("✅ 기존 인증 정보를 성공적으로 로드하고 마이그레이션했습니다.")
+            return creds
+
+        except Exception as e:
+            st.error(f"❌ 기존 Credentials 마이그레이션 실패: 다시 인증을 시도해 주세요. ({e})")
+            return None # 마이그레이션 실패 시 재인증 흐름으로 폴백
+
     return None
 
 
@@ -130,15 +187,26 @@ def get_google_calendar_service(safe_key):
     st.session_state.google_calendar_service = None
     creds = load_google_creds_from_firebase(safe_key)
 
+    # 💡 로드된 Credentials가 유효하거나, 리프레시 토큰으로 갱신 가능한지 확인
+    if creds and creds.valid:
+        st.session_state.google_calendar_service = build('calendar', 'v3', credentials=creds)
+        return
+        
     if creds and creds.expired and creds.refresh_token:
-        creds.refresh(Request())
-        save_google_creds_to_firebase(safe_key, creds)
+        try:
+            creds.refresh(Request())
+            save_google_creds_to_firebase(safe_key, creds) # 갱신된 정보 저장
+            st.session_state.google_calendar_service = build('calendar', 'v3', credentials=creds)
+            return
+        except Exception as e:
+            st.warning(f"Refresh Token 갱신 실패: {e}. 재인증이 필요합니다.")
+            creds = None # 갱신 실패 시 재인증 흐름으로 폴백
     
-    elif not creds or not creds.valid:
+    # 인증 정보가 없거나 갱신에 실패한 경우: 신규 인증 시작
+    if not creds:
         
         google_secrets_flat = GOOGLE_CALENDAR_CLIENT_SECRET # st.secrets에서 로드된 평면 딕셔너리
         
-        # 🚨 수정된 로직: 평면적인 Secret 딕셔너리를 'installed' 키로 감싸서 유효한 JSON 구조를 만듭니다.
         if isinstance(google_secrets_flat, dict):
             client_config = {
                 "installed": google_secrets_flat
@@ -148,7 +216,7 @@ def get_google_calendar_service(safe_key):
             return
 
         flow = Flow.from_client_config(
-            client_config,  # ⬅️ 이제 'installed' 키를 포함한 유효한 딕셔너리가 전달됩니다.
+            client_config,
             scopes=SCOPES, 
             redirect_uri='urn:ietf:wg:oauth:2.0:oob' # Streamlit OOB (Out-of-Band) URI
         )
@@ -166,18 +234,21 @@ def get_google_calendar_service(safe_key):
                 flow.fetch_token(code=verification_code)
                 creds = flow.credentials
                 
-                save_google_creds_to_firebase(safe_key, creds)
+                # 💡 신규 인증 성공 시, 올바른 형식으로 저장
+                save_google_creds_to_firebase(safe_key, creds) 
 
                 st.session_state.google_calendar_auth_needed = False
                 st.session_state.google_calendar_service = build('calendar', 'v3', credentials=creds)
-                st.success("🎉 Google Calendar 연동이 성공적으로 완료되었습니다!")
+                st.success("🎉 Google Calendar 연동이 성공적으로 완료되었습니다! 다시 로드합니다.")
                 st.rerun()
             except Exception as e:
                 st.error(f"인증 코드 오류: 코드를 다시 확인하거나 [Google 인증 링크]({auth_url})를 다시 열어 시도하세요. ({e})")
                 return
 
-    if creds and creds.valid:
-        st.session_state.google_calendar_service = build('calendar', 'v3', credentials=creds)
+    # 이 코드는 인증 성공/갱신 성공 시 이미 위의 return 문으로 빠져나가므로,
+    # 아래의 로직은 도달하지 않거나 중복될 수 있음. 안전을 위해 삭제함.
+    # if creds and creds.valid:
+    #     st.session_state.google_calendar_service = build('calendar', 'v3', credentials=creds)
 
 
 def recover_email(safe_key):
@@ -191,6 +262,14 @@ def recover_email(safe_key):
         
     try:
         data = db.reference('doctor_users').child(safe_key).get()
+        if data and 'email' in data:
+            return data['email']
+    except Exception:
+        pass
+        
+    # 사용자 이미지와 같이, safe_key 자체가 루트 노드일 경우를 대비
+    try:
+        data = db.reference(safe_key).get()
         if data and 'email' in data:
             return data['email']
     except Exception:
