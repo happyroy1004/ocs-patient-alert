@@ -1,6 +1,6 @@
 # firebase_utils.py
 
-import streamlit as st # 💡 st.secrets 및 캐싱을 위해 필요
+import streamlit as st
 import firebase_admin
 from firebase_admin import credentials, db, auth
 from google_auth_oauthlib.flow import Flow
@@ -18,13 +18,12 @@ from config import SCOPES
 # 💡 st.secrets를 사용하여 인증 정보를 로드하고 전역 변수로 설정
 try:
     # 1. Firebase Admin SDK 인증 정보 로드: [firebase] 섹션 전체를 딕셔너리로 변환하여 로드
-    # 🚨 수정: dict() 생성자를 사용해 st.secrets 객체를 안전하게 복사/변환합니다.
     FIREBASE_CREDENTIALS = dict(st.secrets["firebase"]) 
     
     # 2. DB URL 로드: 최상위 database_url 키를 참조하도록 통일
     DB_URL = st.secrets["database_url"] 
 
-    # 3. Google Calendar Client Secret 로드
+    # 3. Google Calendar Client Secret 로드: 평면적인 키/값 딕셔너리로 로드됨
     GOOGLE_CALENDAR_CLIENT_SECRET = dict(st.secrets["google_calendar"])
     
 except KeyError as e:
@@ -55,11 +54,10 @@ def get_db_refs():
         try:
             # Secrets 로드 실패 시 초기화 시도 자체를 건너뜀
             if FIREBASE_CREDENTIALS is None or DB_URL is None:
-                st.warning("DB 연결 정보가 불완전하여 초기화를 건너뜁니다.")
+                st.warning("DB 연결 정보가 불완전하여 초기화를 건너뜠습니다.")
                 return None, None, None
 
             # Admin SDK에 전달하기 전에 DB URL 관련 키(Admin SDK는 필요 없음)는 제거합니다.
-            # FIREBASE_CREDENTIALS는 이미 dict 객체이므로 안전하게 copy() 호출 가능
             creds_for_init = FIREBASE_CREDENTIALS.copy()
             if 'FIREBASE_DATABASE_URL' in creds_for_init: 
                  del creds_for_init['FIREBASE_DATABASE_URL']
@@ -138,14 +136,19 @@ def get_google_calendar_service(safe_key):
     
     elif not creds or not creds.valid:
         
-        if isinstance(GOOGLE_CALENDAR_CLIENT_SECRET, dict):
-            client_config = GOOGLE_CALENDAR_CLIENT_SECRET
+        google_secrets_flat = GOOGLE_CALENDAR_CLIENT_SECRET # st.secrets에서 로드된 평면 딕셔너리
+        
+        # 🚨 수정된 로직: 평면적인 Secret 딕셔너리를 'installed' 키로 감싸서 유효한 JSON 구조를 만듭니다.
+        if isinstance(google_secrets_flat, dict):
+            client_config = {
+                "installed": google_secrets_flat
+            }
         else:
-            st.warning("Google Client Secret 정보를 로드하지 못했습니다. Secrets 설정을 확인하세요.")
+            st.warning("Google Client Secret 정보가 올바른 딕셔너리 형식이 아닙니다. Secrets 설정을 확인하세요.")
             return
 
         flow = Flow.from_client_config(
-            client_config, 
+            client_config,  # ⬅️ 이제 'installed' 키를 포함한 유효한 딕셔너리가 전달됩니다.
             scopes=SCOPES, 
             redirect_uri='urn:ietf:wg:oauth:2.0:oob' # Streamlit OOB (Out-of-Band) URI
         )
