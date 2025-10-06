@@ -29,6 +29,7 @@ from notification_utils import (
 )
 
 # DB 레퍼런스 초기 로드 (전역에서 사용할 수 있도록 설정)
+# @st.cache_resource 덕분에 앱 시작 시 단 한번 안전하게 초기화됩니다.
 users_ref, doctor_users_ref, db_ref_func = get_db_refs()
 
 # 🔑 비밀번호 암호화 및 확인 유틸리티 함수
@@ -532,13 +533,14 @@ def show_user_mode_ui(firebase_key, user_name):
         else: st.info("등록된 환자가 없습니다.")
         st.markdown("---")
 
-        # 환자 정보 대량 등록 섹션 (기존 코드의 로직을 그대로 가져와야 함)
+        # 📋 환자 정보 대량 등록 섹션 복원
         st.subheader("📋 환자 정보 대량 등록")
+        
         paste_area = st.text_area(
-                    "엑셀 또는 다른 곳에서 복사한 데이터를 여기에 붙여넣으세요 (환자명, 진료번호, 진료과를 탭/공백으로 구분).", 
-                    height=150, 
-                    key="bulk_paste_area",
-                    placeholder="예시: 홍길동\t12345678\t교정,보철\n김철수\t87654321\t소치\n(진료과는 쉼표로 구분 가능)"
+            "엑셀 또는 다른 곳에서 복사한 데이터를 여기에 붙여넣으세요 (환자명, 진료번호, 진료과를 탭/공백으로 구분).", 
+            height=150, 
+            key="bulk_paste_area",
+            placeholder="예시: 홍길동\t12345678\t교정,보철\n김철수\t87654321\t소치\n(진료과는 쉼표로 구분 가능)"
         )
         bulk_submit = st.button("대량 등록 실행", key="bulk_reg_button")
         
