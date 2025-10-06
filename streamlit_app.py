@@ -10,7 +10,7 @@ from ui_manager import (
     init_session_state, show_title_and_manual, show_login_and_registration, 
     show_admin_mode_ui, show_user_mode_ui, show_doctor_mode_ui
 )
-from firebase_utils import init_firebase, get_db_refs, users_ref, doctor_users_ref, sanitize_path
+from firebase_utils import get_db_refs, sanitize_path
 
 # --- 1. 초기 설정 및 Firebase 초기화 ---
 st.set_page_config(layout="wide")
