@@ -1,7 +1,27 @@
-# config.py
+# config.py (수정된 버전)
 
 import streamlit as st
 import datetime
+
+# --- 💡 필수 인증 정보 로드 (secrets.toml에서 가져옴) ---
+try:
+    # Firebase Realtime Database 및 Admin SDK 인증 정보
+    # secrets.toml에 [firebase] 섹션으로 저장된 내용을 딕셔너리로 로드합니다.
+    FIREBASE_CREDENTIALS = st.secrets["firebase"]
+    DB_URL = st.secrets["database_url"] 
+
+    # Google Calendar OAuth 인증 정보
+    # secrets.toml에 [google_calendar] 섹션으로 저장된 내용을 딕셔너리로 로드합니다.
+    GOOGLE_CALENDAR_CLIENT_SECRET = st.secrets["google_calendar"]
+    
+except KeyError as e:
+    # 인증 정보 로드 실패 시 명시적인 오류 메시지 출력
+    st.error(f"🚨 중요: Secrets.toml 설정 오류. '{e.args[0]}' 키를 찾을 수 없습니다. secrets.toml 파일을 확인해 주세요.")
+    # 임시로 None을 할당하여 앱이 바로 크래시되는 것을 방지합니다.
+    FIREBASE_CREDENTIALS = None
+    DB_URL = None
+    GOOGLE_CALENDAR_CLIENT_SECRET = None
+
 
 # --- 전역 상수 정의 ---
 # 환자 데이터의 진료과 플래그 키 목록 (DB에 저장되는 T/F 플래그)
