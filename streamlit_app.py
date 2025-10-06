@@ -14,10 +14,6 @@ from firebase_utils import get_db_refs, sanitize_path
 
 # --- 1. 초기 설정 및 Firebase 초기화 ---
 st.set_page_config(layout="wide")
-init_firebase() # Firebase 초기화
-# DB 레퍼런스 초기 로드 (ui_manager에서도 사용)
-users_ref, doctor_users_ref, db_ref_func = get_db_refs()
-init_session_state()
 
 # --- 2. 초기화 및 리다이렉션 처리 ---
 # Query Params를 이용한 상태 클리어 처리
