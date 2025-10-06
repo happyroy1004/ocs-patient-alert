@@ -17,19 +17,13 @@ from config import SCOPES
 
 # 💡 st.secrets를 사용하여 인증 정보를 로드하고 전역 변수로 설정
 try:
-    # 1. Firebase Admin SDK 인증 정보 로드 (Admin SDK가 기대하는 딕셔너리 형태)
-    # [firebase] 섹션 전체를 딕셔너리로 로드합니다.
+    # 1. Firebase Admin SDK 인증 정보 로드: [firebase] 섹션 전체를 로드합니다.
+    #    (secrets.toml의 [firebase] 섹션이 서비스 계정 속성 개별 키로 정의되어야 함)
     FIREBASE_CREDENTIALS = st.secrets["firebase"] 
     
-    # 2. 🚨 DB URL 로드: secrets.toml의 키 이름과 일치하도록 참조
-    # database_url이 secrets.toml의 최상위 키라고 가정하거나, 
-    # [firebase] 섹션 내부의 키(FIREBASE_DATABASE_URL)를 참조해야 합니다.
-    # 이전 논의에 따라 [firebase] 섹션 내부의 키를 참조하는 것이 가장 안전합니다.
-    DB_URL = FIREBASE_CREDENTIALS.get("FIREBASE_DATABASE_URL")
-    if not DB_URL:
-        # DB URL이 최상위 키에 있을 경우를 대비해 한 번 더 확인
-        DB_URL = st.secrets.get("database_url")
-        
+    # 2. 🚨 DB URL 로드: 최상위 database_url 키를 참조하도록 통일합니다.
+    DB_URL = st.secrets["database_url"] 
+
     # 3. Google Calendar Client Secret 로드
     GOOGLE_CALENDAR_CLIENT_SECRET = st.secrets["google_calendar"]
     
@@ -60,15 +54,14 @@ def get_db_refs():
     # Firebase Admin SDK 초기화 확인 및 실행
     if not firebase_admin._apps:
         try:
-            # 💡 Secrets 로드 실패 시 초기화 시도 자체를 건너
+            # 💡 Secrets 로드 실패 시 초기화 시도 자체를 건너뜀
             if FIREBASE_CREDENTIALS is None or DB_URL is None:
                 st.warning("DB 연결 정보가 불완전하여 초기화를 건너뜁니다.")
                 return None, None, None
 
-            # 🚨 Admin SDK에 전달하기 전에 DB URL 키는 제거해야 합니다.
-            #   Admin SDK는 오직 서비스 계정 정보만 필요합니다.
+            # 🚨 Admin SDK에 전달하기 전에 DB URL 관련 키(Admin SDK는 필요 없음)는 제거합니다.
             creds_for_init = FIREBASE_CREDENTIALS.copy()
-            if 'FIREBASE_DATABASE_URL' in creds_for_init:
+            if 'FIREBASE_DATABASE_URL' in creds_for_init: # 혹시 모를 내부 URL 키 제거
                  del creds_for_init['FIREBASE_DATABASE_URL']
             
             # Firebase Admin SDK가 기대하는 딕셔너리(서비스 계정)를 전달합니다.
@@ -78,7 +71,8 @@ def get_db_refs():
             firebase_admin.initialize_app(cred, {'databaseURL': DB_URL})
             
         except Exception as e:
-            st.error(f"❌ Firebase 앱 초기화 실패: Invalid certificate argument: {e}")
+            # 초기화 실패 시 반환되는 오류를 명확히 표시
+            st.error(f"❌ Firebase 앱 초기화 실패: {e}")
             return None, None, None # 초기화 실패 시 None 반환
 
     # 초기화 성공 시에만 레퍼런스 반환
