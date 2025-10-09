@@ -301,13 +301,15 @@ def show_login_and_registration():
 
 def toggle_select_all_students():
     """학생 전체 선택 상태를 토글하고 화면을 재실행합니다."""
+    # 💡 st.rerun()은 콜백 내에서 유효합니다.
     st.session_state.select_all_matched_users = not st.session_state.get('select_all_matched_users', False)
-    st.rerun() # Multiselect의 default 값을 갱신하기 위해 필요
+    st.rerun() 
 
 def toggle_select_all_doctors():
     """치과의사 전체 선택 상태를 토글하고 화면을 재실행합니다."""
+    # 💡 st.rerun()은 콜백 내에서 유효합니다.
     st.session_state.select_all_matched_doctors = not st.session_state.get('select_all_matched_doctors', False)
-    st.rerun() # Multiselect의 default 값을 갱신하기 위해 필요
+    st.rerun() 
 
 
 # --- 3. 관리자 모드 UI (Excel 및 알림) ---
