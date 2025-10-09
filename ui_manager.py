@@ -7,7 +7,6 @@ import datetime
 from googleapiclient.discovery import build
 import os
 import re
-# 💡 Bycrypt 추가
 import bcrypt
 
 # local imports: 상대 경로 임포트(.)를 절대 경로 임포트로 수정
@@ -19,10 +18,8 @@ from firebase_utils import (
     get_db_refs, sanitize_path, recover_email, 
     get_google_calendar_service, save_google_creds_to_firebase, load_google_creds_from_firebase
 )
-from excel_utils import (
-    is_daily_schedule, is_encrypted_excel, load_excel, 
-    process_excel_file_and_style, run_analysis
-)
+# 💡 수정: excel_utils 전체를 import하여 순환 참조 문제를 회피
+import excel_utils
 from notification_utils import (
     is_valid_email, send_email, create_calendar_event, 
     get_matching_data, run_auto_notifications
@@ -336,19 +333,19 @@ def show_admin_mode_ui():
         uploaded_file = st.file_uploader("암호화된 Excel 파일을 업로드하세요", type=["xlsx", "xlsm"])
         
         if uploaded_file:
-            file_name = uploaded_file.name; is_daily = is_daily_schedule(file_name)
+            file_name = uploaded_file.name; is_daily = excel_utils.is_daily_schedule(file_name)
             
             # 1. 파일 비밀번호 처리
             password = None
-            if is_encrypted_excel(uploaded_file):
+            if excel_utils.is_encrypted_excel(uploaded_file):
                 password = st.text_input("⚠️ 암호화된 파일입니다. 비밀번호를 입력해주세요.", type="password", key="admin_password_file")
                 if not password: st.info("비밀번호 입력 대기 중..."); st.stop()
 
             # 2. 파일 처리 및 분석 실행
             try:
-                xl_object, raw_file_io = load_excel(uploaded_file, password)
-                excel_data_dfs_raw, styled_excel_bytes = process_excel_file_and_style(raw_file_io)
-                analysis_results = run_analysis(excel_data_dfs_raw)
+                xl_object, raw_file_io = excel_utils.load_excel(uploaded_file, password)
+                excel_data_dfs_raw, styled_excel_bytes = excel_utils.process_excel_file_and_style(raw_file_io)
+                analysis_results = excel_utils.run_analysis(excel_data_dfs_raw)
                 
                 # 💡 수정: 분석 결과가 유효할 때만 Firebase에 저장
                 if analysis_results and any(analysis_results.values()): # 결과가 비어있지 않은지 확인
@@ -446,20 +443,44 @@ def show_admin_mode_ui():
                             with calendar_col:
                                 if st.button("선택된 사용자에게 Google Calendar 일정 추가", key="manual_send_calendar_student"):
                                     for user_match_info in selected_matched_users_data:
-                                        # ... (개별 캘린더 전송 로직)
                                         user_safe_key = user_match_info['safe_key']; user_name = user_match_info['name']; df_matched = user_match_info['data']
                                         creds = load_google_creds_from_firebase(user_safe_key) 
+                                        
                                         if creds and creds.valid and not creds.expired:
+                                            successful_adds = 0
                                             try:
                                                 service = build('calendar', 'v3', credentials=creds)
-                                                for _, row in df_matched.iterrows():
+                                                
+                                                # 캘린더 생성은 행별로 분리하여 오류를 상세히 보고
+                                                for index, row in df_matched.iterrows():
                                                     reservation_date_raw = row.get('예약일시', ''); reservation_time_raw = row.get('예약시간', '')
+                                                    
                                                     if reservation_date_raw and reservation_time_raw:
-                                                        full_datetime_str = f"{str(reservation_date_raw).strip()} {str(reservation_time_raw).strip()}"; reservation_datetime = datetime.datetime.strptime(full_datetime_str, '%Y/%m/%d %H:%M')
-                                                        create_calendar_event(service, row.get('환자명', 'N/A'), row.get('진료번호', ''), row.get('등록과', ''), reservation_datetime, row.get('예약의사', ''), row.get('진료내역', ''), is_daily)
-                                                st.success(f"**{user_name}**님의 캘린더에 일정을 추가했습니다.")
-                                            except Exception as e: st.error(f"**{user_name}**님의 캘린더 일정 추가 실패: {e}")
-                                        else: st.warning(f"**{user_name}**님은 Google Calendar 계정이 연동되어 있지 않습니다.")
+                                                        try:
+                                                            full_datetime_str = f"{str(reservation_date_raw).strip()} {str(reservation_time_raw).strip()}"
+                                                            reservation_datetime = datetime.datetime.strptime(full_datetime_str, '%Y/%m/%d %H:%M')
+                                                            
+                                                            success = create_calendar_event(service, row.get('환자명', 'N/A'), row.get('진료번호', ''), row.get('등록과', ''), reservation_datetime, row.get('예약의사', 'N/A'), row.get('진료내역', ''), is_daily)
+                                                            
+                                                            if success:
+                                                                successful_adds += 1
+                                                            
+                                                        except ValueError as ve:
+                                                            # 날짜 파싱 오류
+                                                            st.error(f"❌ [데이터 형식 오류] {user_name} (환자 {row.get('환자명')}): 날짜 포맷({full_datetime_str}) 오류: {ve}")
+                                                        except Exception as api_e:
+                                                            # API 호출 오류 (HttpError 포함)
+                                                            st.error(f"❌ [API/기타 오류] {user_name} (환자 {row.get('환자명')}): 일정 추가 실패: {api_e}")
+
+                                                if successful_adds > 0:
+                                                    st.success(f"**{user_name}**님의 캘린더에 총 **{successful_adds}건**의 일정을 추가했습니다.")
+                                                elif successful_adds == 0:
+                                                    st.warning(f"**{user_name}**님의 캘린더에 추가된 일정이 없습니다. 상세 오류 메시지를 확인하세요.")
+
+                                            except Exception as e: 
+                                                st.error(f"❌ **치명적 서비스 오류:** {user_name} (API 서비스 구축 실패): 인증 파일이나 권한을 확인하세요. (오류: {e})")
+                                        
+                                        else: st.warning(f"**{user_name}**님은 Google Calendar 계정이 연동되어 있지 않거나 인증이 만료되었습니다.")
                         else: st.info("매칭된 환자가 없습니다.")
 
                     # --- 치과의사 수동 전송 탭 ---
@@ -498,18 +519,40 @@ def show_admin_mode_ui():
                             with calendar_col_doc:
                                 if st.button("선택된 치과의사에게 Google Calendar 일정 추가", key="manual_send_calendar_doctor"):
                                     for res in selected_doctors_to_act:
-                                        # 캘린더 전송 로직
-                                        creds = load_google_creds_from_firebase(res['safe_key'])
+                                        user_safe_key = res['safe_key']; user_name = res['name']; df_matched = res['data']
+                                        creds = load_google_creds_from_firebase(user_safe_key) 
+                                        
                                         if creds and creds.valid and not creds.expired:
+                                            successful_adds = 0
                                             try:
                                                 service = build('calendar', 'v3', credentials=creds)
-                                                for _, row in res['data'].iterrows():
-                                                    reservation_date_str = row.get('예약일시', ''); reservation_time_str = row.get('예약시간', '')
-                                                    if reservation_date_str and reservation_time_str:
-                                                        full_datetime_str = f"{str(reservation_date_str).strip()} {str(reservation_time_str).strip()}"; reservation_datetime = datetime.datetime.strptime(full_datetime_str, '%Y/%m/%d %H:%M')
-                                                        create_calendar_event(service, row.get('환자명', 'N/A'), row.get('진료번호', ''), res.get('department', 'N/A'), reservation_datetime, row.get('예약의사', ''), row.get('진료내역', ''), is_daily)
-                                                st.success(f"**Dr. {res['name']}** 캘린더에 일정 추가 완료.")
-                                            except Exception as e: st.warning(f"⚠️ **Dr. {res['name']}** 일정 추가 중 오류: {e}")
+                                                
+                                                for index, row in df_matched.iterrows():
+                                                    reservation_date_raw = row.get('예약일시', ''); reservation_time_raw = row.get('예약시간', '')
+                                                    
+                                                    if reservation_date_raw and reservation_time_raw:
+                                                        try:
+                                                            full_datetime_str = f"{str(reservation_date_raw).strip()} {str(reservation_time_raw).strip()}"
+                                                            reservation_datetime = datetime.datetime.strptime(full_datetime_str, '%Y/%m/%d %H:%M')
+                                                            
+                                                            success = create_calendar_event(service, row.get('환자명', 'N/A'), row.get('진료번호', ''), res.get('department', 'N/A'), reservation_datetime, row.get('예약의사', 'N/A'), row.get('진료내역', ''), is_daily)
+                                                            
+                                                            if success:
+                                                                successful_adds += 1
+                                                            
+                                                        except ValueError as ve:
+                                                            st.error(f"❌ [데이터 형식 오류] Dr. {user_name} (환자 {row.get('환자명')}): 날짜 포맷({full_datetime_str}) 오류: {ve}")
+                                                        except Exception as api_e:
+                                                            st.error(f"❌ [API/기타 오류] Dr. {user_name} (환자 {row.get('환자명')}): 일정 추가 실패: {api_e}")
+
+                                                if successful_adds > 0:
+                                                    st.success(f"**Dr. {user_name}**님의 캘린더에 총 **{successful_adds}건**의 일정을 추가했습니다.")
+                                                elif successful_adds == 0:
+                                                    st.warning(f"**Dr. {user_name}**님의 캘린더에 추가된 일정이 없습니다. 상세 오류 메시지를 확인하세요.")
+
+                                            except Exception as e: 
+                                                st.error(f"❌ **치명적 서비스 오류:** Dr. {user_name} (API 서비스 구축 실패): 인증 파일이나 권한을 확인하세요. (오류: {e})")
+                                                
                                         else: st.warning(f"⚠️ **Dr. {res['name']}**님은 Google Calendar 계정이 연동되지 않았습니다.")
                         else: st.info("매칭된 치과의사 계정이 없습니다.")
     
