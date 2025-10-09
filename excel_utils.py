@@ -128,7 +128,8 @@ def process_excel_file_and_style(file_bytes_io):
     except Exception as e:
         raise ValueError(f"엑셀 워크북 로드 실패: {e}")
 
-    processed_sheets_dfs = {}
+    processed_sheets_dfs = {} # 스타일링된 DF (출력용)
+    cleaned_raw_dfs = {}       # 정리된 Raw DF (분석 및 매칭용)
     
     # 1. 시트별 데이터 처리 및 정렬
     for sheet_name_raw in wb_raw.sheetnames:
@@ -157,11 +158,14 @@ def process_excel_file_and_style(file_bytes_io):
 
         if '예약의사' not in df.columns: continue
         df['예약의사'] = df['예약의사'].str.strip().str.replace(" 교수님", "", regex=False)
+        
+        # 💡 수정: 정리된 Raw DF를 분석용으로 저장
+        cleaned_raw_dfs[sheet_name_raw] = df.copy() 
 
         professors_list = PROFESSORS_DICT.get(sheet_key, [])
         
         try:
-            # 원본 데이터프레임과 정렬된 데이터프레임 모두 저장
+            # 정렬된 데이터프레임 생성
             processed_df = process_sheet_v8(df.copy(), professors_list, sheet_key)
             processed_sheets_dfs[sheet_name_raw] = processed_df
         except Exception as e:
@@ -169,7 +173,11 @@ def process_excel_file_and_style(file_bytes_io):
             continue
 
     if not processed_sheets_dfs:
-        # 처리된 데이터가 없는 경우 원본 DF 딕셔너리만 반환
+        # 처리된 데이터가 없지만, 최소한 정리된 DF는 있는지 확인하여 반환
+        if cleaned_raw_dfs:
+            return cleaned_raw_dfs, None
+            
+        # 모든 시트 처리에 실패한 경우
         file_bytes_io.seek(0)
         all_sheet_dfs = pd.read_excel(file_bytes_io, sheet_name=None)
         return all_sheet_dfs, None
@@ -207,10 +215,8 @@ def process_excel_file_and_style(file_bytes_io):
     wb_styled.save(final_output_bytes)
     final_output_bytes.seek(0)
     
-    file_bytes_io.seek(0)
-    all_sheet_dfs_raw = pd.read_excel(file_bytes_io, sheet_name=None)
-    
-    return all_sheet_dfs_raw, final_output_bytes
+    # 💡 수정된 반환: 정리된 Raw DF (cleaned_raw_dfs)를 반환
+    return cleaned_raw_dfs, final_output_bytes
 
 # --- OCS 데이터 분석 ---
 def run_analysis(df_dict):
@@ -229,6 +235,7 @@ def run_analysis(df_dict):
         for key, dept in sheet_department_map.items():
             if processed_sheet_name == key.replace(" ", "").lower():
                 # run_analysis에는 정렬되기 전의 원본 DF가 필요합니다.
+                # 이 DF는 이제 process_excel_file_and_style에서 정리된 DF입니다.
                 if all(col in df.columns for col in ['예약의사', '예약시간', '진료내역']):
                      mapped_dfs[dept] = df.copy()
                 break
