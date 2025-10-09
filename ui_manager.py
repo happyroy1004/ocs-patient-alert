@@ -303,12 +303,14 @@ def show_login_and_registration():
 # --- 콜백 함수 정의 (st.rerun() 루프 방지) ---
 
 def toggle_select_all_students():
-    """학생 전체 선택 상태를 토글합니다."""
+    """학생 전체 선택 상태를 토글하고 화면을 재실행합니다."""
     st.session_state.select_all_matched_users = not st.session_state.get('select_all_matched_users', False)
+    st.rerun() # Multiselect의 default 값을 갱신하기 위해 필요
 
 def toggle_select_all_doctors():
-    """치과의사 전체 선택 상태를 토글합니다."""
+    """치과의사 전체 선택 상태를 토글하고 화면을 재실행합니다."""
     st.session_state.select_all_matched_doctors = not st.session_state.get('select_all_matched_doctors', False)
+    st.rerun() # Multiselect의 default 값을 갱신하기 위해 필요
 
 
 # --- 3. 관리자 모드 UI (Excel 및 알림) ---
@@ -348,10 +350,14 @@ def show_admin_mode_ui():
                 excel_data_dfs_raw, styled_excel_bytes = process_excel_file_and_style(raw_file_io)
                 analysis_results = run_analysis(excel_data_dfs_raw)
                 
-                # DB에 분석 결과 저장
-                today_date_str = datetime.datetime.now().strftime("%Y-%m-%d")
-                db_ref("ocs_analysis/latest_result").set(analysis_results); db_ref("ocs_analysis/latest_date").set(today_date_str)
-                db_ref("ocs_analysis/latest_file_name").set(file_name)
+                # 💡 수정: 분석 결과가 유효할 때만 Firebase에 저장
+                if analysis_results and any(analysis_results.values()): # 결과가 비어있지 않은지 확인
+                    today_date_str = datetime.datetime.now().strftime("%Y-%m-%d")
+                    db_ref("ocs_analysis/latest_result").set(analysis_results)
+                    db_ref("ocs_analysis/latest_date").set(today_date_str)
+                    db_ref("ocs_analysis/latest_file_name").set(file_name)
+                else:
+                    st.warning("⚠️ 분석 결과가 비어 있어 Firebase에 저장하지 않았습니다.")
                 
                 st.session_state.last_processed_data = excel_data_dfs_raw; st.session_state.last_processed_file_name = file_name
 
@@ -411,10 +417,10 @@ def show_admin_mode_ui():
                             
                             if 'select_all_matched_users' not in st.session_state: st.session_state.select_all_matched_users = False
                             
-                            # 💡 수정: on_click 핸들러 사용 및 st.rerun() 제거
+                            # 💡 수정: on_click 핸들러 사용
                             st.button("매칭된 사용자 모두 선택/해제", key="select_all_matched_btn", on_click=toggle_select_all_students)
                             
-                            # 💡 수정: 세션 상태에 따라 default 값을 결정
+                            # 💡 수정: 세션 상태에 따라 default 값을 결정하여, 토글 시 전체 선택되도록 함
                             default_selection_matched = matched_user_list_for_dropdown if st.session_state.select_all_matched_users else []
                             selected_users_to_act = st.multiselect("액션을 취할 사용자 선택", matched_user_list_for_dropdown, default=default_selection_matched, key="matched_user_multiselect")
                             selected_matched_users_data = [user for user in matched_users if f"{user['name']} ({user['email']})" in selected_users_to_act]
@@ -446,7 +452,6 @@ def show_admin_mode_ui():
                                         if creds and creds.valid and not creds.expired:
                                             try:
                                                 service = build('calendar', 'v3', credentials=creds)
-                                                # 💡 캘린더 전송 로직은 이전 답변에서 디버깅이 강화된 형태로 복원되어야 함
                                                 for _, row in df_matched.iterrows():
                                                     reservation_date_raw = row.get('예약일시', ''); reservation_time_raw = row.get('예약시간', '')
                                                     if reservation_date_raw and reservation_time_raw:
@@ -465,8 +470,8 @@ def show_admin_mode_ui():
                             doctor_list_for_multiselect = [f"{res['name']} ({res['email']})" for res in matched_doctors_data]
 
                             if 'select_all_matched_doctors' not in st.session_state: st.session_state.select_all_matched_doctors = False
-                            # 💡 수정: on_click 핸들러 사용 및 st.rerun() 제거
-                            st.button("등록된 치과의사 모두 선택/해제", key="select_all_matched_res_btn", on_click=toggle_select_all_doctors) 
+                            # 💡 수정: on_click 핸들러 사용
+                            st.button("등록된 치과의사 모두 선택/해제", key="select_all_matched_res_btn", on_click=toggle_select_all_doctors)
 
                             # 💡 수정: 세션 상태에 따라 default 값을 결정
                             default_selection_doctor = doctor_list_for_multiselect if st.session_state.select_all_matched_doctors else []
@@ -575,7 +580,7 @@ def show_admin_mode_ui():
                             for user_info in selected_user_data:
                                 try:
                                     send_email(
-                                        recipient=user_info['email'], 
+                                        receiver=user_info['email'], 
                                         rows=[], 
                                         sender=sender, 
                                         password=sender_pw, 
@@ -642,7 +647,7 @@ def show_admin_mode_ui():
                             for doctor_info in selected_doctor_data:
                                 try:
                                     send_email(
-                                        recipient=doctor_info['email'], 
+                                        receiver=doctor_info['email'], 
                                         rows=[], 
                                         sender=sender, 
                                         password=sender_pw, 
@@ -788,7 +793,7 @@ def show_user_mode_ui(firebase_key, user_name):
                 st.error("등록할 유효한 환자 정보가 없습니다. 형식을 확인해주세요.")
 
         st.markdown("---")
-        
+
         ## 🗑️ 환자 정보 일괄 삭제 섹션 (복원)
         st.subheader("🗑️ 환자 정보 일괄 삭제")
         
