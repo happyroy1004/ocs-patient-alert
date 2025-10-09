@@ -738,7 +738,6 @@ def show_admin_mode_ui():
             if st.button("테스트 메일 발송", key="send_test_mail_btn"):
                 if is_valid_email(test_email_recipient):
                     try:
-                        # 빈 환자 목록과 파일 정보로 테스트 메일 발송
                         send_email(
                             receiver=test_email_recipient, 
                             rows=[], 
