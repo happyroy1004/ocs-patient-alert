@@ -19,10 +19,6 @@ from firebase_utils import (
     get_db_refs, sanitize_path, recover_email, 
     get_google_calendar_service, save_google_creds_to_firebase, load_google_creds_from_firebase
 )
-from excel_utils import (
-    is_daily_schedule, is_encrypted_excel, load_excel, 
-    process_excel_file_and_style, run_analysis
-)
 from notification_utils import (
     is_valid_email, send_email, create_calendar_event, 
     get_matching_data, run_auto_notifications
