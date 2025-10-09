@@ -297,6 +297,9 @@ def show_login_and_registration():
                     st.rerun()
             else: st.error("이름, 올바른 이메일 주소, 비밀번호, 그리고 등록 과를 입력해주세요.")
 
+# --- 콜백 함수 정의 (st.rerun() 루프 방지) ---
+# 💡 수정: 콜백 함수를 제거하고, 버튼이 직접 상태를 토글하도록 복구했습니다.
+
 # --- 3. 관리자 모드 UI (Excel 및 알림) ---
 
 def show_admin_mode_ui():
