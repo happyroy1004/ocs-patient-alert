@@ -298,19 +298,7 @@ def show_login_and_registration():
             else: st.error("이름, 올바른 이메일 주소, 비밀번호, 그리고 등록 과를 입력해주세요.")
 
 # --- 콜백 함수 정의 (st.rerun() 루프 방지) ---
-
-def toggle_select_all_students():
-    """학생 전체 선택 상태를 토글하고 화면을 재실행합니다."""
-    # 💡 st.rerun()은 콜백 내에서 유효합니다.
-    st.session_state.select_all_matched_users = not st.session_state.get('select_all_matched_users', False)
-    st.rerun() 
-
-def toggle_select_all_doctors():
-    """치과의사 전체 선택 상태를 토글하고 화면을 재실행합니다."""
-    # 💡 st.rerun()은 콜백 내에서 유효합니다.
-    st.session_state.select_all_matched_doctors = not st.session_state.get('select_all_matched_doctors', False)
-    st.rerun() 
-
+# 💡 수정: 콜백 함수를 제거하고, 버튼이 직접 상태를 토글하도록 복구했습니다.
 
 # --- 3. 관리자 모드 UI (Excel 및 알림) ---
 
@@ -420,8 +408,10 @@ def show_admin_mode_ui():
                             
                             if 'select_all_matched_users' not in st.session_state: st.session_state.select_all_matched_users = False
                             
-                            # 💡 수정: on_click 핸들러 사용
-                            st.button("매칭된 사용자 모두 선택/해제", key="select_all_matched_btn", on_click=toggle_select_all_students)
+                            # 💡 수정: 버튼 클릭 시 세션 상태 토글 및 즉시 재실행 요청
+                            if st.button("매칭된 사용자 모두 선택/해제", key="select_all_matched_btn"):
+                                st.session_state.select_all_matched_users = not st.session_state.select_all_matched_users
+                                st.rerun()
                             
                             # 💡 수정: 세션 상태에 따라 default 값을 결정하여, 토글 시 전체 선택되도록 함
                             default_selection_matched = matched_user_list_for_dropdown if st.session_state.select_all_matched_users else []
@@ -497,8 +487,10 @@ def show_admin_mode_ui():
                             doctor_list_for_multiselect = [f"{res['name']} ({res['email']})" for res in matched_doctors_data]
 
                             if 'select_all_matched_doctors' not in st.session_state: st.session_state.select_all_matched_doctors = False
-                            # 💡 수정: on_click 핸들러 사용
-                            st.button("등록된 치과의사 모두 선택/해제", key="select_all_matched_res_btn", on_click=toggle_select_all_doctors)
+                            # 💡 수정: 버튼 클릭 시 세션 상태 토글 및 즉시 재실행 요청
+                            if st.button("등록된 치과의사 모두 선택/해제", key="select_all_matched_res_btn"):
+                                st.session_state.select_all_matched_doctors = not st.session_state.select_all_matched_doctors
+                                st.rerun()
 
                             # 💡 수정: 세션 상태에 따라 default 값을 결정
                             default_selection_doctor = doctor_list_for_multiselect if st.session_state.select_all_matched_doctors else []
