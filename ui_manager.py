@@ -300,6 +300,16 @@ def show_login_and_registration():
                     st.rerun()
             else: st.error("이름, 올바른 이메일 주소, 비밀번호, 그리고 등록 과를 입력해주세요.")
 
+# --- 콜백 함수 정의 (st.rerun() 루프 방지) ---
+
+def toggle_select_all_students():
+    """학생 전체 선택 상태를 토글합니다."""
+    st.session_state.select_all_matched_users = not st.session_state.get('select_all_matched_users', False)
+
+def toggle_select_all_doctors():
+    """치과의사 전체 선택 상태를 토글합니다."""
+    st.session_state.select_all_matched_doctors = not st.session_state.get('select_all_matched_doctors', False)
+
 
 # --- 3. 관리자 모드 UI (Excel 및 알림) ---
 
@@ -400,9 +410,11 @@ def show_admin_mode_ui():
                             matched_user_list_for_dropdown = [f"{user['name']} ({user['email']})" for user in matched_users]
                             
                             if 'select_all_matched_users' not in st.session_state: st.session_state.select_all_matched_users = False
-                            if st.button("매칭된 사용자 모두 선택/해제", key="select_all_matched_btn"): 
-                                 st.session_state.select_all_matched_users = not st.session_state.select_all_matched_users; st.rerun()
                             
+                            # 💡 수정: on_click 핸들러 사용 및 st.rerun() 제거
+                            st.button("매칭된 사용자 모두 선택/해제", key="select_all_matched_btn", on_click=toggle_select_all_students)
+                            
+                            # 💡 수정: 세션 상태에 따라 default 값을 결정
                             default_selection_matched = matched_user_list_for_dropdown if st.session_state.select_all_matched_users else []
                             selected_users_to_act = st.multiselect("액션을 취할 사용자 선택", matched_user_list_for_dropdown, default=default_selection_matched, key="matched_user_multiselect")
                             selected_matched_users_data = [user for user in matched_users if f"{user['name']} ({user['email']})" in selected_users_to_act]
@@ -434,6 +446,7 @@ def show_admin_mode_ui():
                                         if creds and creds.valid and not creds.expired:
                                             try:
                                                 service = build('calendar', 'v3', credentials=creds)
+                                                # 💡 캘린더 전송 로직은 이전 답변에서 디버깅이 강화된 형태로 복원되어야 함
                                                 for _, row in df_matched.iterrows():
                                                     reservation_date_raw = row.get('예약일시', ''); reservation_time_raw = row.get('예약시간', '')
                                                     if reservation_date_raw and reservation_time_raw:
@@ -452,9 +465,10 @@ def show_admin_mode_ui():
                             doctor_list_for_multiselect = [f"{res['name']} ({res['email']})" for res in matched_doctors_data]
 
                             if 'select_all_matched_doctors' not in st.session_state: st.session_state.select_all_matched_doctors = False
-                            if st.button("등록된 치과의사 모두 선택/해제", key="select_all_matched_res_btn"): 
-                                st.session_state.select_all_matched_doctors = not st.session_state.select_all_matched_doctors; st.rerun()
+                            # 💡 수정: on_click 핸들러 사용 및 st.rerun() 제거
+                            st.button("등록된 치과의사 모두 선택/해제", key="select_all_matched_res_btn", on_click=toggle_select_all_doctors) 
 
+                            # 💡 수정: 세션 상태에 따라 default 값을 결정
                             default_selection_doctor = doctor_list_for_multiselect if st.session_state.select_all_matched_doctors else []
                             selected_doctors_str = st.multiselect("액션을 취할 치과의사 선택", doctor_list_for_multiselect, default=default_selection_doctor, key="doctor_multiselect")
                             selected_doctors_to_act = [res for res in matched_doctors_data if f"{res['name']} ({res['email']})" in selected_doctors_str]
@@ -562,9 +576,9 @@ def show_admin_mode_ui():
                                 try:
                                     send_email(
                                         recipient=user_info['email'], 
-                                        patient_data=[], 
+                                        rows=[], 
                                         sender=sender, 
-                                        sender_password=sender_pw, 
+                                        password=sender_pw, 
                                         custom_message=f"<h4>{mail_subject}</h4><p>{mail_body}</p>",
                                         date_str="Admin 발송 테스트"
                                     )
@@ -629,9 +643,9 @@ def show_admin_mode_ui():
                                 try:
                                     send_email(
                                         recipient=doctor_info['email'], 
-                                        patient_data=[], 
+                                        rows=[], 
                                         sender=sender, 
-                                        sender_password=sender_pw, 
+                                        password=sender_pw, 
                                         custom_message=f"<h4>{mail_subject}</h4><p>{mail_body}</p>",
                                         date_str="Admin 발송 테스트"
                                     )
@@ -674,10 +688,10 @@ def show_admin_mode_ui():
                     try:
                         # 빈 환자 목록과 파일 정보로 테스트 메일 발송
                         send_email(
-                            recipient=test_email_recipient, 
-                            patient_data=[], 
+                            receiver=test_email_recipient, 
+                            rows=[], 
                             sender=sender, 
-                            sender_password=sender_pw, 
+                            password=sender_pw, 
                             custom_message="""<p>이 메일은 환자 내원 확인 시스템에서 발송한 테스트 메일입니다. 시스템 정상 작동을 확인해 주세요.</p>""",
                             date_str=datetime.datetime.now().strftime("%Y-%m-%d")
                         )
@@ -802,6 +816,7 @@ def show_user_mode_ui(firebase_key, user_name):
             else:
                 st.session_state.delete_patient_confirm = False
                 
+            
             
             # 삭제 확인 버튼 및 로직
             if st.session_state.delete_patient_confirm:
