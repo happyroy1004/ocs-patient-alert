@@ -403,17 +403,36 @@ def show_admin_mode_ui():
                             st.success(f"매칭된 환자가 있는 **{len(matched_users)}명의 사용자**를 발견했습니다.")
                             matched_user_list_for_dropdown = [f"{user['name']} ({user['email']})" for user in matched_users]
                             
-                            if 'select_all_matched_users' not in st.session_state: st.session_state.select_all_matched_users = False
+                            # 멀티셀렉트의 Key를 Session State에 저장하여 값 유지
+                            if 'matched_user_multiselect' not in st.session_state:
+                                st.session_state.matched_user_multiselect = []
                             
                             # 💡 수정: 버튼 클릭 시 세션 상태 토글 및 즉시 재실행 요청
                             if st.button("매칭된 사용자 모두 선택/해제", key="select_all_matched_btn"):
-                                st.session_state.select_all_matched_users = not st.session_state.select_all_matched_users
+                                # 현재 선택 상태를 확인하고, 전체 선택/해제 리스트를 준비
+                                current_selection_count = len(st.session_state.matched_user_multiselect)
+                                total_options_count = len(matched_user_list_for_dropdown)
+                                
+                                if current_selection_count == total_options_count:
+                                    # 전체 선택된 상태 -> 모두 해제
+                                    st.session_state.matched_user_multiselect = []
+                                else:
+                                    # 전체 선택이 아닌 상태 -> 모두 선택
+                                    st.session_state.matched_user_multiselect = matched_user_list_for_dropdown
+                                
                                 st.rerun()
                             
-                            # 💡 수정: 세션 상태에 따라 default 값을 결정하여, 토글 시 전체 선택되도록 함
-                            default_selection_matched = matched_user_list_for_dropdown if st.session_state.select_all_matched_users else []
-                            selected_users_to_act = st.multiselect("액션을 취할 사용자 선택", matched_user_list_for_dropdown, default=default_selection_matched, key="matched_user_multiselect")
-                            selected_matched_users_data = [user for user in matched_users if f"{user['name']} ({user['email']})" in selected_users_to_act]
+                            # 💡 수정: 멀티셀렉트의 default 대신, 위젯의 value를 session state로 직접 지정
+                            # key를 사용하여 st.session_state.matched_user_multiselect의 값을 유지하도록 합니다.
+                            selected_users_to_act_values = st.multiselect(
+                                "액션을 취할 사용자 선택", 
+                                matched_user_list_for_dropdown, 
+                                default=st.session_state.matched_user_multiselect, 
+                                key="matched_user_multiselect" # 이 key 덕분에 위젯의 값이 session state에 저장됩니다.
+                            )
+
+                            # 액션 데이터는 멀티셀렉트의 최종 값을 기반으로 계산
+                            selected_matched_users_data = [user for user in matched_users if f"{user['name']} ({user['email']})" in selected_users_to_act_values]
                             
                             for user_match_info in selected_matched_users_data:
                                 st.markdown(f"**수신자:** {user_match_info['name']} ({user_match_info['email']})")
@@ -483,15 +502,28 @@ def show_admin_mode_ui():
                             st.success(f"등록된 진료가 있는 **{len(matched_doctors_data)}명의 치과의사**를 발견했습니다.")
                             doctor_list_for_multiselect = [f"{res['name']} ({res['email']})" for res in matched_doctors_data]
 
-                            if 'select_all_matched_doctors' not in st.session_state: st.session_state.select_all_matched_doctors = False
+                            if 'matched_doctor_multiselect' not in st.session_state:
+                                st.session_state.matched_doctor_multiselect = []
+                            
                             # 💡 수정: 버튼 클릭 시 세션 상태 토글 및 즉시 재실행 요청
                             if st.button("등록된 치과의사 모두 선택/해제", key="select_all_matched_res_btn"):
-                                st.session_state.select_all_matched_doctors = not st.session_state.select_all_matched_doctors
+                                current_selection_count = len(st.session_state.matched_doctor_multiselect)
+                                total_options_count = len(doctor_list_for_multiselect)
+
+                                if current_selection_count == total_options_count:
+                                    st.session_state.matched_doctor_multiselect = []
+                                else:
+                                    st.session_state.matched_doctor_multiselect = doctor_list_for_multiselect
+
                                 st.rerun()
 
-                            # 💡 수정: 세션 상태에 따라 default 값을 결정
-                            default_selection_doctor = doctor_list_for_multiselect if st.session_state.select_all_matched_doctors else []
-                            selected_doctors_str = st.multiselect("액션을 취할 치과의사 선택", doctor_list_for_multiselect, default=default_selection_doctor, key="doctor_multiselect")
+                            # 💡 수정: 멀티셀렉트의 value를 session state로 직접 지정
+                            selected_doctors_str = st.multiselect(
+                                "액션을 취할 치과의사 선택", 
+                                doctor_list_for_multiselect, 
+                                default=st.session_state.matched_doctor_multiselect, 
+                                key="matched_doctor_multiselect" # 이 key 덕분에 위젯의 값이 session state에 저장됩니다.
+                            )
                             selected_doctors_to_act = [res for res in matched_doctors_data if f"{res['name']} ({res['email']})" in selected_doctors_str]
                             
                             for res in selected_doctors_to_act:
