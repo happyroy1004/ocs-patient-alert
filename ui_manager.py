@@ -339,12 +339,14 @@ def show_admin_mode_ui():
             
             # 1. 파일 비밀번호 처리
             password = None
-            if excel_utils.is_encrypted_excel(uploaded_file):
+            # 💡 수정: excel_utils 모듈을 통해 함수 호출
+            if excel_utils.is_encrypted_excel(uploaded_file): 
                 password = st.text_input("⚠️ 암호화된 파일입니다. 비밀번호를 입력해주세요.", type="password", key="admin_password_file")
                 if not password: st.info("비밀번호 입력 대기 중..."); st.stop()
 
             # 2. 파일 처리 및 분석 실행
             try:
+                # 💡 수정: excel_utils 모듈을 통해 함수 호출
                 xl_object, raw_file_io = excel_utils.load_excel(uploaded_file, password)
                 excel_data_dfs_raw, styled_excel_bytes = excel_utils.process_excel_file_and_style(raw_file_io)
                 analysis_results = excel_utils.run_analysis(excel_data_dfs_raw)
