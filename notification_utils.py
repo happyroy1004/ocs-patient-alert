@@ -99,7 +99,7 @@ def create_calendar_event(service, patient_name, pid, department, reservation_da
     }
 
     try:
-        # service.events().insert(calendarId='primary', body=event).execute()
+        service.events().insert(calendarId='primary', body=event).execute()
         return True
     except HttpError as error:
         st.error(f"캘린더 이벤트 생성 중 오류 발생: {error}")
