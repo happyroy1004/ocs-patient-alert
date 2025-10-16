@@ -8,6 +8,7 @@ from googleapiclient.discovery import build
 import os
 import re
 import bcrypt
+import json # json 임포트 추가 (secrets 처리에 필요)
 
 # local imports: 상대 경로 임포트(.)를 절대 경로 임포트로 수정
 from config import (
@@ -26,17 +27,8 @@ from notification_utils import (
 )
 
 # DB 레퍼런스 초기 로드 (전역에서 사용할 수 있도록 설정)
-try:
-    users_ref, doctor_users_ref, db_ref_func = get_db_refs()
-except Exception as e:
-    # 이 오류는 Firebase credentials(secrets.toml) 문제일 가능성이 높음
-    st.error("🚨 치명적인 오류: 데이터베이스 초기화 실패.")
-    st.error(f"오류 상세: {e}")
-    st.info("secrets.toml의 Firebase 설정(서비스 계정 JSON, DB URL)을 확인해주세요.")
-    users_ref, doctor_users_ref, db_ref_func = None, None, None # 오류 발생 시 None으로 설정
-    st.stop() # 프로그램 실행 중단
-
-
+# @st.cache_resource 덕분에 앱 시작 시 단 한번 안전하게 초기화됩니다.
+users_ref, doctor_users_ref, db_ref_func = get_db_refs()
 
 # 🔑 비밀번호 암호화 및 확인 유틸리티 함수
 def hash_password(password):
@@ -78,6 +70,11 @@ def init_session_state():
     if 'delete_patient_confirm' not in st.session_state: st.session_state.delete_patient_confirm = False
     if 'patients_to_delete' not in st.session_state: st.session_state.patients_to_delete = []
     if 'select_all_mode' not in st.session_state: st.session_state.select_all_mode = False
+    # Admin 모드에서 필요한 추가 세션 상태 (excel_utils에서 추출된 날짜를 저장)
+    if 'reservation_date_excel' not in st.session_state: st.session_state.reservation_date_excel = "날짜_미정"
+    # Admin 모드에서 필요한 추가 세션 상태 (매칭 UI에 필요)
+    if 'matched_user_multiselect' not in st.session_state: st.session_state.matched_user_multiselect = []
+    if 'matched_doctor_multiselect' not in st.session_state: st.session_state.matched_doctor_multiselect = []
 
 
 def show_title_and_manual():
@@ -316,7 +313,12 @@ def show_admin_mode_ui():
     
     # DB 레퍼런스 및 Gmail 정보 로드
     db_ref = db_ref_func
-    sender = st.secrets["gmail"]["sender"]; sender_pw = st.secrets["gmail"]["app_password"]
+    # secrets 로드 시 에러 방지용 try-except 추가
+    try:
+        sender = st.secrets["gmail"]["sender"]; sender_pw = st.secrets["gmail"]["app_password"]
+    except KeyError:
+        st.error("⚠️ secrets.toml 파일에 [gmail] 정보가 없습니다. 관리자에게 문의하세요.")
+        sender = "error@example.com"; sender_pw = "none" # 더미 값 설정
 
     # 탭 분리: OCS 파일 처리 (비번 없이 접근) vs 사용자 관리 (비번 필요)
     tab_excel, tab_user_mgmt = st.tabs(["📊 OCS 파일 처리 및 알림", "🧑‍💻 사용자 목록 및 관리"])
@@ -344,7 +346,13 @@ def show_admin_mode_ui():
             try:
                 # 💡 수정: excel_utils 모듈을 통해 함수 호출
                 xl_object, raw_file_io = excel_utils.load_excel(uploaded_file, password)
+                # excel_data_dfs_raw는 컬럼명이 표준화(공백 제거)된 DF 딕셔너리를 반환합니다.
                 excel_data_dfs_raw, styled_excel_bytes = excel_utils.process_excel_file_and_style(raw_file_io)
+                
+                # run_analysis는 excel_utils.py에서 정의된 함수를 사용해야 하지만, 
+                # 현재 ui_manager.py는 notification_utils.py의 run_auto_notifications만 참조하고 있으므로
+                # run_analysis 함수를 notification_utils.py에 있다고 가정하고 호출합니다.
+                # (단, 이전 코드와 달리 excel_utils 모듈에서 run_analysis를 가져와야 합니다.)
                 analysis_results = excel_utils.run_analysis(excel_data_dfs_raw)
                 
                 # 💡 수정: 분석 결과가 유효할 때만 Firebase에 저장
@@ -396,7 +404,7 @@ def show_admin_mode_ui():
                     st.markdown("---")
                     st.warning("자동으로 모든 매칭 사용자에게 알림(메일/캘린더)을 전송합니다.")
                     run_auto_notifications(matched_users, matched_doctors_data, excel_data_dfs, file_name, is_daily, db_ref_func)
-                    st.session_state.auto_run_confirmed = False; st.stop()
+                    st.session_state.auto_run_confirmed = None; st.stop() # None으로 변경하여 재실행 후 UI 리셋
                     
                 # B. 수동 실행 로직 (NO 클릭 시)
                 elif st.session_state.auto_run_confirmed is False:
@@ -412,35 +420,26 @@ def show_admin_mode_ui():
                             st.success(f"매칭된 환자가 있는 **{len(matched_users)}명의 사용자**를 발견했습니다.")
                             matched_user_list_for_dropdown = [f"{user['name']} ({user['email']})" for user in matched_users]
                             
-                            # 멀티셀렉트의 Key를 Session State에 저장하여 값 유지
-                            if 'matched_user_multiselect' not in st.session_state:
-                                st.session_state.matched_user_multiselect = []
-                            
                             # 💡 수정: 버튼 클릭 시 세션 상태 토글 및 즉시 재실행 요청
                             if st.button("매칭된 사용자 모두 선택/해제", key="select_all_matched_btn"):
-                                # 현재 선택 상태를 확인하고, 전체 선택/해제 리스트를 준비
                                 current_selection_count = len(st.session_state.matched_user_multiselect)
                                 total_options_count = len(matched_user_list_for_dropdown)
                                 
                                 if current_selection_count == total_options_count:
-                                    # 전체 선택된 상태 -> 모두 해제
                                     st.session_state.matched_user_multiselect = []
                                 else:
-                                    # 전체 선택이 아닌 상태 -> 모두 선택
                                     st.session_state.matched_user_multiselect = matched_user_list_for_dropdown
                                 
                                 st.rerun()
                             
-                            # 💡 수정: 멀티셀렉트의 default 대신, 위젯의 value를 session state로 직접 지정
-                            # key를 사용하여 st.session_state.matched_user_multiselect의 값을 유지하도록 합니다.
+                            # 💡 수정: 멀티셀렉트의 value를 session state로 직접 지정
                             selected_users_to_act_values = st.multiselect(
                                 "액션을 취할 사용자 선택", 
                                 matched_user_list_for_dropdown, 
                                 default=st.session_state.matched_user_multiselect, 
-                                key="matched_user_multiselect" # 이 key 덕분에 위젯의 값이 session state에 저장됩니다.
+                                key="matched_user_multiselect" 
                             )
 
-                            # 액션 데이터는 멀티셀렉트의 최종 값을 기반으로 계산
                             selected_matched_users_data = [user for user in matched_users if f"{user['name']} ({user['email']})" in selected_users_to_act_values]
                             
                             for user_match_info in selected_matched_users_data:
@@ -451,7 +450,6 @@ def show_admin_mode_ui():
                             with mail_col:
                                 if st.button("선택된 사용자에게 메일 보내기", key="manual_send_mail_student"):
                                     for user_match_info in selected_matched_users_data:
-                                        # ... (개별 메일 전송 로직)
                                         real_email = user_match_info['email']; df_matched = user_match_info['data']; user_name = user_match_info['name']
                                         email_cols = ['환자명', '진료번호', '예약의사', '진료내역', '예약일시', '예약시간', '등록과']
                                         df_for_mail = df_matched[[col for col in email_cols if col in df_matched.columns]]
@@ -472,13 +470,13 @@ def show_admin_mode_ui():
                                             try:
                                                 service = build('calendar', 'v3', credentials=creds)
                                                 
-                                                # 캘린더 생성은 행별로 분리하여 오류를 상세히 보고
                                                 for index, row in df_matched.iterrows():
                                                     reservation_date_raw = row.get('예약일시', ''); reservation_time_raw = row.get('예약시간', '')
                                                     
                                                     if reservation_date_raw and reservation_time_raw:
                                                         try:
                                                             full_datetime_str = f"{str(reservation_date_raw).strip()} {str(reservation_time_raw).strip()}"
+                                                            # 🚨 주의: 날짜 포맷이 엑셀에서 넘어올 때 일관적인지 확인 필요
                                                             reservation_datetime = datetime.datetime.strptime(full_datetime_str, '%Y/%m/%d %H:%M')
                                                             
                                                             success = create_calendar_event(service, row.get('환자명', 'N/A'), row.get('진료번호', ''), row.get('등록과', ''), reservation_datetime, row.get('예약의사', 'N/A'), row.get('진료내역', ''), is_daily)
@@ -487,10 +485,8 @@ def show_admin_mode_ui():
                                                                 successful_adds += 1
                                                             
                                                         except ValueError as ve:
-                                                            # 날짜 파싱 오류
                                                             st.error(f"❌ [데이터 형식 오류] {user_name} (환자 {row.get('환자명')}): 날짜 포맷({full_datetime_str}) 오류: {ve}")
                                                         except Exception as api_e:
-                                                            # API 호출 오류 (HttpError 포함)
                                                             st.error(f"❌ [API/기타 오류] {user_name} (환자 {row.get('환자명')}): 일정 추가 실패: {api_e}")
 
                                                 if successful_adds > 0:
@@ -511,9 +507,6 @@ def show_admin_mode_ui():
                             st.success(f"등록된 진료가 있는 **{len(matched_doctors_data)}명의 치과의사**를 발견했습니다.")
                             doctor_list_for_multiselect = [f"{res['name']} ({res['email']})" for res in matched_doctors_data]
 
-                            if 'matched_doctor_multiselect' not in st.session_state:
-                                st.session_state.matched_doctor_multiselect = []
-                            
                             # 💡 수정: 버튼 클릭 시 세션 상태 토글 및 즉시 재실행 요청
                             if st.button("등록된 치과의사 모두 선택/해제", key="select_all_matched_res_btn"):
                                 current_selection_count = len(st.session_state.matched_doctor_multiselect)
@@ -531,7 +524,7 @@ def show_admin_mode_ui():
                                 "액션을 취할 치과의사 선택", 
                                 doctor_list_for_multiselect, 
                                 default=st.session_state.matched_doctor_multiselect, 
-                                key="matched_doctor_multiselect" # 이 key 덕분에 위젯의 값이 session state에 저장됩니다.
+                                key="matched_doctor_multiselect" 
                             )
                             selected_doctors_to_act = [res for res in matched_doctors_data if f"{res['name']} ({res['email']})" in selected_doctors_str]
                             
@@ -543,7 +536,6 @@ def show_admin_mode_ui():
                             with mail_col_doc:
                                 if st.button("선택된 치과의사에게 메일 보내기", key="manual_send_mail_doctor"):
                                     for res in selected_doctors_to_act:
-                                        # 메일 전송 로직
                                         df_matched = res['data']; latest_file_name = db_ref("ocs_analysis/latest_file_name").get()
                                         email_cols = ['환자명', '진료번호', '예약의사', '진료내역', '예약일시', '예약시간']; 
                                         df_for_mail = df_matched[[col for col in email_cols if col in df_matched.columns]]
@@ -602,13 +594,19 @@ def show_admin_mode_ui():
             admin_password_input = st.text_input("관리자 비밀번호를 입력하세요.", type="password", key="admin_password_check_tab2")
             
             try:
-                admin_pw_hash = st.secrets["admin"]["password"]
+                # secrets.toml에서 직접 해시된 비밀번호를 가져옴
+                admin_pw_hash = st.secrets["admin"]["password"] 
             except KeyError:
+                # secrets에 설정이 없으면 기본 비밀번호 사용
                 admin_pw_hash = DEFAULT_PASSWORD
+                st.warning("⚠️ secrets.toml 파일에 'admin.password' 설정이 없습니다. 기본 비밀번호를 사용합니다.")
             
             if st.button("사용자 관리 인증", key="admin_auth_button_tab2"):
-                if check_password(admin_password_input, admin_pw_hash) or (admin_password_input == admin_pw_hash and not admin_pw_hash.startswith('$2b')):
+                # 비밀번호 확인 로직 (bcrypt 해시와 평문 모두 고려)
+                if check_password(admin_password_input, admin_pw_hash) or \
+                   (admin_password_input == admin_pw_hash and not admin_pw_hash.startswith('$2b')):
                     st.session_state.admin_password_correct = True
+                    # 평문 비교에 성공했으나 해시가 아닌 경우, 해시화하여 업데이트를 시도해야 함 (생략)
                     st.success("✅ 사용자 관리 인증 성공! 기능을 로드합니다.")
                     st.rerun()
                 else:
@@ -624,9 +622,9 @@ def show_admin_mode_ui():
 
         # DB 사용자 데이터 로드
         user_meta = users_ref.get()
-        user_list = [{"name": u.get('name'), "email": u.get('email'), "key": k} for k, u in user_meta.items() if u] if user_meta else []
+        user_list = [{"name": u.get('name'), "email": u.get('email'), "key": k} for k, u in user_meta.items() if u and isinstance(u, dict)] if user_meta else []
         doctor_meta = doctor_users_ref.get()
-        doctor_list = [{"name": d.get('name'), "email": d.get('email'), "key": k, "dept": d.get('department')} for k, d in doctor_meta.items() if d] if doctor_meta else []
+        doctor_list = [{"name": d.get('name'), "email": d.get('email'), "key": k, "dept": d.get('department')} for k, d in doctor_meta.items() if d and isinstance(d, dict)] if doctor_meta else []
 
         # --- 탭 2-1: 학생 사용자 관리 ---
         with tab_student:
@@ -803,6 +801,10 @@ def show_user_mode_ui(firebase_key, user_name):
         st.subheader(f"{user_name}님의 토탈 환자 목록")
         existing_patient_data = patients_ref_for_user.get()
         
+        # 🚨 [수정] existing_patient_data가 None일 경우 빈 딕셔너리로 초기화 (오류 해결 핵심)
+        if existing_patient_data is None:
+            existing_patient_data = {}
+        
         # 환자 목록 표시 로직
         if existing_patient_data:
             # ... (환자 정렬 및 표시 로직) ...
@@ -853,7 +855,8 @@ def show_user_mode_ui(firebase_key, user_name):
                     selected_departments = [d.strip() for d in depts_str.replace(",", " ").split()]
                     
                     if name and pid_key and selected_departments:
-                        current_data = existing_patient_data.get(pid_key, {"환자이름": name, "진료번호": pid_key})
+                        # existing_patient_data가 딕셔너리이므로 안전하게 .get() 호출 가능
+                        current_data = existing_patient_data.get(pid_key, {"환자이름": name, "진료번호": pid_key}) 
                         
                         # 진료과 플래그 업데이트
                         for dept_flag in PATIENT_DEPT_FLAGS + ['치주', '원진실']: current_data[dept_flag.lower()] = False
@@ -932,7 +935,8 @@ def show_user_mode_ui(firebase_key, user_name):
                 if not name or not pid or not selected_departments: st.warning("환자명, 진료번호, 등록할 진료과를 모두 입력/선택해주세요.")
                 else:
                     pid_key = pid.strip()
-                    new_patient_data = existing_patient_data.get(pid_key, {"환자이름": name, "진료번호": pid})
+                    # existing_patient_data가 딕셔너리이므로 안전하게 .get() 호출 가능
+                    new_patient_data = existing_patient_data.get(pid_key, {"환자이름": name, "진료번호": pid}) 
                     for dept_flag in PATIENT_DEPT_FLAGS + ['치주', '원진실']: new_patient_data[dept_flag.lower()] = False
                     for dept in selected_departments: new_patient_data[dept.lower()] = True
                         
