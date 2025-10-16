@@ -26,8 +26,17 @@ from notification_utils import (
 )
 
 # DB 레퍼런스 초기 로드 (전역에서 사용할 수 있도록 설정)
-# @st.cache_resource 덕분에 앱 시작 시 단 한번 안전하게 초기화됩니다.
-users_ref, doctor_users_ref, db_ref_func = get_db_refs()
+try:
+    users_ref, doctor_users_ref, db_ref_func = get_db_refs()
+except Exception as e:
+    # 이 오류는 Firebase credentials(secrets.toml) 문제일 가능성이 높음
+    st.error("🚨 치명적인 오류: 데이터베이스 초기화 실패.")
+    st.error(f"오류 상세: {e}")
+    st.info("secrets.toml의 Firebase 설정(서비스 계정 JSON, DB URL)을 확인해주세요.")
+    users_ref, doctor_users_ref, db_ref_func = None, None, None # 오류 발생 시 None으로 설정
+    st.stop() # 프로그램 실행 중단
+
+
 
 # 🔑 비밀번호 암호화 및 확인 유틸리티 함수
 def hash_password(password):
