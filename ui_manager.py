@@ -792,7 +792,7 @@ def show_user_mode_ui(firebase_key, user_name):
 
     # 💡 [변경] 탭 구조: 환자 관리, OCS 분석, 교수님 평가표 세 가지 탭
     # 이 부분에서 탭을 3개로 정의해야 합니다.
-    registration_tab, analysis_tab, review_tab = st.tabs(['✅ 환자 등록 및 관리', '📈 OCS 분석 결과', '🧑‍🏫 원진실 방명록'])
+    registration_tab, analysis_tab, review_tab = st.tabs(['✅ 환자 등록 및 관리', '📈 OCS 분석 결과', '🧑‍🏫 케이스 방명록'])
 
     # --- 환자 등록 및 관리 탭 ---
     with registration_tab:
