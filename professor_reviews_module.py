@@ -130,7 +130,7 @@ def _show_existing_reviews(professor_name, professor_dept):
 
 def show_professor_review_system():
     """교수님 평가 시스템의 메인 UI를 표시합니다."""
-    st.header("🧑‍🏫 외래 교수님 후기 방명록")
+    st.header("🧑‍🏫 케이스 후기 방명록")
     st.info("학생만 접근 가능하며, 등록된 평가는 익명으로 처리됩니다.")
     st.markdown("---")
     
@@ -139,7 +139,7 @@ def show_professor_review_system():
 
 
     # 2. 검색 UI
-    st.subheader("외래교수님 후기검색")
+    st.subheader("교수님 후기검색")
     
     # 💡 [변경] 검색 입력 및 과 필터링
     search_query = st.text_input("이름으로 교수님 검색", key="prof_search_query", placeholder="예: 김철수")
