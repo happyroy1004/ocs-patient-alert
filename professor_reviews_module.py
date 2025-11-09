@@ -130,7 +130,7 @@ def _show_existing_reviews(professor_name, professor_dept):
 
 def show_professor_review_system():
     """교수님 평가 시스템의 메인 UI를 표시합니다."""
-    st.header("🧑‍🏫 외래 교수님 익명 평가표")
+    st.header("🧑‍🏫 외래 교수님 후기 방명록")
     st.info("학생만 접근 가능하며, 등록된 평가는 익명으로 처리됩니다.")
     st.markdown("---")
     
