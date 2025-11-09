@@ -206,8 +206,11 @@ def show_professor_review_system():
             if final_name and final_dept:
                 # 5. 평가 등록 폼 및 기존 평가 표시
                 st.markdown("---")
+
+                # 5-1. 기존 평가 표시
+                _show_existing_reviews(final_name, final_dept)
                 
-                # 5-1. 평가 등록 폼
+                # 5-2. 평가 등록 폼
                 with st.expander(f"📝 {final_name} 교수님 ({final_dept}) 평가 등록", expanded=True):
                     with st.form("new_review_form"):
                         rating = st.slider("평점 (5점 만점)", 1, 5, 3)
@@ -219,8 +222,7 @@ def show_professor_review_system():
                             
                 st.markdown("---")
                 
-                # 5-2. 기존 평가 표시
-                _show_existing_reviews(final_name, final_dept)
+
 
     elif search_query:
         st.warning(f"'{search_query}'(으)로 검색된 교수님이 없습니다.")
