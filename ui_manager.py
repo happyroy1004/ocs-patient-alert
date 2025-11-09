@@ -25,7 +25,7 @@ from notification_utils import (
     is_valid_email, send_email, create_calendar_event, 
     get_matching_data, run_auto_notifications
 )
-
+from professor_reviews_module import show_professor_review_system
 # DB 레퍼런스 초기 로드 (전역에서 사용할 수 있도록 설정)
 # @st.cache_resource 덕분에 앱 시작 시 단 한번 안전하게 초기화됩니다.
 users_ref, doctor_users_ref, db_ref_func = get_db_refs()
