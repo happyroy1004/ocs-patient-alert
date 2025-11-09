@@ -1,4 +1,4 @@
-# ui_manager.py (수정 전체 코드)
+# ui_manager.py (수정 전체 코드 - '교수님 평가표' 탭 누락 문제 해결)
 
 import streamlit as st
 import pandas as pd
@@ -25,7 +25,9 @@ from notification_utils import (
     is_valid_email, send_email, create_calendar_event, 
     get_matching_data, run_auto_notifications
 )
-from professor_reviews_module import show_professor_review_system
+# 🔑 [추가] 교수님 평가 시스템 모듈 임포트 (누락된 부분)
+from professor_reviews_module import show_professor_review_system 
+
 # DB 레퍼런스 초기 로드 (전역에서 사용할 수 있도록 설정)
 # @st.cache_resource 덕분에 앱 시작 시 단 한번 안전하게 초기화됩니다.
 users_ref, doctor_users_ref, db_ref_func = get_db_refs()
@@ -785,10 +787,12 @@ def show_admin_mode_ui():
 # --- 4. 일반 사용자 모드 UI ---
 
 def show_user_mode_ui(firebase_key, user_name):
-    """일반 사용자 모드 (환자 등록 및 관리, 분석 결과) UI를 표시합니다."""
+    """일반 사용자 모드 (환자 등록 및 관리, 분석 결과, 교수님 평가) UI를 표시합니다."""
     patients_ref_for_user = db_ref_func(f"patients/{firebase_key}")
 
-    registration_tab, analysis_tab = st.tabs(['✅ 환자 등록 및 관리', '📈 OCS 분석 결과'])
+    # 💡 [변경] 탭 구조: 환자 관리, OCS 분석, 교수님 평가표 세 가지 탭
+    # 이 부분에서 탭을 3개로 정의해야 합니다.
+    registration_tab, analysis_tab, review_tab = st.tabs(['✅ 환자 등록 및 관리', '📈 OCS 분석 결과', '🧑‍🏫 교수님 평가표'])
 
     # --- 환자 등록 및 관리 탭 ---
     with registration_tab:
@@ -975,6 +979,11 @@ def show_user_mode_ui(firebase_key, user_name):
                 users_ref.child(firebase_key).update({"password": hashed_pw})
                 st.success("🎉 비밀번호가 성공적으로 변경되었습니다!")
             else: st.error("새 비밀번호가 일치하지 않거나 입력되지 않았습니다.")
+
+    # --- 교수님 평가표 탭 (로그인한 학생에게만 노출) ---
+    with review_tab:
+        # 🔑 [추가] professor_reviews_module의 UI 함수 호출
+        show_professor_review_system()
 
 # --- 5. 치과의사 모드 UI ---
 
