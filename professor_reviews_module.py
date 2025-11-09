@@ -16,7 +16,7 @@ professor_reviews_ref = db_ref_func("professor_reviews")
 professors_ref = db_ref_func("professors_list")
 
 # 사용자가 선택할 수 있는 과 목록 (config.py 또는 별도 DB에서 가져오는 것이 이상적이나, 여기서는 임시 정의)
-DEPARTMENTS = ["외과", "보철", "보존", "치주", "소치", "관악"] 
+DEPARTMENTS = ["외과", "보철", "보존", "치주", "소치", "관악", "영상", "내과", "교정"] 
 ALL_DEPARTMENTS_OPTION = "모든 과"
 
 # --- 내부 로직 함수 ---
