@@ -1,4 +1,4 @@
-# ui_manager.py
+# ui_manager.py (수정 전체 코드)
 
 import streamlit as st
 import pandas as pd
