@@ -137,21 +137,9 @@ def show_professor_review_system():
     # 전체 교수 목록 로드
     all_professors_data = load_professor_list()
 
-    # 1. 교수 추가 폼
-    with st.expander("➕ 목록에 새로운 교수님 추가 (학생용)", expanded=False):
-        st.subheader("새 교수님 등록")
-        with st.form("add_professor_form"):
-            new_prof_name = st.text_input("교수님 성함")
-            new_prof_dept = st.selectbox("소속 과", DEPARTMENTS)
-            add_submitted = st.form_submit_button("교수님 목록에 추가")
 
-            if add_submitted:
-                _handle_professor_addition(new_prof_name, new_prof_dept)
-
-    st.markdown("---")
-    
     # 2. 검색 UI
-    st.subheader("1. 교수님 검색 및 선택")
+    st.subheader("외래교수님 후기검색")
     
     # 💡 [변경] 검색 입력 및 과 필터링
     search_query = st.text_input("이름으로 교수님 검색", key="prof_search_query", placeholder="예: 김철수")
@@ -236,3 +224,19 @@ def show_professor_review_system():
 
     elif search_query:
         st.warning(f"'{search_query}'(으)로 검색된 교수님이 없습니다.")
+
+
+    st.markdown("---")
+    
+
+    # 2. 교수 추가 폼
+    with st.expander("➕ 목록에 새로운 교수님 추가 (학생용)", expanded=False):
+        st.subheader("새 교수님 등록")
+        with st.form("add_professor_form"):
+            new_prof_name = st.text_input("교수님 성함")
+            new_prof_dept = st.selectbox("소속 과", DEPARTMENTS)
+            add_submitted = st.form_submit_button("교수님 목록에 추가")
+
+            if add_submitted:
+                _handle_professor_addition(new_prof_name, new_prof_dept)
+
