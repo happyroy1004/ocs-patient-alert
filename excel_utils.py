@@ -20,7 +20,6 @@ def load_all_registered_pids(db_ref_func):
         all_patients_by_user = db_ref_func("patients").get() 
         registered_pids_with_depts = {}
         
-        # config.py에서 정의된 표준 진료과 이름 목록을 가져와 소문자로 변환하여 사용합니다.
         standard_dept_names = set(SHEET_KEYWORD_TO_DEPARTMENT_MAP.values())
         standard_dept_keys = {name.lower() for name in standard_dept_names} # 소문자 진료과 키 셋
         
@@ -47,8 +46,6 @@ def load_all_registered_pids(db_ref_func):
                             # 해당 키가 표준 진료과 키 목록에 포함되고, 값이 True인지 확인
                             if key_lower in standard_dept_keys and value in [True, 'true']:
                                 # 표준화된 진료과 이름(예: '교정')을 찾아서 Set에 추가
-                                # key_lower를 다시 대문자 버전으로 변환해야 함 (config.py의 값은 대문자일 가능성이 높으므로)
-                                # 여기서는 standard_dept_names를 순회하여 원래 이름을 찾습니다.
                                 for dept_name in standard_dept_names:
                                     if dept_name.lower() == key_lower:
                                         current_depts.add(dept_name)
@@ -278,8 +275,31 @@ def process_excel_file_and_style(file_bytes_io, db_ref_func):
             # 환자 등록 여부에 따른 회색 스타일링
             if pid_col_idx and len(row) >= pid_col_idx:
                  pid_cell = row[pid_col_idx - 1]
-                 pid_value = str(pid_cell.value).strip()
+                 pid_raw_value = pid_cell.value
+
+                 # 💡 PID 형식 통일 로직 수정 (앞의 0을 제거하고 숫자로만 변환)
+                 pid_str = str(pid_raw_value).strip()
                  
+                 # .0이 붙은 float 문자열을 int로 변환
+                 if pid_str.endswith('.0'):
+                    pid_str = pid_str[:-2]
+                    
+                 # Scientific notation (예: 1.02896E+07) 처리
+                 if 'E' in pid_str.upper():
+                    try:
+                        pid_str = str(int(float(pid_str)))
+                    except ValueError:
+                        pass # 변환 실패 시 기존 문자열 유지
+                
+                 # 최종적으로 숫자만 추출하고, 앞의 0을 제거하기 위해 int로 변환 후 다시 문자열로 변환
+                 pid_value_digits = "".join(filter(str.isdigit, pid_str))
+                 
+                 # 🚨 핵심 수정: 정수로 변환 후 다시 문자열로 만들어 앞의 0을 완전히 제거
+                 try:
+                     pid_value = str(int(pid_value_digits)) 
+                 except ValueError:
+                     pid_value = pid_value_digits # 숫자가 아닐 경우 기존 값 유지
+
                  # 매칭 조건 강화: 1. PID가 등록되어 있고, 2. 현재 시트 진료과가 등록된 진료과 목록에 포함되어야 함
                  registered_depts = registered_pids_with_depts.get(pid_value)
                  
