@@ -6,8 +6,32 @@ import io
 import msoffcrypto
 import re
 from openpyxl import load_workbook
-from openpyxl.styles import Font
+from openpyxl.styles import Font, PatternFill # PatternFill 임포트 추가
 from config import PROFESSORS_DICT, SHEET_KEYWORD_TO_DEPARTMENT_MAP
+
+# --- Firebase 연동 함수 ---
+def load_all_registered_pids(db_ref_func):
+    """
+    Firebase에서 모든 사용자가 등록한 환자의 진료번호(PID) 목록을 로드합니다.
+    (이 함수는 ui_manager.py에서 db_ref_func를 인자로 받아 호출됩니다.)
+    """
+    try:
+        # 'patients' 노드의 모든 데이터를 로드 (구조: {user_key: {pid_key: patient_info, ...}, ...})
+        all_patients = db_ref_func("patients").get()
+        registered_pids = set()
+        
+        if all_patients:
+            for user_key, user_patients in all_patients.items():
+                if user_patients and isinstance(user_patients, dict):
+                    # 환자 진료번호(PID)는 딕셔너리의 키로 저장되어 있음
+                    for pid_key in user_patients.keys():
+                        if pid_key and isinstance(pid_key, str):
+                            registered_pids.add(pid_key.strip())
+                            
+        return registered_pids
+    except Exception as e:
+        # st.error(f"Firebase 환자 데이터 로드 중 오류 발생: {e}") # Streamlit UI가 아닌 백엔드 함수이므로 주석 처리
+        return set()
 
 # --- 유효성 검사 ---
 def is_daily_schedule(file_name):
@@ -118,7 +142,8 @@ def process_sheet_v8(df, professors_list, sheet_key):
     final_df = final_df[[col for col in required_cols if col in final_df.columns]]
     return final_df
 
-def process_excel_file_and_style(file_bytes_io):
+# 💡 함수 정의 수정: db_ref_func 인자 추가
+def process_excel_file_and_style(file_bytes_io, db_ref_func): 
     """엑셀 파일을 읽고, 정렬/스타일링을 적용한 후, 분석용 DataFrame 딕셔너리를 반환합니다."""
     file_bytes_io.seek(0)
     output_buffer_for_styling = io.BytesIO()
@@ -128,6 +153,12 @@ def process_excel_file_and_style(file_bytes_io):
     except Exception as e:
         raise ValueError(f"엑셀 워크북 로드 실패: {e}")
 
+    # 1. Firebase에서 등록된 모든 환자 진료번호(PID) 로드
+    registered_pids = load_all_registered_pids(db_ref_func)
+    
+    # 2. 회색 스타일 정의
+    gray_fill = PatternFill(start_color="D3D3D3", end_color="D3D3D3", fill_type="solid")
+    
     processed_sheets_dfs = {} # 스타일링된 DF (출력용)
     cleaned_raw_dfs = {}       # 정리된 Raw DF (분석 및 매칭용)
     
@@ -194,8 +225,26 @@ def process_excel_file_and_style(file_bytes_io):
     for sheet_name in wb_styled.sheetnames:
         ws = wb_styled[sheet_name]
         header = {cell.value: idx + 1 for idx, cell in enumerate(ws[1])}
+        
+        # '진료번호' 컬럼의 인덱스 확인
+        pid_col_idx = header.get('진료번호')
 
         for row_idx, row in enumerate(ws.iter_rows(min_row=2, max_row=ws.max_row), start=2):
+            
+            is_registered_patient = False
+            
+            # 💡 3. 환자 등록 여부에 따른 회색 스타일링
+            if pid_col_idx and len(row) >= pid_col_idx:
+                 pid_cell = row[pid_col_idx - 1]
+                 pid_value = str(pid_cell.value).strip()
+                 
+                 # 등록된 환자이고, 빈 행이 아닌 경우 (첫 번째 열이 공백이 아닌 경우)
+                 if pid_value in registered_pids and str(row[0].value).strip() not in ["", "<교수님>"]: 
+                    is_registered_patient = True
+                    for cell in row:
+                        cell.fill = gray_fill # 회색 배경 적용
+                        
+            # 교수님 섹션 구분자 스타일링
             if row[0].value == "<교수님>":
                 for cell in row:
                     if cell.value:
@@ -209,7 +258,9 @@ def process_excel_file_and_style(file_bytes_io):
                     text = str(cell.value).strip().lower()
                     
                     if ('bonding' in text or '본딩' in text) and 'debonding' not in text:
-                        cell.font = Font(bold=True)
+                        # 회색 배경이 적용되지 않은 경우에만 폰트 스타일 적용
+                        if not is_registered_patient: 
+                            cell.font = Font(bold=True)
 
     final_output_bytes = io.BytesIO()
     wb_styled.save(final_output_bytes)
