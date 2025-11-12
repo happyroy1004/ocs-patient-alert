@@ -6,32 +6,48 @@ import io
 import msoffcrypto
 import re
 from openpyxl import load_workbook
-from openpyxl.styles import Font, PatternFill # PatternFill 임포트 추가
+from openpyxl.styles import Font, PatternFill
 from config import PROFESSORS_DICT, SHEET_KEYWORD_TO_DEPARTMENT_MAP
 
 # --- Firebase 연동 함수 ---
 def load_all_registered_pids(db_ref_func):
     """
-    Firebase에서 모든 사용자가 등록한 환자의 진료번호(PID) 목록을 로드합니다.
-    (이 함수는 ui_manager.py에서 db_ref_func를 인자로 받아 호출됩니다.)
+    Firebase에서 모든 사용자가 등록한 환자의 진료번호(PID)와 등록된 진료과 목록을 로드합니다.
+    반환 형식: {'PID1': ['교정', '보존'], 'PID2': ['소치'], ...}
     """
     try:
-        # 'patients' 노드의 모든 데이터를 로드 (구조: {user_key: {pid_key: patient_info, ...}, ...})
         all_patients = db_ref_func("patients").get()
-        registered_pids = set()
+        # 변경: 진료번호(PID)를 키로, 등록된 진료과 목록(Set)을 값으로 가집니다.
+        registered_pids_with_depts = {}
+        
+        # OCS 시트 키워드를 표준화된 진료과 이름으로 변환하는 역매핑 딕셔너리 (config.py의 SHEET_KEYWORD_TO_DEPARTMENT_MAP 값 기준)
+        standard_dept_names = set(SHEET_KEYWORD_TO_DEPARTMENT_MAP.values())
         
         if all_patients:
             for user_key, user_patients in all_patients.items():
                 if user_patients and isinstance(user_patients, dict):
-                    # 환자 진료번호(PID)는 딕셔너리의 키로 저장되어 있음
-                    for pid_key in user_patients.keys():
-                        if pid_key and isinstance(pid_key, str):
-                            registered_pids.add(pid_key.strip())
+                    for pid_key, patient_info in user_patients.items():
+                        if pid_key and isinstance(pid_key, str) and isinstance(patient_info, dict):
                             
-        return registered_pids
+                            pid = pid_key.strip()
+                            # Set을 사용하여 중복 등록을 방지하고 진료과를 모읍니다.
+                            current_depts = registered_pids_with_depts.get(pid, set())
+                            
+                            # 등록된 진료과 플래그 (소치, 보존, 교정 등) 확인
+                            for dept_name in standard_dept_names:
+                                # patient_info의 키는 소문자 플래그여야 합니다.
+                                dept_flag_key = dept_name.lower()
+                                
+                                # Firebase 데이터가 True/False 플래그를 사용하는 경우
+                                if patient_info.get(dept_flag_key, False) in [True, 'True']:
+                                    current_depts.add(dept_name) # 표준화된 진료과 이름 저장
+                                    
+                            registered_pids_with_depts[pid] = current_depts
+                            
+        # Set을 List로 변환하여 반환
+        return {pid: list(depts) for pid, depts in registered_pids_with_depts.items()}
     except Exception as e:
-        # st.error(f"Firebase 환자 데이터 로드 중 오류 발생: {e}") # Streamlit UI가 아닌 백엔드 함수이므로 주석 처리
-        return set()
+        return {} # 오류 발생 시 빈 딕셔너리 반환
 
 # --- 유효성 검사 ---
 def is_daily_schedule(file_name):
@@ -63,7 +79,6 @@ def load_excel(file, password=None):
             if msoffcrypto.OfficeFile(input_stream).is_encrypted():
                 is_encrypted = True
         except:
-             # 파일 구조상 암호화 체크 실패 시 일반 파일로 간주
             pass
         
         if is_encrypted:
@@ -93,7 +108,6 @@ def process_sheet_v8(df, professors_list, sheet_key):
     
     required_cols = ['진료번호', '예약일시', '예약시간', '환자명', '예약의사', '진료내역']
     if not all(col in df.columns for col in ['예약의사', '예약시간']):
-        st.error(f"시트 처리 오류: '예약의사' 또는 '예약시간' 컬럼이 DataFrame에 없습니다.")
         return pd.DataFrame(columns=[col for col in required_cols if col in df.columns])
 
     df = df.sort_values(by=['예약의사', '예약시간'])
@@ -142,8 +156,7 @@ def process_sheet_v8(df, professors_list, sheet_key):
     final_df = final_df[[col for col in required_cols if col in final_df.columns]]
     return final_df
 
-# 💡 함수 정의 수정: db_ref_func 인자 추가
-def process_excel_file_and_style(file_bytes_io, db_ref_func): 
+def process_excel_file_and_style(file_bytes_io, db_ref_func):
     """엑셀 파일을 읽고, 정렬/스타일링을 적용한 후, 분석용 DataFrame 딕셔너리를 반환합니다."""
     file_bytes_io.seek(0)
     output_buffer_for_styling = io.BytesIO()
@@ -153,14 +166,14 @@ def process_excel_file_and_style(file_bytes_io, db_ref_func):
     except Exception as e:
         raise ValueError(f"엑셀 워크북 로드 실패: {e}")
 
-    # 1. Firebase에서 등록된 모든 환자 진료번호(PID) 로드
-    registered_pids = load_all_registered_pids(db_ref_func)
+    # 1. Firebase에서 등록된 모든 환자 진료번호(PID)와 등록된 진료과 로드
+    registered_pids_with_depts = load_all_registered_pids(db_ref_func)
     
     # 2. 회색 스타일 정의
     gray_fill = PatternFill(start_color="D3D3D3", end_color="D3D3D3", fill_type="solid")
     
-    processed_sheets_dfs = {} # 스타일링된 DF (출력용)
-    cleaned_raw_dfs = {}       # 정리된 Raw DF (분석 및 매칭용)
+    processed_sheets_dfs = {}
+    cleaned_raw_dfs = {}
     
     # 1. 시트별 데이터 처리 및 정렬
     for sheet_name_raw in wb_raw.sheetnames:
@@ -190,7 +203,6 @@ def process_excel_file_and_style(file_bytes_io, db_ref_func):
         if '예약의사' not in df.columns: continue
         df['예약의사'] = df['예약의사'].str.strip().str.replace(" 교수님", "", regex=False)
         
-        # 💡 수정: 정리된 Raw DF를 분석용으로 저장
         cleaned_raw_dfs[sheet_name_raw] = df.copy() 
 
         professors_list = PROFESSORS_DICT.get(sheet_key, [])
@@ -200,15 +212,11 @@ def process_excel_file_and_style(file_bytes_io, db_ref_func):
             processed_df = process_sheet_v8(df.copy(), professors_list, sheet_key)
             processed_sheets_dfs[sheet_name_raw] = processed_df
         except Exception as e:
-            st.error(f"시트 '{sheet_name_raw}' 처리 중 오류: {e}")
             continue
 
     if not processed_sheets_dfs:
-        # 처리된 데이터가 없지만, 최소한 정리된 DF는 있는지 확인하여 반환
         if cleaned_raw_dfs:
             return cleaned_raw_dfs, None
-            
-        # 모든 시트 처리에 실패한 경우
         file_bytes_io.seek(0)
         all_sheet_dfs = pd.read_excel(file_bytes_io, sheet_name=None)
         return all_sheet_dfs, None
@@ -224,22 +232,45 @@ def process_excel_file_and_style(file_bytes_io, db_ref_func):
     # 스타일링 로직
     for sheet_name in wb_styled.sheetnames:
         ws = wb_styled[sheet_name]
-        header = {cell.value: idx + 1 for idx, cell in enumerate(ws[1])}
         
-        # '진료번호' 컬럼의 인덱스 확인
-        pid_col_idx = header.get('진료번호')
+        # 💡 헤더 값을 문자열로 변환하고 공백을 제거하여 안정적인 딕셔너리 생성
+        header = {str(cell.value).strip(): idx + 1 for idx, cell in enumerate(ws[1])}
+        
+        # 💡 시트 이름에서 현재 진료과(sheet_dept) 추출
+        sheet_dept = None
+        sheet_name_lower = sheet_name.strip().lower()
+        for keyword, department_name in sorted(SHEET_KEYWORD_TO_DEPARTMENT_MAP.items(), key=lambda item: len(item[0]), reverse=True):
+            if keyword.lower() in sheet_name_lower:
+                sheet_dept = department_name # 표준화된 진료과 이름 (예: '교정', '소치')
+                break
+        
+        # PID 컬럼 인덱스 찾기
+        pid_col_idx = None
+        for key in ['진료번호', '환자번호', '차트번호', 'PID']:
+            if header.get(key):
+                pid_col_idx = header.get(key)
+                break
+        
+        # PID 컬럼을 찾지 못했거나 진료과가 매칭되지 않았으면 스킵
+        if not pid_col_idx or not sheet_dept:
+            continue
 
         for row_idx, row in enumerate(ws.iter_rows(min_row=2, max_row=ws.max_row), start=2):
             
             is_registered_patient = False
             
-            # 💡 3. 환자 등록 여부에 따른 회색 스타일링
+            # 💡 환자 등록 여부에 따른 회색 스타일링
             if pid_col_idx and len(row) >= pid_col_idx:
                  pid_cell = row[pid_col_idx - 1]
                  pid_value = str(pid_cell.value).strip()
                  
-                 # 등록된 환자이고, 빈 행이 아닌 경우 (첫 번째 열이 공백이 아닌 경우)
-                 if pid_value in registered_pids and str(row[0].value).strip() not in ["", "<교수님>"]: 
+                 # 💡 매칭 조건 강화: 1. PID가 등록되어 있고, 2. 현재 시트 진료과가 등록된 진료과 목록에 포함되어야 함
+                 registered_depts = registered_pids_with_depts.get(pid_value)
+                 
+                 if (registered_depts and 
+                     sheet_dept in registered_depts and 
+                     str(row[0].value).strip() not in ["", "<교수님>"]):
+                    
                     is_registered_patient = True
                     for cell in row:
                         cell.fill = gray_fill # 회색 배경 적용
@@ -266,7 +297,6 @@ def process_excel_file_and_style(file_bytes_io, db_ref_func):
     wb_styled.save(final_output_bytes)
     final_output_bytes.seek(0)
     
-    # 💡 수정된 반환: 정리된 Raw DF (cleaned_raw_dfs)를 반환
     return cleaned_raw_dfs, final_output_bytes
 
 # --- OCS 데이터 분석 ---
@@ -285,8 +315,6 @@ def run_analysis(df_dict):
         processed_sheet_name = sheet_name.replace(" ", "").lower()
         for key, dept in sheet_department_map.items():
             if processed_sheet_name == key.replace(" ", "").lower():
-                # run_analysis에는 정렬되기 전의 원본 DF가 필요합니다.
-                # 이 DF는 이제 process_excel_file_and_style에서 정리된 DF입니다.
                 if all(col in df.columns for col in ['예약의사', '예약시간', '진료내역']):
                      mapped_dfs[dept] = df.copy()
                 break
@@ -296,15 +324,13 @@ def run_analysis(df_dict):
         df = mapped_dfs['소치']
         non_professors_df = df[~df['예약의사'].isin(PROFESSORS_DICT.get('소치', []))]
         non_professors_df['예약시간'] = non_professors_df['예약시간'].astype(str).str.strip()
-        non_professors_df = non_professors_df[non_professors_df['예약시간'].str.contains(':')] # 유효한 시간만
+        non_professors_df = non_professors_df[non_professors_df['예약시간'].str.contains(':')] 
         
         # 오전: 08:00 ~ 12:50
         morning_patients = non_professors_df[(non_professors_df['예약시간'] >= '08:00') & (non_professors_df['예약시간'] <= '12:50')].shape[0]
         # 오후: 13:00 이후
         afternoon_patients = non_professors_df[non_professors_df['예약시간'] >= '13:00'].shape[0]
         
-        # OCS 데이터 특성상 빈 줄이 카운트될 수 있으므로, 최소 1명 이상일 경우에만 조정
-        # if afternoon_patients > 0: afternoon_patients -= 1 # 이 조정은 데이터 특성에 따라 달라질 수 있으므로 일단 제거
         analysis_results['소치'] = {'오전': morning_patients, '오후': afternoon_patients}
 
     # 2. 보존 분석
@@ -319,7 +345,6 @@ def run_analysis(df_dict):
         # 오후: 12:50 이후
         afternoon_patients = non_professors_df[non_professors_df['예약시간'] >= '12:50'].shape[0]
         
-        # if afternoon_patients > 0: afternoon_patients -= 1 # 이 조정은 데이터 특성에 따라 달라질 수 있으므로 일단 제거
         analysis_results['보존'] = {'오전': morning_patients, '오후': afternoon_patients}
 
     # 3. 교정 분석 (Bonding)
