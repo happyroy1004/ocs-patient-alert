@@ -349,7 +349,7 @@ def show_admin_mode_ui():
                 # 💡 수정: excel_utils 모듈을 통해 함수 호출
                 xl_object, raw_file_io = excel_utils.load_excel(uploaded_file, password)
                 # excel_data_dfs_raw는 컬럼명이 표준화(공백 제거)된 DF 딕셔너리를 반환합니다.
-                excel_data_dfs_raw, styled_excel_bytes = excel_utils.process_excel_file_and_style(raw_file_io)
+                excel_data_dfs_raw, styled_excel_bytes = excel_utils.process_excel_file_and_style(raw_file_io, db_ref_func)
                 
                 # run_analysis는 excel_utils.py에서 정의된 함수를 사용해야 하지만, 
                 # 현재 ui_manager.py는 notification_utils.py의 run_auto_notifications만 참조하고 있으므로
