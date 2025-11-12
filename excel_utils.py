@@ -13,40 +13,56 @@ from config import PROFESSORS_DICT, SHEET_KEYWORD_TO_DEPARTMENT_MAP
 def load_all_registered_pids(db_ref_func):
     """
     Firebase에서 모든 사용자가 등록한 환자의 진료번호(PID)와 등록된 진료과 목록을 로드합니다.
+    Firebase 구조: {user_key: {PID: {교정: true, ...}, ...}}
     반환 형식: {'PID1': ['교정', '보존'], 'PID2': ['소치'], ...}
     """
     try:
-        all_patients = db_ref_func("patients").get()
-        # 변경: 진료번호(PID)를 키로, 등록된 진료과 목록(Set)을 값으로 가집니다.
+        all_patients_by_user = db_ref_func("patients").get() 
         registered_pids_with_depts = {}
         
-        # OCS 시트 키워드를 표준화된 진료과 이름으로 변환하는 역매핑 딕셔너리 (config.py의 SHEET_KEYWORD_TO_DEPARTMENT_MAP 값 기준)
+        # config.py에서 정의된 표준 진료과 이름 목록을 가져와 소문자로 변환하여 사용합니다.
         standard_dept_names = set(SHEET_KEYWORD_TO_DEPARTMENT_MAP.values())
+        standard_dept_keys = {name.lower() for name in standard_dept_names} # 소문자 진료과 키 셋
         
-        if all_patients:
-            for user_key, user_patients in all_patients.items():
+        if all_patients_by_user:
+            # 1. 사용자별 환자 목록 순회 (user_key: 'asteriajimin619_at_gmail_dot_com')
+            for user_key, user_patients in all_patients_by_user.items():
+                
                 if user_patients and isinstance(user_patients, dict):
-                    for pid_key, patient_info in user_patients.items():
-                        if pid_key and isinstance(pid_key, str) and isinstance(patient_info, dict):
+                    # 2. 환자 진료번호(PID)별 정보 순회 (pid_key: '100203')
+                    for pid_key, patient_info in user_patients.items(): 
+                        
+                        # PID와 patient_info 유효성 검사
+                        if not pid_key or not isinstance(pid_key, str) or not isinstance(patient_info, dict):
+                            continue
+                        
+                        pid = pid_key.strip()
+                        current_depts = registered_pids_with_depts.get(pid, set())
+                        
+                        # 3. 진료과 플래그 확인: patient_info의 모든 키를 순회하며 표준 진료과 이름과 매칭
+                        for key, value in patient_info.items():
+                            # 키를 소문자로 변환하여 표준 진료과 키와 일치하는지 확인
+                            key_lower = str(key).lower()
                             
-                            pid = pid_key.strip()
-                            # Set을 사용하여 중복 등록을 방지하고 진료과를 모읍니다.
-                            current_depts = registered_pids_with_depts.get(pid, set())
-                            
-                            # 등록된 진료과 플래그 (소치, 보존, 교정 등) 확인
-                            for dept_name in standard_dept_names:
-                                # patient_info의 키는 소문자 플래그여야 합니다.
-                                dept_flag_key = dept_name.lower()
+                            # 해당 키가 표준 진료과 키 목록에 포함되고, 값이 True인지 확인
+                            if key_lower in standard_dept_keys and value in [True, 'true']:
+                                # 표준화된 진료과 이름(예: '교정')을 찾아서 Set에 추가
+                                # key_lower를 다시 대문자 버전으로 변환해야 함 (config.py의 값은 대문자일 가능성이 높으므로)
+                                # 여기서는 standard_dept_names를 순회하여 원래 이름을 찾습니다.
+                                for dept_name in standard_dept_names:
+                                    if dept_name.lower() == key_lower:
+                                        current_depts.add(dept_name)
+                                        break
                                 
-                                # Firebase 데이터가 True/False 플래그를 사용하는 경우
-                                if patient_info.get(dept_flag_key, False) in [True, 'True']:
-                                    current_depts.add(dept_name) # 표준화된 진료과 이름 저장
-                                    
-                            registered_pids_with_depts[pid] = current_depts
-                            
+                        registered_pids_with_depts[pid] = current_depts
+            
+            # 🚨 디버깅을 위해 추가 (실제 운영 시 주석 처리 권장)
+            # st.info(f"🚨 디버그: Firebase에서 총 {len(registered_pids_with_depts)}개의 유니크 PID를 로드했습니다. (예시: {list(registered_pids_with_depts.keys())[:3]})")
+
         # Set을 List로 변환하여 반환
         return {pid: list(depts) for pid, depts in registered_pids_with_depts.items()}
     except Exception as e:
+        # st.error(f"🚨 디버그 오류: Firebase 환자 데이터 로드 중 오류 발생: {e}")
         return {} # 오류 발생 시 빈 딕셔너리 반환
 
 # --- 유효성 검사 ---
@@ -233,10 +249,10 @@ def process_excel_file_and_style(file_bytes_io, db_ref_func):
     for sheet_name in wb_styled.sheetnames:
         ws = wb_styled[sheet_name]
         
-        # 💡 헤더 값을 문자열로 변환하고 공백을 제거하여 안정적인 딕셔너리 생성
+        # 헤더 값을 문자열로 변환하고 공백을 제거하여 안정적인 딕셔너리 생성
         header = {str(cell.value).strip(): idx + 1 for idx, cell in enumerate(ws[1])}
         
-        # 💡 시트 이름에서 현재 진료과(sheet_dept) 추출
+        # 시트 이름에서 현재 진료과(sheet_dept) 추출
         sheet_dept = None
         sheet_name_lower = sheet_name.strip().lower()
         for keyword, department_name in sorted(SHEET_KEYWORD_TO_DEPARTMENT_MAP.items(), key=lambda item: len(item[0]), reverse=True):
@@ -259,12 +275,12 @@ def process_excel_file_and_style(file_bytes_io, db_ref_func):
             
             is_registered_patient = False
             
-            # 💡 환자 등록 여부에 따른 회색 스타일링
+            # 환자 등록 여부에 따른 회색 스타일링
             if pid_col_idx and len(row) >= pid_col_idx:
                  pid_cell = row[pid_col_idx - 1]
                  pid_value = str(pid_cell.value).strip()
                  
-                 # 💡 매칭 조건 강화: 1. PID가 등록되어 있고, 2. 현재 시트 진료과가 등록된 진료과 목록에 포함되어야 함
+                 # 매칭 조건 강화: 1. PID가 등록되어 있고, 2. 현재 시트 진료과가 등록된 진료과 목록에 포함되어야 함
                  registered_depts = registered_pids_with_depts.get(pid_value)
                  
                  if (registered_depts and 
