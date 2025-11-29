@@ -81,13 +81,31 @@ def create_calendar_event(service, patient_name, pid, department, reservation_da
     event_start = reservation_datetime.replace(tzinfo=seoul_tz)
     event_end = event_start + datetime.timedelta(minutes=30)
     
-    event_prefix = "✨ 내원 : " if is_daily else "❓내원 : "
-    summary_text = f'{event_prefix}{patient_name} ({department}, {doctor_name})' 
+    # 1. 제목 포맷팅: 시간 정보 추가 (예: 0900 (9시) 또는 1300 (오후1시))
+    time_hhmm = event_start.strftime("%H%M")
+    hour = event_start.hour
     
+    if hour < 12:
+        friendly_time = f"{hour}시"
+    elif hour == 12:
+        friendly_time = "오후 12시"
+    else:
+        friendly_time = f"오후 {hour-12}시"
+    
+    event_prefix = "✨ 내원 : " if is_daily else "❓내원 : "
+    summary_text = f'{event_prefix}{time_hhmm} ({friendly_time}) {patient_name} ({department}, {doctor_name})' 
+    
+    # 2. 설명(description) 포맷팅: 맨 윗줄에 데이터 헤더 추가
+    # 형식: 진료의사,날짜(MMDD),시간(HHMM),환자이름,환자번호,
+    date_mmdd = event_start.strftime("%m%d")
+    header_info = f"{doctor_name},{date_mmdd},{time_hhmm},{patient_name},{pid},"
+    
+    description_text = f"{header_info}\n\n환자명 : {patient_name}\n진료번호 : {pid}\n진료내역 : {treatment_details}"
+
     event = {
         'summary': summary_text,
         'location': pid,
-        'description': f"환자명 : {patient_name}\n진료번호 : {pid}\n진료내역 : {treatment_details}",
+        'description': description_text,
         'start': {
             'dateTime': event_start.isoformat(),
             'timeZone': 'Asia/Seoul',
