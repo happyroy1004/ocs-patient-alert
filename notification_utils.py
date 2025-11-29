@@ -21,7 +21,7 @@ def is_valid_email(email):
 def send_email(receiver, rows, sender, password, date_str=None, custom_message=None):
     """
     이메일을 전송하는 범용 함수입니다.
-    custom_message가 있으면 그것을 본문으로 사용합니다 (표 + 텍스트).
+    custom_message가 있으면 그것을 본문으로 사용합니다 (표 + 텍스트 데이터 포함).
     """
     try:
         msg = MIMEMultipart()
@@ -67,11 +67,10 @@ def create_calendar_event(service, patient_name, pid, department, reservation_da
     event_start = reservation_datetime.replace(tzinfo=seoul_tz)
     event_end = event_start + datetime.timedelta(minutes=30)
     
-    # 1. 제목 포맷팅: friendly_time 제거, 단순 시간(HHMM)만 표시
-    time_hhmm = event_start.strftime("%H%M")
-    
-    event_prefix = "✨ 내원 : " if is_daily else "❓내원 : "
+    # 1. 제목 포맷팅: friendly_time(9시 등) 제거, 단순 시간(HHMM)만 표시
     # 예: ✨ 내원 : 0900 홍길동 (보존과, 김의사)
+    time_hhmm = event_start.strftime("%H%M")
+    event_prefix = "✨ 내원 : " if is_daily else "❓내원 : "
     summary_text = f'{event_prefix}{time_hhmm} {patient_name} ({department}, {doctor_name})' 
     
     # 2. 설명(description) 포맷팅: 맨 윗줄에 데이터 헤더 추가
@@ -221,10 +220,12 @@ def get_matching_data(excel_data_dfs, all_users_meta, all_patients_data, all_doc
 
 # --- 자동 알림 실행 ---
 def run_auto_notifications(matched_users, matched_doctors, excel_data_dfs, file_name, is_daily, db_ref):
-    """자동으로 모든 매칭 사용자에게 메일 및 캘린더 일정을 전송하는 핵심 로직"""
+    """
+    자동으로 모든 매칭 사용자에게 메일(표+텍스트) 및 캘린더 일정을 전송하는 핵심 로직
+    """
     sender = st.secrets["gmail"]["sender"]; sender_pw = st.secrets["gmail"]["app_password"]
     
-    # --- 텍스트 생성 헬퍼 함수 ---
+    # --- [핵심 수정] 텍스트 생성 헬퍼 함수 (강력한 문자열 처리) ---
     def generate_email_body_with_text(user_name, df_matched, file_name):
         # 1. HTML Table 생성
         email_cols = ['환자명', '진료번호', '예약의사', '진료내역', '예약일시', '예약시간', '등록과']
@@ -240,32 +241,32 @@ def run_auto_notifications(matched_users, matched_doctors, excel_data_dfs, file_
         """
         html_table = df_for_mail.to_html(index=False, escape=False)
         
-        # 2. 텍스트 데이터 생성 (요청한 포맷)
+        # 2. 텍스트 데이터 생성 (요청한 포맷: 진료의사,MMDD,HHMM,환자명,환자번호,)
         text_lines = []
         for _, row in df_matched.iterrows():
             try:
-                # 날짜/시간 정제
-                r_date = str(row.get('예약일시', '')).strip().replace('-', '/').replace('.', '/')
-                r_time = str(row.get('예약시간', '')).strip()
-                
-                mmdd = "0000"; hhmm = "0000"
-                if r_date and r_time:
-                    try:
-                        # 날짜 파싱 시도
-                        full_datetime_str = f"{r_date} {r_time}"
-                        dt = datetime.datetime.strptime(full_datetime_str, '%Y/%m/%d %H:%M')
-                        mmdd = dt.strftime("%m%d")
-                        hhmm = dt.strftime("%H%M")
-                    except ValueError:
-                        # 파싱 실패시 날짜에서 숫자만 추출 시도 (예: 2024/11/28 -> 1128)
-                        parts = r_date.split('/')
-                        if len(parts) >= 3: mmdd = f"{parts[1]}{parts[2]}"
-                        hhmm = r_time.replace(':', '')
+                # 데이터 추출 (문자열로 강제 변환)
+                raw_date = str(row.get('예약일시', '')).strip()  # 예: 2025/11/29
+                raw_time = str(row.get('예약시간', '')).strip()  # 예: 10:30
+                doctor = str(row.get('예약의사', '')).strip()
+                name = str(row.get('환자명', '')).strip()
+                pid = str(row.get('진료번호', '')).strip()
 
-                # 포맷: 진료의사,날짜,시간,환자이름,환자번호,
-                line = f"{row.get('예약의사','')},{mmdd},{hhmm},{row.get('환자명','')},{row.get('진료번호','')},"
+                # 날짜 처리 (숫자만 남기고 뒤에서 4자리 추출) -> MMDD
+                # 2025/11/29 -> 20251129 -> 1129
+                date_digits = re.sub(r'[^0-9]', '', raw_date)
+                mmdd = date_digits[-4:] if len(date_digits) >= 4 else "0000"
+                
+                # 시간 처리 (숫자만 남기고 4자리 맞춤) -> HHMM
+                # 10:30 -> 1030
+                time_digits = re.sub(r'[^0-9]', '', raw_time)
+                hhmm = time_digits.zfill(4) if len(time_digits) <= 4 else time_digits[:4]
+                
+                # 라인 생성
+                line = f"{doctor},{mmdd},{hhmm},{name},{pid},"
                 text_lines.append(line)
-            except: continue
+            except Exception:
+                continue # 오류 발생 시 해당 라인만 스킵
             
         formatted_text_html = "<br>".join(text_lines)
         
@@ -274,12 +275,12 @@ def run_auto_notifications(matched_users, matched_doctors, excel_data_dfs, file_
         <p>안녕하세요, {user_name}님.</p>
         <p>{file_name} 분석 결과, 내원 예정인 환자 진료 정보입니다.</p>
         <div class='table-container'>{table_style}{html_table}</div>
-        <br><br>
-        <hr>
-        <p><strong>[복사 붙여넣기용 데이터]</strong></p>
-        <div style='background-color: #f4f4f4; padding: 10px; border: 1px solid #ccc; font-family: monospace; font-size: 14px; line-height: 1.6;'>
+        <br>
+        <br>
+        <div style='font-family: sans-serif; font-size: 14px; line-height: 1.6; color: #333;'>
         {formatted_text_html}
         </div>
+        <br>
         <p>확인 부탁드립니다.</p>
         """
         return full_body, df_for_mail.to_dict('records')
