@@ -93,7 +93,7 @@ def create_calendar_event(service, patient_name, pid, department, reservation_da
         friendly_time = f"오후 {hour-12}시"
     
     event_prefix = "✨ 내원 : " if is_daily else "❓내원 : "
-    summary_text = f'{event_prefix}{time_hhmm} ({friendly_time}) {patient_name} ({department}, {doctor_name})' 
+    summary_text = f'{event_prefix}{time_hhmm} {patient_name} ({department}, {doctor_name})' 
     
     # 2. 설명(description) 포맷팅: 맨 윗줄에 데이터 헤더 추가
     # 형식: 진료의사,날짜(MMDD),시간(HHMM),환자이름,환자번호,
