@@ -308,6 +308,7 @@ def run_auto_notifications(matched_users, matched_doctors, excel_data_dfs, file_
         {formatted_text_html}
         </div>
         <br>
+        <br>
         <p>확인 부탁드립니다.</p>
         """
         return full_body, df_for_mail.to_dict('records')
