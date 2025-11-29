@@ -285,7 +285,38 @@ def run_auto_notifications(matched_users, matched_doctors, excel_data_dfs, file_
             df_for_mail = df_matched[[col for col in email_cols if col in df_matched.columns]]
             rows_as_dict = df_for_mail.to_dict('records')
             df_html = df_for_mail.to_html(index=False, escape=False)
-            email_body = f"""<p>안녕하세요, {user_name}님.</p><p>{file_name} 분석 결과, 내원 예정인 환자 진료 정보입니다.</p>{df_html}<p>확인 부탁드립니다.</p>"""
+            
+            # [수정] 이메일 본문 생성 (HTML 표 뒤에 텍스트 데이터 추가)
+            formatted_text_lines = []
+            for _, row in df_matched.iterrows():
+                try:
+                    r_date = str(row.get('예약일시', '')).strip()
+                    r_time = str(row.get('예약시간', '')).strip()
+                    if r_date and r_time:
+                         full_datetime_str = f"{r_date} {r_time}"
+                         dt = datetime.datetime.strptime(full_datetime_str, '%Y/%m/%d %H:%M')
+                         mmdd = dt.strftime("%m%d")
+                         hhmm = dt.strftime("%H%M")
+                         
+                         # 요청 포맷: 진료의사,날짜(MMDD),시간(HHMM),환자이름,환자번호,
+                         line = f"{row.get('예약의사','')},{mmdd},{hhmm},{row.get('환자명','')},{row.get('진료번호','')},"
+                         formatted_text_lines.append(line)
+                except: continue
+            
+            formatted_text_html = "<br>".join(formatted_text_lines)
+            
+            # 여기서 custom_message를 생성하여 send_email로 전달
+            email_body = f"""
+            <p>안녕하세요, {user_name}님.</p>
+            <p>{file_name} 분석 결과, 내원 예정인 환자 진료 정보입니다.</p>
+            {df_html}
+            <br>
+            <div style='background-color: #f9f9f9; padding: 10px; border: 1px solid #ddd; font-family: monospace;'>
+                <strong>[복사 붙여넣기용 데이터]</strong><br>
+                {formatted_text_html}
+            </div>
+            <p>확인 부탁드립니다.</p>
+            """
             
             try:
                 send_email(receiver=real_email, rows=rows_as_dict, sender=sender, password=sender_pw, custom_message=email_body, date_str=file_name) 
@@ -322,7 +353,36 @@ def run_auto_notifications(matched_users, matched_doctors, excel_data_dfs, file_
             df_for_mail = df_matched[[col for col in email_cols if col in df_matched.columns]]
             df_html = df_for_mail.to_html(index=False, border=1)
             rows_as_dict = df_for_mail.to_dict('records')
-            email_body = f"""<p>안녕하세요, {res['name']} 치과의사님.</p><p>{latest_file_name_for_doctor_email}에서 가져온 내원할 환자 정보입니다.</p>{df_html}<p>확인 부탁드립니다.</p>"""
+            
+            # [수정] 치과의사 이메일 본문 생성
+            formatted_text_lines = []
+            for _, row in df_matched.iterrows():
+                try:
+                    r_date = str(row.get('예약일시', '')).strip()
+                    r_time = str(row.get('예약시간', '')).strip()
+                    if r_date and r_time:
+                         full_datetime_str = f"{r_date} {r_time}"
+                         dt = datetime.datetime.strptime(full_datetime_str, '%Y/%m/%d %H:%M')
+                         mmdd = dt.strftime("%m%d")
+                         hhmm = dt.strftime("%H%M")
+                         
+                         line = f"{row.get('예약의사','')},{mmdd},{hhmm},{row.get('환자명','')},{row.get('진료번호','')},"
+                         formatted_text_lines.append(line)
+                except: continue
+            
+            formatted_text_html = "<br>".join(formatted_text_lines)
+            
+            email_body = f"""
+            <p>안녕하세요, {res['name']} 치과의사님.</p>
+            <p>{latest_file_name_for_doctor_email}에서 가져온 내원할 환자 정보입니다.</p>
+            {df_html}
+            <br>
+            <div style='background-color: #f9f9f9; padding: 10px; border: 1px solid #ddd; font-family: monospace;'>
+                <strong>[복사 붙여넣기용 데이터]</strong><br>
+                {formatted_text_html}
+            </div>
+            <p>확인 부탁드립니다.</p>
+            """
             
             try:
                 send_email(receiver=res['email'], rows=rows_as_dict, sender=sender, password=sender_pw, custom_message=email_body, date_str=latest_file_name_for_doctor_email)
