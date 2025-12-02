@@ -317,7 +317,7 @@ def run_auto_notifications(matched_users, matched_doctors, excel_data_dfs, file_
                 
                 # [수정] 라인 생성: 맨 끝에 화살표와 함께 승인담당자 추가
                 # 형식: 진료의사,날짜,시간,환자이름,환자번호,사용자번호,사용자이름 -> 승인 : 담당자
-                line = f"{clean_doctor},{mmdd},{hhmm},{name},{pid},{u_num},{u_name}{approver_suffix}"
+                line = f"{clean_doctor},{mmdd},{hhmm},{name},{pid},{u_num},{u_name}"
                 text_lines.append(line)
             except Exception:
                 continue 
