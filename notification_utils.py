@@ -60,28 +60,44 @@ def send_email(receiver, rows, sender, password, date_str=None, custom_message=N
 def create_calendar_event(service, patient_name, pid, department, reservation_datetime, doctor_name, treatment_details, is_daily, user_name="", user_number=""):
     """
     Google Calendar에 단일 이벤트를 생성합니다.
-    [수정] user_name, user_number를 받아 Description에 추가합니다.
+    승인 담당자 정보를 괄호 밖 화살표 포맷으로 추가합니다.
     """
     seoul_tz = datetime.timezone(datetime.timedelta(hours=9))
     event_start = reservation_datetime.replace(tzinfo=seoul_tz)
     event_end = event_start + datetime.timedelta(minutes=30)
     
+    # [수정] 승인 담당자 매핑 로직
+    approver_suffix = ""
+    clean_doctor_name = doctor_name.strip()
+    
+    if clean_doctor_name == '백승학':
+        approver_suffix = ' -> 승인 : 손승현'
+    elif clean_doctor_name in ['임원희', '이신재']:
+        approver_suffix = ' -> 승인 : 최다솔'
+    elif clean_doctor_name == '안석준':
+        approver_suffix = ' -> 승인 : 송상원'
+    elif clean_doctor_name == '양일형':
+        approver_suffix = ' -> 승인 : 이진'
+    elif clean_doctor_name == '안정섭':
+        approver_suffix = ' -> 승인 : 강기모'
+
     # 1. 제목 포맷팅: 시간(HHMM)만 표시
+    # 예: ❓내원 : 1400 홍길동 (교정과, 백승학) -> 승인 : 손승현
     time_hhmm = event_start.strftime("%H%M")
     event_prefix = "✨ 내원 : " if is_daily else "❓내원 : "
-    summary_text = f'{event_prefix}{time_hhmm} {patient_name} ({department}, {doctor_name})' 
+    summary_text = f'{event_prefix}{time_hhmm} {patient_name} ({department}, {clean_doctor_name}){approver_suffix}' 
     
-    # 2. 설명(description) 포맷팅: 맨 윗줄에 데이터 헤더 추가 + [사용자번호, 사용자이름]
-    # 형식: 진료의사,날짜(MMDD),시간(HHMM),환자이름,환자번호,사용자번호,사용자이름
+    # 2. 설명(description) 포맷팅
     date_mmdd = event_start.strftime("%m%d")
     
-    # 공백 제거 및 문자열 변환
     u_num = str(user_number).strip()
     u_name = str(user_name).strip()
     
-    header_info = f"{doctor_name},{date_mmdd},{time_hhmm},{patient_name},{pid},{u_num},{u_name}"
+    # [수정] 헤더 정보 맨 끝에 승인 담당자 정보 추가
+    # 형식: 의사,날짜,시간,환자,번호,유저번호,유저이름 -> 승인 : 담당자
+    header_info = f"{clean_doctor_name},{date_mmdd},{time_hhmm},{patient_name},{pid},{u_num},{u_name}{approver_suffix}"
     
-    description_text = f"{header_info}\n\n환자명 : {patient_name}\n진료번호 : {pid}\n진료내역 : {treatment_details}\n수신자 : {u_name} ({u_num})"
+    description_text = f"{header_info}\n\n환자명 : {patient_name}\n진료번호 : {pid}\n진료내역 : {treatment_details}\n진료의사 : {clean_doctor_name}\n수신자 : {u_name} ({u_num})"
 
     event = {
         'summary': summary_text,
@@ -151,7 +167,6 @@ def standardize_df_for_matching(df):
 def get_matching_data(excel_data_dfs, all_users_meta, all_patients_data, all_doctors_meta):
     """
     Excel 데이터와 Firebase 사용자/환자/의사 데이터를 매칭합니다.
-    [수정] 사용자 번호(number) 정보도 함께 가져와 반환합니다.
     """
     matched_users = []; matched_doctors_data = []
 
@@ -164,9 +179,8 @@ def get_matching_data(excel_data_dfs, all_users_meta, all_patients_data, all_doc
     if all_patients_data:
         for uid_safe, registered_patients_for_this_user in all_patients_data.items():
             user_email = recover_email(uid_safe); user_display_name = user_email
-            user_number = "" # 초기화
+            user_number = "" 
 
-            # [추가] 메타데이터에서 이름과 번호 가져오기
             if all_users_meta and uid_safe in all_users_meta:
                 meta = all_users_meta[uid_safe]
                 if "name" in meta: user_display_name = meta["name"]
@@ -200,7 +214,6 @@ def get_matching_data(excel_data_dfs, all_users_meta, all_patients_data, all_doc
             
             if matched_rows_for_user:
                 combined_matched_df = pd.DataFrame(matched_rows_for_user)
-                # [수정] number 포함하여 반환
                 matched_users.append({
                     "email": user_email, 
                     "name": user_display_name, 
@@ -214,7 +227,6 @@ def get_matching_data(excel_data_dfs, all_users_meta, all_patients_data, all_doc
     if all_doctors_meta:
         for safe_key, user_info in all_doctors_meta.items():
             if user_info:
-                # [추가] 의사 번호 가져오기
                 doc_number = str(user_info.get("number", ""))
                 doctors.append({
                     "safe_key": safe_key, 
@@ -253,7 +265,6 @@ def run_auto_notifications(matched_users, matched_doctors, excel_data_dfs, file_
     sender = st.secrets["gmail"]["sender"]; sender_pw = st.secrets["gmail"]["app_password"]
     
     # --- [핵심] 텍스트 생성 헬퍼 함수 ---
-    # user_number를 인자로 받아서 텍스트 맨 뒤에 추가
     def generate_email_body_with_text(user_name, user_number, df_matched, file_name):
         # 1. HTML Table 생성
         email_cols = ['환자명', '진료번호', '예약의사', '진료내역', '예약일시', '예약시간', '등록과']
@@ -282,6 +293,21 @@ def run_auto_notifications(matched_users, matched_doctors, excel_data_dfs, file_
                 name = str(row.get('환자명', '')).strip()
                 pid = str(row.get('진료번호', '')).strip()
 
+                # [수정] 승인 담당자 매핑 로직 (이메일 텍스트용)
+                approver_suffix = ""
+                clean_doctor = doctor.strip()
+                
+                if clean_doctor == '백승학':
+                    approver_suffix = ' -> 승인 : 손승현'
+                elif clean_doctor in ['임원희', '이신재']:
+                    approver_suffix = ' -> 승인 : 최다솔'
+                elif clean_doctor == '안석준':
+                    approver_suffix = ' -> 승인 : 송상원'
+                elif clean_doctor == '양일형':
+                    approver_suffix = ' -> 승인 : 이진'
+                elif clean_doctor == '안정섭':
+                    approver_suffix = ' -> 승인 : 강기모'
+                
                 # 날짜/시간 포맷팅 (MMDD, HHMM)
                 date_digits = re.sub(r'[^0-9]', '', raw_date)
                 mmdd = date_digits[-4:] if len(date_digits) >= 4 else "0000"
@@ -289,8 +315,9 @@ def run_auto_notifications(matched_users, matched_doctors, excel_data_dfs, file_
                 time_digits = re.sub(r'[^0-9]', '', raw_time)
                 hhmm = time_digits.zfill(4) if len(time_digits) <= 4 else time_digits[:4]
                 
-                # [수정] 라인 생성 (형식: 진료의사,날짜,시간,환자이름,환자번호,사용자번호,사용자이름)
-                line = f"{doctor},{mmdd},{hhmm},{name},{pid},{u_num},{u_name}"
+                # [수정] 라인 생성: 맨 끝에 화살표와 함께 승인담당자 추가
+                # 형식: 진료의사,날짜,시간,환자이름,환자번호,사용자번호,사용자이름 -> 승인 : 담당자
+                line = f"{clean_doctor},{mmdd},{hhmm},{name},{pid},{u_num},{u_name}{approver_suffix}"
                 text_lines.append(line)
             except Exception:
                 continue 
@@ -319,7 +346,7 @@ def run_auto_notifications(matched_users, matched_doctors, excel_data_dfs, file_
         for user_match_info in matched_users:
             real_email = user_match_info['email']; df_matched = user_match_info['data']
             user_name = user_match_info['name']; user_safe_key = user_match_info['safe_key']
-            user_number = user_match_info.get('number', '') # 번호 추출
+            user_number = user_match_info.get('number', '') 
             
             # 본문 생성 (번호 포함)
             email_body, rows_as_dict = generate_email_body_with_text(user_name, user_number, df_matched, file_name)
@@ -342,7 +369,6 @@ def run_auto_notifications(matched_users, matched_doctors, excel_data_dfs, file_
                                 full_datetime_str = f"{reservation_date_raw} {reservation_time_raw}"
                                 reservation_datetime = datetime.datetime.strptime(full_datetime_str, '%Y/%m/%d %H:%M')
                                 
-                                # [수정] create_calendar_event에 user_name, user_number 전달
                                 create_calendar_event(
                                     service, row.get('환자명', 'N/A'), row.get('진료번호', ''), row.get('등록과', ''), 
                                     reservation_datetime, row.get('예약의사', ''), row.get('진료내역', ''), is_daily,
@@ -382,7 +408,6 @@ def run_auto_notifications(matched_users, matched_doctors, excel_data_dfs, file_
                                 full_datetime_str = f"{reservation_date_raw} {reservation_time_raw}"
                                 reservation_datetime = datetime.datetime.strptime(full_datetime_str, '%Y/%m/%d %H:%M')
                                 
-                                # [수정] 의사 정보도 전달
                                 create_calendar_event(
                                     service, row.get('환자명', 'N/A'), row.get('진료번호', ''), res.get('department', 'N/A'), 
                                     reservation_datetime, row.get('예약의사', ''), row.get('진료내역', ''), is_daily,
