@@ -95,9 +95,9 @@ def create_calendar_event(service, patient_name, pid, department, reservation_da
     
     # [수정] 헤더 정보 맨 끝에 승인 담당자 정보 추가
     # 형식: 의사,날짜,시간,환자,번호,유저번호,유저이름 -> 승인 : 담당자
-    header_info = f"{clean_doctor_name},{date_mmdd},{time_hhmm},{patient_name},{pid},{u_num},{u_name}{approver_suffix}"
+    header_info = f"{clean_doctor_name},{date_mmdd},{time_hhmm},{patient_name},{pid},{u_num},{u_name}"
     
-    description_text = f"{header_info}\n\n환자명 : {patient_name}\n진료번호 : {pid}\n진료내역 : {treatment_details}\n진료의사 : {clean_doctor_name}\n수신자 : {u_name} ({u_num})"
+    description_text = f"{header_info}\n\n환자명 : {patient_name}\n진료번호 : {pid}\n진료내역 : {treatment_details}\n진료의사 : {clean_doctor_name}\n"
 
     event = {
         'summary': summary_text,
