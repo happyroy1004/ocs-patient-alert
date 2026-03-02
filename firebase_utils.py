@@ -6,12 +6,12 @@ import pickle
 import time
 import os
 
-# Google 인증 관련 라이브러리
+# Google 인증 라이브러리 (과거 성공 코드 기반)
 from google_auth_oauthlib.flow import Flow
 from google.auth.transport.requests import Request
 from googleapiclient.discovery import build
 
-# 사용할 권한 범위 (과거 성공 코드 기준)
+# 사용할 권한 범위
 SCOPES = ["https://www.googleapis.com/auth/calendar.events"]
 
 # --- 1. Firebase 초기화 ---
@@ -29,28 +29,29 @@ def get_db_refs():
     base_ref = db.reference()
     return base_ref.child('users'), base_ref.child('doctor_users'), lambda path: base_ref.child(path)
 
-# --- 2. 경로 변환 함수 (과거 방식: 이메일을 키로 변환) ---
+# --- 2. 경로 변환 (과거 방식 복원) ---
 def sanitize_path(email):
-    # .을 _dot_으로, @을 _at_으로 변환 [cite: 3]
+    # 과거 코드 방식
     return email.replace(".", "_dot_").replace("@", "_at_")
 
 def recover_email(safe_id):
-    # 변환된 키를 다시 이메일로 복구 [cite: 3]
+    # 과거 코드 방식
     return safe_id.replace("_at_", "@").replace("_dot_", ".")
 
-# --- 3. 자격 증명 저장/로드 (과거 users 노드 저장 방식) ---
+# --- 3. 자격 증명 저장/로드 (과거 방식: 사용자 노드 내부 저장) ---
 def save_google_creds_to_firebase(user_id_safe, creds):
     try:
-        # 과거 코드 구조: users/{safe_key}/google_creds 
+        # 과거 코드 방식: users/{safe_key}/google_creds 경로 사용
         ref = db.reference(f"users/{user_id_safe}/google_creds")
         ref.set({'creds_hex': pickle.dumps(creds).hex()})
         return True
     except Exception as e:
-        st.error(f"❌ 자격 증명 저장 실패: {e}")
+        st.error(f"❌ 저장 실패: {e}")
         return False
 
 def load_google_creds_from_firebase(user_id_safe):
     try:
+        # 과거 코드 방식
         ref = db.reference(f"users/{user_id_safe}/google_creds")
         data = ref.get()
         if data and 'creds_hex' in data:
@@ -61,10 +62,11 @@ def load_google_creds_from_firebase(user_id_safe):
 
 # --- 4. Google 캘린더 서비스 관리 ---
 def get_google_calendar_service(user_id_safe):
-    # 세션 상태 확인 [cite: 21]
+    # (A) 세션 상태 확인 (사용자별 키 분리)
     session_key = f"google_creds_{user_id_safe}"
     creds = st.session_state.get(session_key)
     
+    # (B) 세션에 없으면 Firebase에서 로드
     if not creds:
         creds = load_google_creds_from_firebase(user_id_safe)
         if creds:
@@ -80,6 +82,7 @@ def get_google_calendar_service(user_id_safe):
         }
     }
 
+    # (C) 인증 정보가 유효한 경우 서비스 반환
     if creds:
         if creds.expired and creds.refresh_token:
             try:
@@ -89,27 +92,29 @@ def get_google_calendar_service(user_id_safe):
             except:
                 pass
         if creds.valid:
+            # 과거 코드 방식
             return build('calendar', 'v3', credentials=creds)
 
-    # 리디렉션 코드 처리 [cite: 23, 24]
+    # (D) 인증 후 돌아온 코드 처리 (과거 코드 로직)
     auth_code = st.query_params.get("code")
     if auth_code and 'auth_flow' in st.session_state:
         try:
             st.session_state.auth_flow.fetch_token(code=auth_code)
-            creds = st.session_state.auth_flow.credentials
-            st.session_state[session_key] = creds
-            if save_google_creds_to_firebase(user_id_safe, creds):
-                st.success("✅ 인증이 완료되었습니다.")
+            new_creds = st.session_state.auth_flow.credentials
+            st.session_state[session_key] = new_creds
+            
+            if save_google_creds_to_firebase(user_id_safe, new_creds):
+                st.success("✅ Google Calendar 인증이 완료되었습니다.")
                 st.query_params.clear()
                 if 'auth_flow' in st.session_state:
                     del st.session_state.auth_flow
-                time.sleep(1)
+                time.sleep(1) # 저장 안정화를 위한 대기
                 st.rerun()
         except Exception as e:
             st.error(f"⚠️ 인증 실패: {e}")
             st.query_params.clear()
 
-    # 인증 흐름 생성 (PKCE Verifier 유실 방지를 위해 세션에 저장) [cite: 22, 23]
+    # (E) 인증이 필요한 경우 링크 표시 (과거 코드 방식)
     if 'auth_flow' not in st.session_state:
         st.session_state.auth_flow = Flow.from_client_config(
             client_config, 
