@@ -51,28 +51,21 @@ def check_password(password, hashed_password):
 
 def init_session_state():
     """앱에 필요한 모든 세션 상태를 초기화합니다."""
-    if 'login_mode' not in st.session_state: st.session_state.login_mode = 'not_logged_in'
-    if 'email_change_mode' not in st.session_state: st.session_state.email_change_mode = False
-    if 'user_id_input_value' not in st.session_state: st.session_state.user_id_input_value = ""
-    if 'found_user_email' not in st.session_state: st.session_state.found_user_email = ""
-    if 'current_firebase_key' not in st.session_state: st.session_state.current_firebase_key = ""
-    if 'current_user_name' not in st.session_state: st.session_state.current_user_name = ""
-    if 'logged_in_as_admin' not in st.session_state: st.session_state.logged_in_as_admin = False
-    if 'admin_password_correct' not in st.session_state: st.session_state.admin_password_correct = False
-    if 'select_all_users' not in st.session_state: st.session_state.select_all_users = False
-    if 'google_calendar_auth_needed' not in st.session_state: st.session_state.google_calendar_auth_needed = False
-    if 'google_creds' not in st.session_state: st.session_state['google_creds'] = {}
-    if 'auto_run_confirmed' not in st.session_state: st.session_state.auto_run_confirmed = None 
-    if 'current_user_role' not in st.session_state: st.session_state.current_user_role = 'user'
-    if 'current_user_dept' not in st.session_state: st.session_state.current_user_dept = None
-    if 'delete_patient_confirm' not in st.session_state: st.session_state.delete_patient_confirm = False
-    if 'patients_to_delete' not in st.session_state: st.session_state.patients_to_delete = []
-    if 'select_all_mode' not in st.session_state: st.session_state.select_all_mode = False
-    if 'reservation_date_excel' not in st.session_state: st.session_state.reservation_date_excel = "날짜_미정"
-    if 'matched_user_multiselect' not in st.session_state: st.session_state.matched_user_multiselect = []
-    if 'matched_doctor_multiselect' not in st.session_state: st.session_state.matched_doctor_multiselect = []
-
-
+    # 💡 런타임 에러 방지를 위한 핵심 초기화 로직
+    defaults = {
+        'login_mode': 'not_logged_in',
+        'current_user_name': '',
+        'current_firebase_key': '',
+        'current_user_role': 'user',
+        'admin_password_correct': False,
+        'auto_run_confirmed': None,  # 👈 이 부분이 누락되면 에러가 납니다.
+        'matched_user_multiselect': [],
+        'matched_doctor_multiselect': []
+    }
+    for key, val in defaults.items():
+        if key not in st.session_state:
+            st.session_state[key] = val
+            
 def show_title_and_manual():
     """제목과 사용 설명서 버튼을 표시합니다."""
     st.markdown("""
