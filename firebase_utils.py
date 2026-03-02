@@ -5,10 +5,9 @@ from google_auth_oauthlib.flow import Flow
 from google.auth.transport.requests import Request
 from googleapiclient.discovery import build
 import pickle
-import json
-import os
+import time
 
-# 권한 범위 설정 (config.py의 SCOPES와 일치 확인)
+# 권한 범위 설정
 SCOPES = [
     'https://www.googleapis.com/auth/calendar',
     'https://www.googleapis.com/auth/userinfo.email',
@@ -30,32 +29,32 @@ def get_db_refs():
     base_ref = db.reference()
     return base_ref.child('users'), base_ref.child('doctor_users'), lambda path: base_ref.child(path)
 
-# --- 2. 유틸리티 함수 ---
-def sanitize_path(email):
-    return email.replace('.', '_')
-
-def recover_email(safe_key):
-    return safe_key.replace('_', '.')
-
-# --- 3. Google 인증 관리 (PKCE 오류 완전 방어) ---
+# --- 2. Google 인증 관리 (저장 로직 강화) ---
 def save_google_creds_to_firebase(safe_key, creds):
-    ref = db.reference(f'google_calendar_creds/{safe_key}')
-    ref.set({'creds': pickle.dumps(creds).hex()})
+    """자격 증명을 Firebase에 확실히 저장하고 성공 여부 반환"""
+    try:
+        ref = db.reference(f'google_calendar_creds/{safe_key}')
+        ref.set({'creds': pickle.dumps(creds).hex()})
+        return True
+    except Exception as e:
+        st.error(f"❌ DB 저장 실패: {e}")
+        return False
 
 def load_google_creds_from_firebase(safe_key):
-    data = db.reference(f'google_calendar_creds/{safe_key}').get()
-    if data and 'creds' in data:
-        try:
+    try:
+        data = db.reference(f'google_calendar_creds/{safe_key}').get()
+        if data and 'creds' in data:
             return pickle.loads(bytes.fromhex(data['creds']))
-        except: return None
+    except:
+        return None
     return None
 
 def get_google_calendar_service(safe_key):
-    # 1. 세션에 서비스가 이미 로드되어 있다면 즉시 반환
+    # 1. 이미 세션에 로드된 경우 즉시 반환
     if st.session_state.get('google_calendar_service'):
         return st.session_state.google_calendar_service
 
-    # 2. Firebase에서 기존 토큰 로드 시도
+    # 2. DB에서 기존 토큰 로드 시도
     creds = load_google_creds_from_firebase(safe_key)
     if creds:
         if creds.valid:
@@ -69,9 +68,9 @@ def get_google_calendar_service(safe_key):
                 service = build('calendar', 'v3', credentials=creds)
                 st.session_state.google_calendar_service = service
                 return service
-            except: pass # 갱신 실패 시 재인증 진행
+            except: pass
 
-    # 3. OAuth Flow 설정
+    # 3. OAuth 설정 로드
     conf = dict(st.secrets["google_calendar"])
     client_config = {
         "web": {
@@ -84,37 +83,36 @@ def get_google_calendar_service(safe_key):
         }
     }
 
-    # 🔑 Flow 객체를 세션에 고정 (가장 중요)
+    # 🔑 Flow 객체 세션 고정
     if 'auth_flow' not in st.session_state:
         st.session_state.auth_flow = Flow.from_client_config(
             client_config, scopes=SCOPES, redirect_uri=conf.get("redirect_uri")
         )
 
-    # 4. URL의 인증 코드(code) 처리
+    # 4. 인증 완료 후 돌아왔을 때 처리
     auth_code = st.query_params.get("code")
-    if auth_code:
+    if auth_code and 'auth_flow' in st.session_state:
         try:
-            # 세션에 저장된 flow를 사용하여 토큰 교환 (verifier 유지)
+            # 토큰 교환
             st.session_state.auth_flow.fetch_token(code=auth_code)
             new_creds = st.session_state.auth_flow.credentials
             
-            # Firebase에 영구 저장
-            save_google_creds_to_firebase(safe_key, new_creds)
-            
-            # 서비스 빌드 및 세션 저장
-            st.session_state.google_calendar_service = build('calendar', 'v3', credentials=new_creds)
-            
-            # 성공 후 정리 및 리런
-            st.query_params.clear()
-            if 'auth_flow' in st.session_state: del st.session_state.auth_flow
-            st.rerun()
+            # ✅ DB 저장 및 성공 메시지 출력
+            if save_google_creds_to_firebase(safe_key, new_creds):
+                st.success("✅ 구글 캘린더 권한이 승인되었습니다! 잠시 후 화면이 갱신됩니다.")
+                st.session_state.google_calendar_service = build('calendar', 'v3', credentials=new_creds)
+                
+                # 시각적 확인을 위해 짧게 대기 후 리프레시
+                st.query_params.clear()
+                if 'auth_flow' in st.session_state: del st.session_state.auth_flow
+                time.sleep(1.5)
+                st.rerun()
         except Exception as e:
-            # 실패 시 flow 초기화하여 다시 시작할 수 있게 함
-            if 'auth_flow' in st.session_state: del st.session_state.auth_flow
+            st.error(f"⚠️ 인증 처리 중 오류 발생: {e}")
             st.query_params.clear()
-            # 아래에서 새로운 auth_url을 생성하도록 흐름을 넘김
+            if 'auth_flow' in st.session_state: del st.session_state.auth_flow
 
-    # 5. 인증되지 않은 경우 링크 표시 (새로운 Flow 객체 필요 시 생성)
+    # 5. 인증 링크 표시 (새 Flow 객체 필요 시)
     if 'auth_flow' not in st.session_state:
         st.session_state.auth_flow = Flow.from_client_config(
             client_config, scopes=SCOPES, redirect_uri=conf.get("redirect_uri")
