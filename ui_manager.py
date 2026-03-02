@@ -64,7 +64,7 @@ def init_session_state():
         'current_firebase_key': '',
         'current_user_name': '',
         'admin_password_correct': False,
-        'auto_run_confirmed': None, # 💡 auto_run_confirmed 누락 에러 방지
+        'auto_run_confirmed': None,
         'current_user_role': 'user',
         'matched_user_multiselect': [],
         'matched_doctor_multiselect': [],
@@ -146,10 +146,11 @@ def show_login_and_registration():
             if st.button("의사 로그인/등록"): _handle_doctor_login(e, p2)
 
     elif mode == 'new_user_registration':
+        st.info(f"'{st.session_state.current_user_name}'님은 신규 사용자입니다. 정보를 입력하여 등록을 완료하세요.")
         st.subheader("👨‍🎓 학생 신규 등록")
         email = st.text_input("이메일(ID)", key="r_u_e")
-        number = st.text_input("원내생 번호 (예: 12)", key="r_u_n") # 💡 번호 필드 추가
-        pw = st.text_input("비밀번호", type="password", key="r_u_p")
+        number = st.text_input("원내생 번호 (예: 12)", key="r_u_n") # 번호 입력 필드 추가
+        pw = st.text_input("새 비밀번호", type="password", key="r_u_p")
         if st.button("학생 등록 완료"):
             if is_valid_email(email) and pw:
                 key = sanitize_path(email)
@@ -163,7 +164,7 @@ def show_login_and_registration():
     elif mode == 'new_doctor_registration':
         st.subheader("🧑‍⚕️ 치과의사 신규 등록")
         name = st.text_input("성함", key="r_d_n")
-        num = st.text_input("식별 번호", key="r_d_num") # 💡 번호 필드 추가
+        num = st.text_input("식별 번호", key="r_d_num") # 번호 입력 필드 추가
         dept = st.selectbox("소속 과", DEPARTMENTS_FOR_REGISTRATION)
         pw = st.text_input("비밀번호", type="password", key="r_d_p", value=DEFAULT_PASSWORD)
         if st.button("의사 등록 완료"):
@@ -176,7 +177,7 @@ def show_login_and_registration():
             st.session_state.update({'current_firebase_key': key, 'current_user_name': name, 'login_mode': 'doctor_mode'})
             st.rerun()
 
-# --- 4. 관리자 모드 UI (엑셀 비밀번호 처리 로직 포함) ---
+# --- 4. 관리자 모드 UI (엑셀 비밀번호 처리 포함) ---
 
 def show_admin_mode_ui():
     st.markdown("---")
@@ -198,7 +199,7 @@ def show_admin_mode_ui():
             file_name = uploaded_file.name
             is_daily = excel_utils.is_daily_schedule(file_name)
             
-            # 💡 엑셀 암호화 여부 체크 및 입력 받기
+            # 암호화 여부 체크 및 입력 필드 표시
             password = None
             if excel_utils.is_encrypted_excel(uploaded_file):
                 password = st.text_input("⚠️ 암호화된 파일입니다. 엑셀 비밀번호를 입력해주세요.", type="password", key="excel_file_pw")
@@ -207,12 +208,12 @@ def show_admin_mode_ui():
                     st.stop()
 
             try:
-                # 💡 입력된 비밀번호를 사용하여 엑셀 로드
+                # 입력된 비밀번호로 엑셀 로드 시도
                 xl_obj, raw_io = excel_utils.load_excel(uploaded_file, password)
                 excel_data_dfs_raw, styled_bytes = excel_utils.process_excel_file_and_style(raw_io, db_ref_func)
                 st.session_state.last_processed_data = excel_data_dfs_raw
                 
-                st.success("✅ 파일 분석 및 로드 성공!")
+                st.success("✅ 파일 로드 성공!")
                 st.download_button("처리된 엑셀 다운로드", data=styled_bytes, file_name=f"processed_{file_name}")
                 
                 st.markdown("---")
@@ -240,13 +241,13 @@ def show_admin_mode_ui():
                 else: st.error("인증 실패")
         else:
             st.subheader("사용자 계정 관리")
-            # (사용자 목록 및 삭제 로직...)
+            # (사용자 목록 로직...)
 
 # --- 5. 사용자/의사 모드 UI ---
 
 def show_user_mode_ui(firebase_key, user_name):
     st.header(f"👋 {user_name}님 (학생 모드)")
-    get_google_calendar_service(firebase_key) # 🔑 PKCE 대응 인증 호출
+    get_google_calendar_service(firebase_key) 
     t1, t2, t3 = st.tabs(['📅 환자 관리', '📈 분석 결과', '🧑‍🏫 리뷰'])
     with t3: show_professor_review_system()
 
