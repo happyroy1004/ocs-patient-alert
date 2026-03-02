@@ -36,17 +36,17 @@ def get_db_refs():
 def sanitize_path(email):
     return email.replace('.', '_')
 
-def recover_email(safe_key):
-    return safe_key.replace('_', '.')
-
-# --- 3. Google 인증 및 저장 (연속성 보장 버전) ---
+# --- 3. 핵심: 자격 증명 저장 및 로드 (안정성 강화) ---
 def save_google_creds_to_firebase(safe_key, creds):
+    """DB 저장이 완료될 때까지 확실히 확인"""
     try:
         ref = db.reference(f'google_calendar_creds/{safe_key}')
         ref.set({'creds': pickle.dumps(creds).hex()})
-        return True
+        # 데이터가 잘 들어갔는지 다시 한번 확인 (Verification)
+        check = ref.get()
+        return check is not None
     except Exception as e:
-        st.error(f"❌ DB 저장 실패: {e}")
+        st.error(f"❌ DB 저장 오류: {e}")
         return False
 
 def load_google_creds_from_firebase(safe_key):
@@ -58,12 +58,12 @@ def load_google_creds_from_firebase(safe_key):
         return None
     return None
 
+# --- 4. 메인 서비스 로직 ---
 def get_google_calendar_service(safe_key):
-    # 1. 이미 인증된 서비스가 있는 경우 즉시 반환
     if st.session_state.get('google_calendar_service'):
         return st.session_state.google_calendar_service
 
-    # 2. DB에서 기존 토큰 로드 (있으면 바로 통과)
+    # 기존 토큰 로드 시도
     creds = load_google_creds_from_firebase(safe_key)
     if creds:
         if creds.valid:
@@ -79,7 +79,7 @@ def get_google_calendar_service(safe_key):
                 return service
             except: pass
 
-    # 3. OAuth 설정 구성
+    # OAuth 설정 및 Flow 생성
     conf = dict(st.secrets["google_calendar"])
     client_config = {
         "web": {
@@ -92,41 +92,42 @@ def get_google_calendar_service(safe_key):
         }
     }
 
-    # 4. 🔑 세션 유지를 위한 Flow 객체 생성 및 고정
     if 'auth_flow' not in st.session_state:
         st.session_state.auth_flow = Flow.from_client_config(
             client_config, scopes=SCOPES, redirect_uri=conf.get("redirect_uri")
         )
 
-    # 5. 인증 결과 처리 (Redirect 후 돌아온 시점)
+    # 💡 해결책: 인증 코드 처리 시 명시적 대기 및 확인 과정 추가
     auth_code = st.query_params.get("code")
     if auth_code and 'auth_flow' in st.session_state:
         try:
-            # 세션에 저장된 verifier를 사용하여 토큰 교환
-            st.session_state.auth_flow.fetch_token(code=auth_code)
-            new_creds = st.session_state.auth_flow.credentials
-            
-            if save_google_creds_to_firebase(safe_key, new_creds):
-                st.success("✅ 구글 캘린더 연동 성공! 잠시 후 화면이 갱신됩니다.")
-                st.session_state.google_calendar_service = build('calendar', 'v3', credentials=new_creds)
+            with st.spinner("🔄 구글 인증 정보를 저장 중입니다..."):
+                st.session_state.auth_flow.fetch_token(code=auth_code)
+                new_creds = st.session_state.auth_flow.credentials
                 
-                # 주소창 정리 및 세션 정리
-                st.query_params.clear()
-                if 'auth_flow' in st.session_state: del st.session_state.auth_flow
-                time.sleep(1)
-                st.rerun()
+                # DB 저장을 시도하고 성공할 때까지 대기
+                success = save_google_creds_to_firebase(safe_key, new_creds)
+                
+                if success:
+                    st.success("✅ 권한 승인 완료! 정보를 안전하게 저장했습니다.")
+                    st.session_state.google_calendar_service = build('calendar', 'v3', credentials=new_creds)
+                    st.query_params.clear()
+                    if 'auth_flow' in st.session_state: del st.session_state.auth_flow
+                    time.sleep(2) # ⏱️ 리디렉션 전 DB 쓰기 완료를 위한 시간 벌기
+                    st.rerun()
+                else:
+                    st.error("❌ 정보를 저장하지 못했습니다. 다시 시도해 주세요.")
         except Exception as e:
-            st.warning("⚠️ 인증 세션이 만료되었습니다. 다시 시도해 주세요.")
+            st.error(f"⚠️ 인증 처리 중 오류: {e}")
             st.query_params.clear()
             if 'auth_flow' in st.session_state: del st.session_state.auth_flow
 
-    # 6. 인증이 필요한 경우 링크 표시 (URL에 현재 사용자의 safe_key를 포함시켜 보냄)
+    # 새 인증 링크 생성
     if 'auth_flow' not in st.session_state:
-         st.session_state.auth_flow = Flow.from_client_config(
+        st.session_state.auth_flow = Flow.from_client_config(
             client_config, scopes=SCOPES, redirect_uri=conf.get("redirect_uri")
         )
 
-    # state 파라미터를 사용해 safe_key를 인코딩하여 전달 (선택사항, 현재는 기본 prompt 유지)
     auth_url, _ = st.session_state.auth_flow.authorization_url(
         prompt='consent', access_type='offline', include_granted_scopes='true'
     )
