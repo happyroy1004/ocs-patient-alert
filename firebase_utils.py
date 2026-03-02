@@ -7,44 +7,51 @@ from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
 import json
 
-# 권한 범위 (URL에 찍힌 scope와 정확히 일치)
+# 권한 범위 (가장 확실한 범위로 설정)
 SCOPES = ['https://www.googleapis.com/auth/calendar.events']
 
 def save_google_creds_to_firebase(safe_key, creds):
-    """Firebase에 JSON 문자열로 저장"""
+    """이 함수가 실행되는지 화면에서 직접 확인하기 위해 st.write를 추가했습니다."""
     try:
-        ref = db.reference(f'google_calendar_creds/{safe_key}')
+        # 이메일의 점(.)은 Firebase 경로에서 오류를 일으키므로 반드시 변환
+        clean_key = safe_key.replace('.', '_')
+        ref = db.reference(f'google_calendar_creds/{clean_key}')
+        
+        st.write(f"📡 Firebase 저장 시도 중... 경로: google_calendar_creds/{clean_key}")
+        
         ref.set({'creds': creds.to_json()})
-        st.success(f"✅ [{safe_key}] 계정 연동 성공! 데이터가 저장되었습니다.")
+        
+        st.success(f"✅ [{clean_key}] 저장 완료 메시지가 떴습니다!")
+        return True
     except Exception as e:
-        st.error(f"❌ Firebase 저장 실패 (권한 문제일 수 있음): {e}")
+        st.error(f"❌ Firebase 저장 중 진짜 에러 발생: {e}")
+        return False
 
 def get_google_calendar_service(safe_key=None):
-    # 1. URL에서 직접 이메일(state)과 인증코드(code)를 추출
-    # 구글에서 돌아올 때 state에 이메일을 담아 보낼 예정입니다.
-    returned_state = st.query_params.get("state")
-    auth_code = st.query_params.get("code")
+    # 1. 구글 다녀오기 전/후 이메일 유실 방지 (세션 고정)
+    if safe_key:
+        st.session_state['auth_email_key'] = safe_key
     
-    # 현재 작업 대상 이메일 결정 (인자값 우선 -> URL 리턴값 순)
-    active_key = safe_key if safe_key else returned_state
+    active_key = st.session_state.get('auth_email_key')
+    
+    # 구글에서 돌아온 코드 확인
+    auth_code = st.query_params.get("code")
 
-    # 2. 이미 데이터가 있는지 확인 (로그인 유지용)
-    if active_key:
-        try:
-            data = db.reference(f'google_calendar_creds/{active_key}').get()
-            if data and 'creds' in data:
-                creds = Credentials.from_authorized_user_info(json.loads(data['creds']), SCOPES)
-                if creds.valid:
-                    return build('calendar', 'v3', credentials=creds)
-                elif creds.refresh_token:
-                    creds.refresh(Request())
-                    save_google_creds_to_firebase(active_key, creds)
-                    return build('calendar', 'v3', credentials=creds)
-        except:
-            pass
+    # 2. 기존 데이터 로드 (생략 가능하면 일단 스킵하고 인증부터 확인)
+    if active_key and not auth_code:
+        data = db.reference(f'google_calendar_creds/{active_key.replace(".", "_")}').get()
+        if data and 'creds' in data:
+            creds = Credentials.from_authorized_user_info(json.loads(data['creds']), SCOPES)
+            if creds.valid:
+                return build('calendar', 'v3', credentials=creds)
 
-    # 3. 구글에서 인증 코드를 가지고 돌아온 경우 처리
+    # 3. 구글 인증 처리 (돌아온 직후)
     if auth_code:
+        if not active_key:
+            # [긴급 조치] 만약 이메일을 잃어버렸다면 테스트용으로 강제 지정
+            active_key = "skyeloveillustration@gmail_com"
+            st.warning(f"⚠️ 이메일 유실로 인해 임시 키({active_key})를 사용합니다.")
+
         try:
             conf = dict(st.secrets["google_calendar"])
             flow = Flow.from_client_config(
@@ -54,30 +61,22 @@ def get_google_calendar_service(safe_key=None):
             )
             flow.fetch_token(code=auth_code)
             
-            # [중요] 구글이 돌려준 state(이메일)를 사용하여 저장
-            # 만약 returned_state가 난수라면, skyeloveillustration@gmail.com을 직접 입력해서 테스트해보세요.
-            target_key = active_key if "@" in str(active_key) else "skyeloveillustration@gmail_com"
-            save_google_creds_to_firebase(target_key, flow.credentials)
+            # 여기서 저장이 실행되는지 눈으로 확인해야 합니다!
+            success = save_google_creds_to_firebase(active_key, flow.credentials)
             
-            st.query_params.clear()
-            st.rerun()
+            if success:
+                st.write("🔄 페이지를 새로고침합니다...")
+                st.query_params.clear()
+                st.rerun()
         except Exception as e:
-            st.error(f"❌ 토큰 교환 실패: {e}")
+            st.error(f"❌ 토큰 처리 실패: {e}")
             st.stop()
 
-    # 4. 연동 버튼 생성 (이메일을 state에 담아서 보냄)
-    if active_key:
-        conf = dict(st.secrets["google_calendar"])
-        flow = Flow.from_client_config({"web": conf}, scopes=SCOPES, redirect_uri=conf["redirect_uri"])
-        
-        # state에 이메일을 넣어서 보내면, 구글이 인증 후 이 값을 그대로 돌려줍니다.
-        auth_url, _ = flow.authorization_url(
-            prompt='consent', 
-            access_type='offline',
-            state=active_key  
-        )
-        
-        st.info(f"📅 [{active_key}] 계정의 구글 캘린더 연동이 필요합니다.")
-        st.markdown(f"**[🔗 구글 계정 연동하기]({auth_url})**")
+    # 4. 인증 버튼 (연동이 안 된 경우)
+    conf = dict(st.secrets["google_calendar"])
+    flow = Flow.from_client_config({"web": conf}, scopes=SCOPES, redirect_uri=conf["redirect_uri"])
+    auth_url, _ = flow.authorization_url(prompt='consent', access_type='offline')
     
+    st.info(f"📅 [{active_key}] 계정 연동 버튼을 생성합니다.")
+    st.markdown(f"**[🔗 구글 계정 연동하기]({auth_url})**")
     return None
