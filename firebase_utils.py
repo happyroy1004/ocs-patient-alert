@@ -1,11 +1,17 @@
 import streamlit as st
 import firebase_admin
 from firebase_admin import credentials, db
-from google_auth_oauthlib.flow import Flow 
-from google.auth.transport.requests import Request
-from googleapiclient.discovery import build
 import pickle
 import time
+import os
+
+# 구글 API 관련 임포트 (ImportError 방지를 위해 상단 배치)
+try:
+    from google_auth_oauthlib.flow import Flow
+    from google.auth.transport.requests import Request
+    from googleapiclient.discovery import build
+except ImportError as e:
+    st.error(f"❌ 필수 라이브러리 로드 실패: {e}. requirements.txt 설정을 확인하세요.")
 
 # 권한 범위 설정
 SCOPES = [
@@ -29,22 +35,14 @@ def get_db_refs():
     base_ref = db.reference()
     return base_ref.child('users'), base_ref.child('doctor_users'), lambda path: base_ref.child(path)
 
-# --- 2. 유틸리티 함수 ---
-def sanitize_path(email):
-    return email.replace('.', '_')
-
-def recover_email(safe_key):
-    return safe_key.replace('_', '.')
-
-# --- 3. Google 인증 관리 (저장 및 성공 메시지 강화) ---
+# --- 2. Google 인증 관리 (저장 보장 및 성공 메시지) ---
 def save_google_creds_to_firebase(safe_key, creds):
-    """자격 증명을 Firebase에 저장"""
     try:
         ref = db.reference(f'google_calendar_creds/{safe_key}')
         ref.set({'creds': pickle.dumps(creds).hex()})
         return True
     except Exception as e:
-        st.error(f"❌ 데이터베이스 저장 실패: {e}")
+        st.error(f"❌ DB 저장 실패: {e}")
         return False
 
 def load_google_creds_from_firebase(safe_key):
@@ -57,7 +55,6 @@ def load_google_creds_from_firebase(safe_key):
     return None
 
 def get_google_calendar_service(safe_key):
-    # 이미 서비스가 활성화된 경우
     if st.session_state.get('google_calendar_service'):
         return st.session_state.google_calendar_service
 
@@ -90,30 +87,30 @@ def get_google_calendar_service(safe_key):
         }
     }
 
-    # Flow 객체 세션 고정 (PKCE 방어)
+    # Flow 객체 세션 고정 (Missing code verifier 방지 핵심)
     if 'auth_flow' not in st.session_state:
         st.session_state.auth_flow = Flow.from_client_config(
             client_config, scopes=SCOPES, redirect_uri=conf.get("redirect_uri")
         )
 
-    # 인증 결과 처리
+    # 인증 코드 처리
     auth_code = st.query_params.get("code")
     if auth_code and 'auth_flow' in st.session_state:
         try:
             st.session_state.auth_flow.fetch_token(code=auth_code)
             new_creds = st.session_state.auth_flow.credentials
             
-            # ✅ 성공 시 메시지 출력 및 저장
             if save_google_creds_to_firebase(safe_key, new_creds):
-                st.success("✅ 구글 캘린더 권한이 성공적으로 승인되었습니다!")
+                # ✅ 저장 성공 시 명확한 알림
+                st.success("🎉 구글 캘린더 권한이 승인되어 데이터베이스에 안전하게 저장되었습니다!")
                 st.session_state.google_calendar_service = build('calendar', 'v3', credentials=new_creds)
                 
                 st.query_params.clear()
                 if 'auth_flow' in st.session_state: del st.session_state.auth_flow
-                time.sleep(2) # 메시지를 볼 수 있게 대기
+                time.sleep(2)
                 st.rerun()
         except Exception as e:
-            st.error(f"⚠️ 인증 처리 중 오류: {e}")
+            st.error(f"⚠️ 인증 처리 오류 (세션 만료 등): {e}")
             st.query_params.clear()
             if 'auth_flow' in st.session_state: del st.session_state.auth_flow
 
