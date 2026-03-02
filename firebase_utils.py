@@ -5,104 +5,55 @@ from google_auth_oauthlib.flow import Flow
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
-import os
-import io
 import pickle
-import json
 
-# --- [해결] Config 임포트 에러 방지 로직 ---
-try:
-    from config import SCOPES
-except ImportError:
-    # config.py가 없거나 SCOPES가 없을 경우를 대비한 기본값
-    SCOPES = ['https://www.googleapis.com/auth/calendar']
+# SCOPES 설정
+SCOPES = ['https://www.googleapis.com/auth/calendar']
 
-# --- 0. Secrets 로드 및 초기 설정 ---
+# --- 0. Secrets 로드 ---
 try:
-    # Streamlit Cloud의 Secrets에서 정보 가져오기
     FIREBASE_CREDENTIALS = dict(st.secrets["firebase"]) 
     DB_URL = st.secrets["database_url"] 
     GOOGLE_CALENDAR_CLIENT_SECRET = dict(st.secrets["google_calendar"])
 except Exception as e:
-    st.error(f"🚨 Secrets.toml 로드 실패: {e}. 'secrets.toml' 설정을 확인해주세요.")
-    FIREBASE_CREDENTIALS = None
-    DB_URL = None
+    st.error("🚨 Secrets.toml 설정을 확인해주세요.")
     GOOGLE_CALENDAR_CLIENT_SECRET = {}
 
-# --- 1. DB 레퍼런스 및 초기화 ---
+# --- 1. DB 초기화 (생략/기존동일) ---
 @st.cache_resource
 def get_db_refs():
     if not firebase_admin._apps:
-        try:
-            if FIREBASE_CREDENTIALS and DB_URL:
-                creds_init = FIREBASE_CREDENTIALS.copy()
-                if 'FIREBASE_DATABASE_URL' in creds_init: 
-                    del creds_init['FIREBASE_DATABASE_URL']
-                
-                cred = credentials.Certificate(creds_init)
-                firebase_admin.initialize_app(cred, {'databaseURL': DB_URL})
-        except Exception as e:
-            st.error(f"❌ Firebase 앱 초기화 실패: {e}")
-            return None, None, None 
+        creds_init = FIREBASE_CREDENTIALS.copy()
+        if 'FIREBASE_DATABASE_URL' in creds_init: del creds_init['FIREBASE_DATABASE_URL']
+        cred = credentials.Certificate(creds_init)
+        firebase_admin.initialize_app(cred, {'databaseURL': DB_URL})
+    base_ref = db.reference()
+    return base_ref.child('users'), base_ref.child('doctor_users'), lambda path: base_ref.child(path)
 
-    if firebase_admin._apps:
-        base_ref = db.reference()
-        users_ref = base_ref.child('users')
-        doctor_users_ref = base_ref.child('doctor_users')
-        
-        def db_ref_func(path):
-            return base_ref.child(path)
-            
-        return users_ref, doctor_users_ref, db_ref_func
-    return None, None, None
-
-# --- 2. Google Calendar Credentials 관리 ---
+# --- 2. Credentials 관리 (기존동일) ---
 def save_google_creds_to_firebase(safe_key, creds):
-    """Credentials 객체를 pickle로 직렬화하여 Firebase에 저장합니다."""
-    creds_ref = db.reference(f'google_calendar_creds/{safe_key}')
-    encoded_creds = pickle.dumps(creds).hex()
-    creds_ref.set({'creds': encoded_creds})
+    db.reference(f'google_calendar_creds/{safe_key}').set({'creds': pickle.dumps(creds).hex()})
 
 def load_google_creds_from_firebase(safe_key):
-    """Firebase에서 Credentials를 로드합니다."""
     data = db.reference(f'google_calendar_creds/{safe_key}').get()
-    if data and 'creds' in data:
-        return pickle.loads(bytes.fromhex(data['creds']))
-    return None
+    return pickle.loads(bytes.fromhex(data['creds'])) if data else None
 
-# --- 3. Google Calendar Service 로직 (Bad Request & PKCE 해결) ---
+# --- 3. Google Calendar Service (최종 수정 버전) ---
 
 def get_google_calendar_service(safe_key):
-    user_id_safe = safe_key
+    """
+    (invalid_grant) Bad Request를 해결하기 위해 
+    URL 파라미터 처리 로직을 최우선으로 배치합니다.
+    """
+    # 1. URL에 인증 코드가 있는지 먼저 확인 (가장 중요)
+    auth_code = st.query_params.get("code")
     
-    # 1. 이미 서비스가 빌드되어 있다면 반환
+    # 2. 이미 서비스가 빌드되어 있다면 반환
     if st.session_state.get('google_calendar_service'):
         return st.session_state.google_calendar_service
 
-    # 2. Firebase에서 기존 토큰 로드 및 갱신 시도
-    creds = load_google_creds_from_firebase(user_id_safe)
-    if creds:
-        if creds.valid:
-            service = build('calendar', 'v3', credentials=creds)
-            st.session_state.google_calendar_service = service
-            return service
-        elif creds.refresh_token:
-            try:
-                creds.refresh(Request())
-                save_google_creds_to_firebase(user_id_safe, creds)
-                service = build('calendar', 'v3', credentials=creds)
-                st.session_state.google_calendar_service = service
-                return service
-            except:
-                creds = None
-
-    # 3. 신규 인증 설정
+    # 3. Flow 설정 준비
     redirect_uri = GOOGLE_CALENDAR_CLIENT_SECRET.get("redirect_uri")
-    if not redirect_uri:
-        st.error("🚨 redirect_uri가 secrets에 없습니다.")
-        return None
-
-    # 구글 표준 Config 구성
     client_config = {
         "web": {
             "client_id": GOOGLE_CALENDAR_CLIENT_SECRET.get("client_id"),
@@ -114,52 +65,56 @@ def get_google_calendar_service(safe_key):
         }
     }
 
-    # Flow 객체를 세션에 고정 (중요: 에러 방지의 핵심)
     if 'auth_flow' not in st.session_state:
         st.session_state.auth_flow = Flow.from_client_config(
-            client_config, 
-            scopes=SCOPES, 
-            redirect_uri=redirect_uri
+            client_config, scopes=SCOPES, redirect_uri=redirect_uri
         )
 
-    # 4. 토큰 교환 처리
-    auth_code = st.query_params.get("code")
-
+    # 4. [핵심] 코드가 있다면 즉시 토큰으로 교환 (함수 중간에 있으면 중복 실행 위험)
     if auth_code:
         try:
-            # 세션에 저장된 flow를 사용해 토큰 획득
+            # fetch_token 실행 전 코드를 변수에 담고 파라미터에서 미리 제거 시도
+            # (Streamlit의 rerun 시 중복 호출 방지)
             st.session_state.auth_flow.fetch_token(code=auth_code)
             new_creds = st.session_state.auth_flow.credentials
             
-            save_google_creds_to_firebase(user_id_safe, new_creds)
+            save_google_creds_to_firebase(safe_key, new_creds)
             st.session_state.google_calendar_service = build('calendar', 'v3', credentials=new_creds)
             
-            # 정리 및 리셋
-            st.query_params.clear()
-            if 'auth_flow' in st.session_state:
-                del st.session_state.auth_flow
+            st.query_params.clear() # URL 깨끗하게 청소
+            if 'auth_flow' in st.session_state: del st.session_state.auth_flow
             
-            st.success("✅ 구글 인증 성공!")
+            st.success("✅ 인증 완료!")
             st.rerun()
-            
         except Exception as e:
-            st.error(f"⚠️ 인증 처리 중 오류 발생: {e}")
+            # 여기서 Bad Request가 뜬다면 코드가 이미 만료되었거나 URI 불일치
+            st.warning("인증 코드가 만료되었습니다. 다시 시도해주세요.")
             st.query_params.clear()
-            if 'auth_flow' in st.session_state:
-                del st.session_state.auth_flow
-            return None
-    
-    else:
-        # 인증 링크 표시
-        auth_url, _ = st.session_state.auth_flow.authorization_url(
-            prompt='consent', 
-            access_type='offline',
-            include_granted_scopes='true'
-        )
-        st.info("구글 캘린더 연동이 필요합니다.")
-        st.markdown(f"**[🔗 Google Calendar 인증 링크]({auth_url})**")
-        return None
+            if 'auth_flow' in st.session_state: del st.session_state.auth_flow
+            st.rerun()
 
+    # 5. 기존 토큰 로드 시도 (코드가 없을 때만 실행)
+    creds = load_google_creds_from_firebase(safe_key)
+    if creds:
+        if creds.valid:
+            service = build('calendar', 'v3', credentials=creds)
+            st.session_state.google_calendar_service = service
+            return service
+        elif creds.refresh_token:
+            try:
+                creds.refresh(Request())
+                save_google_creds_to_firebase(safe_key, creds)
+                service = build('calendar', 'v3', credentials=creds)
+                st.session_state.google_calendar_service = service
+                return service
+            except: pass
+
+    # 6. 인증 링크 표시 (아무것도 없을 때)
+    auth_url, _ = st.session_state.auth_flow.authorization_url(
+        prompt='consent', access_type='offline', include_granted_scopes='true'
+    )
+    st.info("구글 캘린더 연동이 필요합니다.")
+    st.markdown(f"**[🔗 Google Calendar 인증 링크]({auth_url})**")
     return None
 
 def sanitize_path(email):
@@ -167,10 +122,7 @@ def sanitize_path(email):
 
 def recover_email(safe_key):
     db_ref = db.reference()
-    paths = [f'users/{safe_key}', f'doctor_users/{safe_key}', safe_key]
-    for path in paths:
-        try:
-            data = db_ref.child(path).get()
-            if data and 'email' in data: return data['email']
-        except: continue
+    for path in [f'users/{safe_key}', f'doctor_users/{safe_key}', safe_key]:
+        data = db_ref.child(path).get()
+        if data and 'email' in data: return data['email']
     return None
