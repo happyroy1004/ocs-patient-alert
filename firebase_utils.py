@@ -37,7 +37,7 @@ def sanitize_path(email):
 def recover_email(safe_key):
     return safe_key.replace('_', '.')
 
-# --- 3. Google 인증 관리 (Missing code verifier 방어) ---
+# --- 3. Google 인증 관리 (Missing code verifier 대응) ---
 def save_google_creds_to_firebase(safe_key, creds):
     ref = db.reference(f'google_calendar_creds/{safe_key}')
     ref.set({'creds': pickle.dumps(creds).hex()})
@@ -49,7 +49,7 @@ def load_google_creds_from_firebase(safe_key):
     return None
 
 def get_google_calendar_service(safe_key):
-    # 이미 인증된 서비스가 세션에 있는 경우
+    # 1. 이미 인증된 서비스가 있는 경우
     if st.session_state.get('google_calendar_service'):
         return st.session_state.google_calendar_service
 
@@ -65,38 +65,7 @@ def get_google_calendar_service(safe_key):
         }
     }
 
-    # 🔑 핵심: Flow 객체를 세션에 고정하여 PKCE Verifier 유실 방지
-    if 'auth_flow' not in st.session_state:
-        st.session_state.auth_flow = Flow.from_client_config(
-            client_config, 
-            scopes=SCOPES, 
-            redirect_uri=conf.get("redirect_uri")
-        )
-
-    # URL에서 인증 코드 확인
-    auth_code = st.query_params.get("code")
-    
-    if auth_code and 'auth_flow' in st.session_state:
-        try:
-            # 세션에 저장된 바로 그 flow 객체로 토큰을 가져와야 에러가 안 납니다.
-            st.session_state.auth_flow.fetch_token(code=auth_code)
-            new_creds = st.session_state.auth_flow.credentials
-            
-            save_google_creds_to_firebase(safe_key, new_creds)
-            st.session_state.google_calendar_service = build('calendar', 'v3', credentials=new_creds)
-            
-            st.query_params.clear()
-            del st.session_state.auth_flow
-            st.rerun()
-        except Exception as e:
-            # 에러 발생 시 flow 초기화 후 재시도 유도
-            st.warning("⚠️ 세션 문제로 인증을 재시도합니다. 아래 링크를 다시 클릭해 주세요.")
-            st.query_params.clear()
-            if 'auth_flow' in st.session_state:
-                del st.session_state.auth_flow
-            st.stop()
-
-    # 기존 DB에서 자격 증명 로드
+    # 2. 기존 저장된 토큰 로드
     creds = load_google_creds_from_firebase(safe_key)
     if creds:
         if creds.valid:
@@ -112,7 +81,39 @@ def get_google_calendar_service(safe_key):
                 return service
             except: pass
 
-    # 인증 링크 생성
+    # 3. Flow 객체 세션 초기화 (없으면 생성)
+    if 'auth_flow' not in st.session_state:
+        st.session_state.auth_flow = Flow.from_client_config(
+            client_config, scopes=SCOPES, redirect_uri=conf.get("redirect_uri")
+        )
+
+    # 4. URL 파라미터 처리 (인증 코드 복구)
+    auth_code = st.query_params.get("code")
+    if auth_code:
+        try:
+            # 세션에 flow가 있을 때만 진행
+            if 'auth_flow' in st.session_state:
+                st.session_state.auth_flow.fetch_token(code=auth_code)
+                new_creds = st.session_state.auth_flow.credentials
+                save_google_creds_to_firebase(safe_key, new_creds)
+                st.session_state.google_calendar_service = build('calendar', 'v3', credentials=new_creds)
+                st.query_params.clear()
+                del st.session_state.auth_flow
+                st.rerun()
+        except Exception as e:
+            # 에러 발생 시 flow를 삭제하여 새로 만들 수 있게 함
+            st.warning("⚠️ 인증 세션이 만료되었습니다. 아래 링크를 다시 눌러주세요.")
+            st.query_params.clear()
+            if 'auth_flow' in st.session_state:
+                del st.session_state.auth_flow
+            # 여기서 멈추지 않고 아래 링크 생성 코드로 넘어가게 함
+
+    # 5. 인증 링크 다시 생성 (Flow 객체 유무 확인 후 생성)
+    if 'auth_flow' not in st.session_state:
+        st.session_state.auth_flow = Flow.from_client_config(
+            client_config, scopes=SCOPES, redirect_uri=conf.get("redirect_uri")
+        )
+
     auth_url, _ = st.session_state.auth_flow.authorization_url(
         prompt='consent', 
         access_type='offline',
