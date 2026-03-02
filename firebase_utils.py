@@ -7,80 +7,92 @@ from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
 import json
 
-# 권한 범위를 URL에 표시된 것과 일치시키거나, 더 포괄적으로 설정
-SCOPES = ['https://www.googleapis.com/auth/calendar']
+# 권한 범위 설정 (URL에 찍힌 범위와 일치시킴)
+SCOPES = ['https://www.googleapis.com/auth/calendar.events']
 
 def save_google_creds_to_firebase(safe_key, creds):
+    """Firebase에 확실하게 저장하고 성공 메시지 출력"""
     try:
         ref = db.reference(f'google_calendar_creds/{safe_key}')
         ref.set({'creds': creds.to_json()})
-        st.success(f"✅ 인증 정보가 {safe_key} 계정에 성공적으로 연결되었습니다!")
+        st.success(f"✅ {safe_key} 계정의 구글 연동 데이터가 저장되었습니다!")
     except Exception as e:
-        st.error(f"❌ Firebase 저장 중 오류 발생: {e}")
+        st.error(f"❌ Firebase 저장 실패: {e}")
 
 def get_google_calendar_service(safe_key):
-    # 0. 입력받은 safe_key가 없으면 세션에서라도 찾아봄
-    if not safe_key:
-        safe_key = st.session_state.get('user_email_safe') # 로그인 시 저장해둔 키가 있다면
-    
-    if not safe_key:
-        st.error("❗ 사용자 정보를 확인할 수 없습니다. 로그인을 먼저 진행해주세요.")
-        return None
+    # 1. safe_key가 들어오면 세션에 백업 (구글 갔다 올 때 유실 방지)
+    if safe_key:
+        st.session_state['pending_safe_key'] = safe_key
+    else:
+        # 인자값이 없으면 세션에 저장해둔 키를 꺼내옴
+        safe_key = st.session_state.get('pending_safe_key')
 
-    conf = dict(st.secrets["google_calendar"])
-    client_config = {
-        "web": {
-            "client_id": conf.get("client_id"),
-            "project_id": conf.get("project_id"),
-            "auth_uri": "https://accounts.google.com/o/oauth2/auth",
-            "token_uri": "https://oauth2.googleapis.com/token",
-            "client_secret": conf.get("client_secret"),
-            "redirect_uris": [conf.get("redirect_uri")]
-        }
-    }
-
-    # 1단계: 기존 DB 데이터 로드 시도
-    data = db.reference(f'google_calendar_creds/{safe_key}').get()
-    if data and 'creds' in data:
-        creds = Credentials.from_authorized_user_info(json.loads(data['creds']), SCOPES)
-        if creds.valid:
-            return build('calendar', 'v3', credentials=creds)
-        elif creds.refresh_token:
+    # 2. 기존 저장된 데이터가 있는지 확인
+    if safe_key:
+        data = db.reference(f'google_calendar_creds/{safe_key}').get()
+        if data and 'creds' in data:
             try:
-                creds.refresh(Request())
-                save_google_creds_to_firebase(safe_key, creds)
-                return build('calendar', 'v3', credentials=creds)
-            except: pass
+                creds = Credentials.from_authorized_user_info(json.loads(data['creds']), SCOPES)
+                if creds.valid:
+                    return build('calendar', 'v3', credentials=creds)
+                elif creds.refresh_token:
+                    creds.refresh(Request())
+                    save_google_creds_to_firebase(safe_key, creds)
+                    return build('calendar', 'v3', credentials=creds)
+            except:
+                pass
 
-    # 2단계: 구글 인증 후 돌아온 코드 처리 (?code= 가 있는 경우)
+    # 3. 구글에서 인증 코드(code)를 가지고 돌아온 경우 처리
     auth_code = st.query_params.get("code")
     if auth_code:
+        # 저장할 키가 없으면 진행 불가
+        if not safe_key:
+            st.error("❗ 인증을 처리할 사용자 정보를 잃어버렸습니다. 다시 시도해주세요.")
+            st.stop()
+            
         try:
-            # flow 생성 시 state 검증을 피하기 위해 임의의 state 주입 또는 생략
+            conf = dict(st.secrets["google_calendar"])
             flow = Flow.from_client_config(
-                client_config, 
+                {"web": {
+                    "client_id": conf["client_id"],
+                    "project_id": conf["project_id"],
+                    "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+                    "token_uri": "https://oauth2.googleapis.com/token",
+                    "client_secret": conf["client_secret"],
+                    "redirect_uris": [conf["redirect_uri"]] # 슬래시 없는 URI 그대로 사용
+                }}, 
                 scopes=SCOPES, 
-                redirect_uri=conf.get("redirect_uri")
+                redirect_uri=conf["redirect_uri"]
             )
             flow.fetch_token(code=auth_code)
             
-            # [핵심] 여기서 safe_key가 확실히 전달되어야 함
+            # 드디어 저장!
             save_google_creds_to_firebase(safe_key, flow.credentials)
             
+            # 성공 후 URL 정리 및 리런
             st.query_params.clear()
             st.rerun()
         except Exception as e:
-            st.error(f"❌ 인증 토큰 처리 중 오류: {e}")
+            st.error(f"❌ 토큰 교환 에러: {e}")
             st.stop()
 
-    # 3단계: 인증 버튼 표시
+    # 4. 연동 버튼 표시 (인증이 안 되어 있는 경우)
+    conf = dict(st.secrets["google_calendar"])
     flow = Flow.from_client_config(
-        client_config, 
+        {"web": {
+            "client_id": conf["client_id"],
+            "project_id": conf["project_id"],
+            "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+            "token_uri": "https://oauth2.googleapis.com/token",
+            "client_secret": conf["client_secret"],
+            "redirect_uris": [conf["redirect_uri"]]
+        }}, 
         scopes=SCOPES, 
-        redirect_uri=conf.get("redirect_uri")
+        redirect_uri=conf["redirect_uri"]
     )
+    
     auth_url, _ = flow.authorization_url(prompt='consent', access_type='offline')
     
     st.info("📅 구글 캘린더 연동이 필요합니다.")
-    st.markdown(f'<a href="{auth_url}" target="_self" style="text-decoration:none;"><div style="background-color:#4285F4; color:white; padding:10px; border-radius:5px; text-align:center;">구글 계정 연동하기</div></a>', unsafe_allow_html=True)
+    st.markdown(f"**[🔗 구글 계정 연동하기]({auth_url})**")
     return None
