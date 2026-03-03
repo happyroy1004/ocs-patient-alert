@@ -182,7 +182,7 @@ def show_admin_mode_ui():
         if uploaded_file:
             is_daily = excel_utils.is_daily_schedule(uploaded_file.name)
             try:
-                xl_data, styled_file = excel_utils.process_excel_file_and_style(uploaded_file)
+                xl_data, styled_file = excel_utils.process_excel_file_and_style(uploaded_file, db_ref_func)
                 st.success(f"파일 분석 완료: {uploaded_file.name}")
                 
                 if st.button("🚀 전체 자동 알림 전송 시작", type="primary"):
