@@ -156,3 +156,27 @@ def get_google_calendar_service(safe_key):
         )
     
     return None
+
+def get_db_refs():
+    """ui_manager.py 32번 라인 대응: 3개 반환"""
+    users_ref = db.reference('users')
+    doctor_users_ref = db.reference('doctor_users')
+    def db_ref_func(path):
+        return db.reference(path)
+    return users_ref, doctor_users_ref, db_ref_func
+
+def sanitize_path(email):
+    return email.replace('.', '_') if email else "unknown"
+
+def recover_email(safe_key):
+    return safe_key.replace('_', '.') if safe_key else ""
+
+def save_google_creds_to_firebase(safe_key, creds):
+    db.reference(f'google_calendar_creds/{safe_key}').set({'creds': creds.to_json()})
+
+def load_google_creds(safe_key):
+    """이름을 ui_manager의 import문과 일치시킴"""
+    data = db.reference(f'google_calendar_creds/{safe_key}').get()
+    if data and 'creds' in data:
+        return Credentials.from_authorized_user_info(json.loads(data['creds']))
+    return None
