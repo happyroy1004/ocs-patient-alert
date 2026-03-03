@@ -169,7 +169,7 @@ def process_sheet_v8(df, professors_list, sheet_key):
     final_df = final_df[[col for col in required_cols if col in final_df.columns]]
     return final_df
 
-def process_excel_file_and_style(file_bytes_io, db_ref_func):
+def process_excel_file_and_style(uploaded_file, db_ref_func, excel_password=None):
     """엑셀 파일을 읽고, 정렬/스타일링을 적용한 후, 분석용 DataFrame 딕셔너리를 반환합니다."""
     file_bytes_io.seek(0)
     output_buffer_for_styling = io.BytesIO()
