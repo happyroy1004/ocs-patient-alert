@@ -150,3 +150,27 @@ def show_user_mode_ui(firebase_key, user_name):
                 if col2.button("삭제", key=f"del_{pid}"):
                     patients_ref.child(pid).delete()
                     st.rerun()
+
+
+def show_doctor_mode_ui(firebase_key, doctor_name):
+    """
+    치과의사 전용 모드 UI
+    firebase_utils의 통합된 load_google_creds_from_firebase를 사용하여 연동 상태를 확인합니다.
+    """
+    st.subheader(f"👨‍⚕️ {doctor_name} 의사님 환영합니다.")
+    
+    # 구글 캘린더 연동 상태 확인 및 서비스 객체 생성 시도
+    service = get_google_calendar_service(firebase_key)
+    
+    if service:
+        st.success("✅ 구글 캘린더가 연동되어 있습니다.")
+    else:
+        st.warning("⚠️ 캘린더 연동이 필요합니다. 아래 버튼을 눌러 인증해주세요.")
+
+    # 의사 전용 대시보드 기능 (예: 본인에게 배정된 환자 목록 확인 등)
+    st.info("현재 배정된 환자 알림은 시스템에 의해 자동으로 처리됩니다.")
+    
+    if st.button("로그아웃"):
+        st.session_state.login_mode = 'not_logged_in'
+        st.session_state.current_firebase_key = ""
+        st.rerun()
