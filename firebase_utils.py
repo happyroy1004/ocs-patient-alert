@@ -17,7 +17,7 @@ from config import SCOPES
 try:
     # Secrets에서 Firebase 설정 로드
     FIREBASE_CREDENTIALS = dict(st.secrets["firebase"])
-    # TOML 구조에 맞춰 database_url 키 매칭
+    # TOML 구조에 맞춰 database_url 키 매칭 (ValueError 방지)
     DB_URL = st.secrets.get("database_url") or FIREBASE_CREDENTIALS.get("database_url")
 
     # Google Calendar 설정 로드
@@ -46,7 +46,8 @@ if not firebase_admin._apps:
 @st.cache_resource
 def get_db_refs():
     """
-    ui_manager.py 32번 라인 대응: 3개(users_ref, doctor_users_ref, db_ref_func)를 반환합니다.
+    ui_manager.py 32번 라인 대응: 
+    반드시 3개(users_ref, doctor_users_ref, db_ref_func)를 반환합니다.
     """
     users_ref = db.reference('users')
     doctor_users_ref = db.reference('doctor_users')
@@ -73,7 +74,7 @@ def recover_email(safe_key):
     return safe_key.replace('_', '.') if safe_key else ""
 
 def save_google_creds_to_firebase(safe_key, creds):
-    """통합된 경로(google_calendar_creds)에 인증 정보를 저장합니다."""
+    """통합된 단일 경로(google_calendar_creds)에 인증 정보를 저장합니다."""
     try:
         db.reference(f'google_calendar_creds/{safe_key}').set({
             'creds': creds.to_json()
@@ -85,7 +86,7 @@ def save_google_creds_to_firebase(safe_key, creds):
 
 def load_google_creds_from_firebase(safe_key):
     """
-    ui_manager.py 및 notification_utils.py의 import 이름과 일치시켰습니다.
+    ui_manager.py의 import 이름과 일치.
     통합된 단일 경로에서 인증 정보를 로드합니다.
     """
     if not safe_key:
