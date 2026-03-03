@@ -321,7 +321,7 @@ def show_user_mode_ui(firebase_key, user_name):
     with tab_reg:
         with st.form("reg_form", clear_on_submit=True):
             p_name = st.text_input("환자 이름")
-            p_id = st.text_input("진료 번호 (8자리)")
+            p_id = st.text_input("환자 번호")
             depts = st.multiselect("담당 진료과", DEPARTMENTS_FOR_REGISTRATION)
             
             if st.form_submit_button("환자 등록"):
