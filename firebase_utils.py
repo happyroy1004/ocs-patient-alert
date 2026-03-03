@@ -44,23 +44,14 @@ if not firebase_admin._apps:
         st.error(f"❌ Firebase 앱 초기화 실패: {e}")
 
 @st.cache_resource
+
 def get_db_refs():
-    """
-    ui_manager.py의 다음 호출에 대응:
-    users_ref, doctor_users_ref, db_ref_func = get_db_refs()
-    """
-    try:
-        base_ref = db.reference()
-        users_ref = base_ref.child('users')
-        doctor_users_ref = base_ref.child('doctor_users')
-        
-        def db_ref_func(path):
-            return base_ref.child(path)
-            
-        return users_ref, doctor_users_ref, db_ref_func
-    except Exception as e:
-        st.error(f"DB 레퍼런스 획득 실패: {e}")
-        return None, None, lambda x: None
+    # ui_manager.py의 (users_ref, doctor_users_ref, db_ref_func) 대응
+    users_ref = db.reference('users')
+    doctor_users_ref = db.reference('doctor_users')
+    def db_ref_func(path):
+        return db.reference(path)
+    return users_ref, doctor_users_ref, db_ref_func
 
 # --- 3. 유틸리티 및 데이터 관리 함수 (단일 노드 최적화) ---
 
