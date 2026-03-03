@@ -112,13 +112,14 @@ def show_login_and_registration():
         with tab_student:
             s_name = st.text_input("학생 이름", key="s_name_input")
             s_pw = st.text_input("비밀번호", type="password", key="s_pw_input")
-            if st.button("학생 로그인", use_container_width=True):
+            # 경고 메시지 해결: use_container_width=True 대신 width='stretch' 사용
+            if st.button("학생 로그인", width="stretch"):
                 _handle_login(s_name, s_pw, role="student")
                 
         with tab_doctor:
             d_name = st.text_input("치과의사 이름", key="d_name_input")
             d_pw = st.text_input("비밀번호", type="password", key="d_pw_input")
-            if st.button("치과의사 로그인", use_container_width=True):
+            if st.button("치과의사 로그인", width="stretch"):
                 _handle_login(d_name, d_pw, role="doctor")
     
     elif st.session_state.login_mode == 'new_user_registration':
@@ -137,7 +138,7 @@ def show_login_and_registration():
         
         col1, col2 = st.columns(2)
         with col1:
-            if st.button("등록 완료", use_container_width=True):
+            if st.button("등록 완료", width="stretch"):
                 if not is_valid_email(email):
                     st.error("올바른 이메일 형식을 입력해주세요.")
                 elif not pw:
@@ -162,11 +163,11 @@ def show_login_and_registration():
                     st.success("성공적으로 등록되었습니다!")
                     st.rerun()
         with col2:
-            if st.button("취소 (돌아가기)", use_container_width=True):
+            if st.button("취소 (돌아가기)", width="stretch"):
                 st.session_state.login_mode = 'not_logged_in'
                 st.rerun()
 
-# --- 4. 관리자 모드 UI (사용자 관리 기능 포함) ---
+# --- 4. 관리자 모드 UI ---
 def show_admin_mode_ui():
     st.title("🛡️ 관리자 대시보드")
     if st.button("← 로그아웃"):
@@ -178,31 +179,42 @@ def show_admin_mode_ui():
     # [탭 1: 자동 알림 전송]
     with tab_auto:
         st.subheader("OCS 엑셀 데이터 매칭 및 전송")
+        
+        # 🚨 추가 완료 🚨: 엑셀 파일 비밀번호를 입력받습니다.
+        excel_pw = st.text_input("🔒 엑셀 파일 암호 (필수)", type="password", placeholder="파일 암호를 입력하세요")
+        
         uploaded_file = st.file_uploader("OCS 엑셀 파일을 업로드하세요", type=["xlsx", "xlsm"])
         if uploaded_file:
-            is_daily = excel_utils.is_daily_schedule(uploaded_file.name)
-            try:
-                # 🚨수정 완료🚨: db_ref_func 파라미터를 정확히 전달합니다.
-                xl_data, styled_file = excel_utils.process_excel_file_and_style(uploaded_file, db_ref_func)
-                st.success(f"파일 분석 완료: {uploaded_file.name}")
-                
-                if st.button("🚀 전체 자동 알림 전송 시작", type="primary"):
-                    with st.spinner("데이터 매칭 및 전송 중..."):
-                        all_patients = db_ref_func("patients").get()
-                        all_users = users_ref.get()
-                        all_doctors = doctor_users_ref.get()
-                        
-                        matched_users, matched_docs = get_matching_data(
-                            xl_data, all_users, all_patients, all_doctors
-                        )
-                        run_auto_notifications(
-                            matched_users, matched_docs, xl_data, 
-                            uploaded_file.name, is_daily, db_ref_func
-                        )
-                    st.balloons()
-                    st.success("모든 알림 전송 프로세스가 완료되었습니다.")
-            except Exception as e:
-                st.error(f"엑셀 처리 중 오류 발생: {e}")
+            if not excel_pw:
+                st.warning("⚠️ 엑셀 파일의 암호를 먼저 입력해주세요.")
+            else:
+                is_daily = excel_utils.is_daily_schedule(uploaded_file.name)
+                try:
+                    # 🚨 수정 완료 🚨: excel_pw를 파라미터로 넘깁니다.
+                    xl_data, styled_file = excel_utils.process_excel_file_and_style(
+                        uploaded_file, 
+                        db_ref_func, 
+                        excel_password=excel_pw
+                    )
+                    st.success(f"파일 분석 완료: {uploaded_file.name}")
+                    
+                    if st.button("🚀 전체 자동 알림 전송 시작", type="primary"):
+                        with st.spinner("데이터 매칭 및 전송 중..."):
+                            all_patients = db_ref_func("patients").get()
+                            all_users = users_ref.get()
+                            all_doctors = doctor_users_ref.get()
+                            
+                            matched_users, matched_docs = get_matching_data(
+                                xl_data, all_users, all_patients, all_doctors
+                            )
+                            run_auto_notifications(
+                                matched_users, matched_docs, xl_data, 
+                                uploaded_file.name, is_daily, db_ref_func
+                            )
+                        st.balloons()
+                        st.success("모든 알림 전송 프로세스가 완료되었습니다.")
+                except Exception as e:
+                    st.error(f"엑셀 처리 중 오류 발생: {e}")
 
     # [탭 2: 사용자 관리]
     with tab_manage:
@@ -215,7 +227,6 @@ def show_admin_mode_ui():
         user_map = {}
         table_data = []
 
-        # 데이터 취합
         for safe_key, info in all_students.items():
             name = info.get('name', '이름없음')
             email = info.get('email', '이메일없음')
@@ -233,14 +244,12 @@ def show_admin_mode_ui():
             user_map[display_str] = {'safe_key': safe_key, 'role': 'doctor', 'email': email, 'name': name}
             table_data.append({"역할": "👨‍⚕️ 의사", "이름": name, "이메일": email, "진료과": dept})
 
-        # 표(DataFrame)로 한눈에 보여주기
         if table_data:
-            st.dataframe(pd.DataFrame(table_data), use_container_width=True)
+            st.dataframe(pd.DataFrame(table_data), width="stretch")
             
             st.markdown("---")
             st.markdown("#### ⚙️ 일괄 작업 수행 (삭제 / 메일 발송)")
             
-            # 모두 선택 기능
             select_all = st.checkbox("목록 모두 선택하기")
             if select_all:
                 selected_users = st.multiselect("작업할 사용자 선택", options=user_list, default=user_list)
@@ -249,7 +258,6 @@ def show_admin_mode_ui():
 
             col1, col2 = st.columns([1, 1])
             
-            # [삭제 기능]
             with col1:
                 st.markdown("**🗑️ 계정 삭제**")
                 if st.button("선택한 사용자 영구 삭제"):
@@ -260,13 +268,12 @@ def show_admin_mode_ui():
                             meta = user_map[u_disp]
                             if meta['role'] == 'student':
                                 users_ref.child(meta['safe_key']).delete()
-                                db_ref_func(f"patients/{meta['safe_key']}").delete() # 환자 정보도 연쇄 삭제
+                                db_ref_func(f"patients/{meta['safe_key']}").delete() 
                             else:
                                 doctor_users_ref.child(meta['safe_key']).delete()
                         st.success(f"{len(selected_users)}명의 사용자가 삭제되었습니다.")
                         st.rerun()
 
-            # [단체 메일 기능]
             with col2:
                 st.markdown("**📧 단체 메일 발송**")
                 mail_subject = st.text_input("메일 제목", placeholder="예: 시스템 공지사항")
@@ -282,7 +289,6 @@ def show_admin_mode_ui():
                             sender_pw = st.secrets["gmail"]["app_password"]
                             success_count = 0
                             
-                            # 제목을 본문 맨 위에 HTML로 삽입하여 notification_utils의 send_email 활용
                             final_body = f"<h3>{mail_subject}</h3><br>{mail_body}"
                             
                             with st.spinner("메일 발송 중..."):
