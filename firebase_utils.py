@@ -84,7 +84,7 @@ def save_google_creds_to_firebase(safe_key, creds):
         st.error(f"인증 정보 저장 실패: {e}")
         return False
 
-def load_google_creds_from_firebase(safe_key):
+def load_google_creds(safe_key):
     """통합된 단일 경로(google_calendar_creds)에서만 인증 정보를 로드합니다."""
     if not safe_key:
         return None
@@ -111,7 +111,7 @@ def get_google_calendar_service(safe_key):
         return None
 
     # 1. 통합 경로에서 인증 정보 로드
-    creds = load_google_creds_from_firebase(safe_key)
+    creds = load_google_creds(safe_key)
 
     # 2. 토큰 갱신 로직
     if creds:
