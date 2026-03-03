@@ -76,3 +76,32 @@ def recover_email(safe_key):
         data = db.reference(path).get()
         if data and 'email' in data: return data['email']
     return None
+
+
+# firebase_utils.py 에 추가 또는 수정
+
+def check_google_connection_status(safe_key):
+    """
+    현재 사용자의 구글 연동 상태를 상세히 체크합니다.
+    반환값: (bool: 연동여부, str: 상태메시지)
+    """
+    creds = load_google_creds_from_firebase(safe_key)
+    
+    if not creds:
+        return False, "미연동 (데이터 없음)"
+    
+    try:
+        if creds.valid:
+            return True, "연동 완료 (정상)"
+        elif creds.expired and creds.refresh_token:
+            # 토큰 갱신 시도
+            creds.refresh(Request())
+            save_google_creds_to_firebase(safe_key, creds)
+            return True, "연동 완료 (갱신됨)"
+        else:
+            return False, "연동 만료 (재인증 필요)"
+    except Exception as e:
+        return False, f"오류 발생 ({str(e)})"
+
+# 기존 get_google_calendar_service 내부에 이 로직을 통합하여 
+# 세션 상태에 상세 상태를 저장하도록 변경할 수 있습니다.
