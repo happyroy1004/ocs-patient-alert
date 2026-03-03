@@ -126,3 +126,22 @@ def get_google_calendar_service(safe_key=None):
             </a>''', unsafe_allow_html=True)
     except: pass
     return None
+    
+def save_google_creds_to_firebase(safe_key, creds):
+    """표준 경로: google_calendar_creds/{safe_key} 에 저장"""
+    # 💡 유의: safe_key는 이미 sanitize_path()를 거친 상태여야 함
+    creds_ref = db.reference(f'google_calendar_creds/{safe_key}')
+    # 가급적 pickle 보다는 호환성이 좋은 to_json() 권장
+    creds_ref.set({'creds': creds.to_json()})
+
+def load_google_creds_from_firebase(safe_key):
+    """표준 경로에서만 데이터를 긁어옵니다."""
+    data = db.reference(f'google_calendar_creds/{safe_key}').get()
+    
+    if data and 'creds' in data:
+        creds_info = data['creds']
+        # JSON 문자열인 경우 파싱
+        if isinstance(creds_info, str):
+            creds_info = json.loads(creds_info)
+        return Credentials.from_authorized_user_info(creds_info, SCOPES)
+    return None
