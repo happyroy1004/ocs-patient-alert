@@ -39,15 +39,15 @@ def init_session_state():
     if 'current_firebase_key' not in st.session_state: st.session_state.current_firebase_key = ""
     if 'current_user_name' not in st.session_state: st.session_state.current_user_name = ""
     if 'admin_password_correct' not in st.session_state: st.session_state.admin_password_correct = False
+    if 'registration_role' not in st.session_state: st.session_state.registration_role = 'student'
 
 def show_title_and_manual():
     st.markdown("<h1>환자 내원 확인 시스템</h1>", unsafe_allow_html=True)
     st.markdown("<p style='color: grey;'>directed by HSY</p>", unsafe_allow_html=True)
 
-# --- 2. 로그인 및 등록 로직 (안정성 강화) ---
+# --- 2. 로그인 및 등록 로직 ---
 def _handle_login(user_name, password_input, role="student"):
-    """role에 따라 학생/의사 DB를 명확히 분리하여 검색합니다."""
-    clean_name = user_name.strip() # 공백으로 인한 로그인 실패 방지
+    clean_name = user_name.strip()
     if not clean_name: 
         st.error("이름을 입력해주세요.")
         return
@@ -60,16 +60,13 @@ def _handle_login(user_name, password_input, role="student"):
         st.error(f"데이터베이스 연결 오류: {e}")
         return
 
-    # 데이터베이스에 대상이 있는 경우 탐색
     if db_data and isinstance(db_data, dict):
         for safe_key, info in db_data.items():
             if info.get("name") == clean_name:
-                # 비밀번호 확인 로직
                 is_valid = False
                 if role == "student":
                     is_valid = check_password(password_input, info.get("password"))
-                else: # doctor
-                    # 의사는 기본 암호(DEFAULT_PASSWORD)를 허용하거나, 해시된 비밀번호가 있다면 확인
+                else: 
                     if password_input == DEFAULT_PASSWORD or check_password(password_input, info.get("password")):
                         is_valid = True
                 
@@ -82,21 +79,17 @@ def _handle_login(user_name, password_input, role="student"):
                     st.rerun()
                 else: 
                     st.error("비밀번호가 일치하지 않습니다.")
-                return # 이름이 일치하면 성공/실패 여부와 관계없이 함수 종료
+                return 
 
-    # 검색이 끝났는데도 return되지 않았다면 정보가 없는 것
-    if role == "student":
-        st.warning(f"'{clean_name}' 학생 정보가 없습니다. 신규 등록을 진행합니다.")
-        st.session_state.current_user_name = clean_name
-        st.session_state.login_mode = 'new_user_registration'
-        st.rerun()
-    else:
-        st.error(f"등록된 치과의사 '{clean_name}' 정보를 찾을 수 없습니다. 관리자에게 문의하세요.")
+    st.warning(f"'{clean_name}' 님의 등록된 정보가 없습니다. 신규 가입 화면으로 이동합니다.")
+    st.session_state.current_user_name = clean_name
+    st.session_state.registration_role = role
+    st.session_state.login_mode = 'new_user_registration'
+    st.rerun()
 
-# --- 3. 로그인 및 등록 UI (탭 분리) ---
+# --- 3. 로그인 및 등록 UI ---
 def show_login_and_registration():
     if st.session_state.login_mode == 'not_logged_in':
-        # [관리자 로그인] 사이드바를 통해 문열기
         with st.sidebar:
             st.subheader("💻 시스템 관리")
             admin_pw = st.text_input("관리자 암호", type="password")
@@ -113,30 +106,34 @@ def show_login_and_registration():
                 else:
                     st.error("암호가 올바르지 않습니다.")
 
-        # [일반 사용자 로그인 UI - 탭 분리]
         st.subheader("시스템 로그인")
         tab_student, tab_doctor = st.tabs(["🎓 학생", "👨‍⚕️ 치과의사"])
         
         with tab_student:
-            st.markdown("##### 학생 로그인")
-            s_name = st.text_input("성함", key="s_name_input")
+            s_name = st.text_input("학생 이름", key="s_name_input")
             s_pw = st.text_input("비밀번호", type="password", key="s_pw_input")
             if st.button("학생 로그인", use_container_width=True):
                 _handle_login(s_name, s_pw, role="student")
                 
         with tab_doctor:
-            st.markdown("##### 치과의사 로그인")
-            d_name = st.text_input("성함", key="d_name_input")
+            d_name = st.text_input("치과의사 이름", key="d_name_input")
             d_pw = st.text_input("비밀번호", type="password", key="d_pw_input")
             if st.button("치과의사 로그인", use_container_width=True):
                 _handle_login(d_name, d_pw, role="doctor")
     
     elif st.session_state.login_mode == 'new_user_registration':
-        st.subheader("🎓 신규 학생 등록")
-        st.info(f"환영합니다, **{st.session_state.current_user_name}**님! 처음 접속하셨군요. 계정을 생성해주세요.")
+        role = st.session_state.get('registration_role', 'student')
+        role_kr = "치과의사" if role == 'doctor' else "학생"
+        
+        st.subheader(f"✨ 신규 {role_kr} 계정 등록")
+        st.info(f"환영합니다, **{st.session_state.current_user_name}**님! 사용할 계정 정보를 입력해주세요.")
         
         email = st.text_input("이메일 주소 (ID 및 알림 수신용)")
         pw = st.text_input("사용할 비밀번호", type="password")
+        
+        dept = None
+        if role == 'doctor':
+            dept = st.selectbox("소속 진료과", DEPARTMENTS_FOR_REGISTRATION)
         
         col1, col2 = st.columns(2)
         with col1:
@@ -147,52 +144,158 @@ def show_login_and_registration():
                     st.error("비밀번호를 입력해주세요.")
                 else:
                     safe_key = sanitize_path(email)
-                    users_ref.child(safe_key).set({
+                    user_data = {
                         "name": st.session_state.current_user_name, 
                         "email": email, 
                         "password": hash_password(pw)
+                    }
+                    if role == 'doctor':
+                        user_data["department"] = dept
+                        doctor_users_ref.child(safe_key).set(user_data)
+                    else:
+                        users_ref.child(safe_key).set(user_data)
+                        
+                    st.session_state.update({
+                        'current_firebase_key': safe_key, 
+                        'login_mode': 'doctor_mode' if role == 'doctor' else 'user_mode'
                     })
-                    st.session_state.update({'current_firebase_key': safe_key, 'login_mode': 'user_mode'})
-                    st.success("등록되었습니다!")
+                    st.success("성공적으로 등록되었습니다!")
                     st.rerun()
         with col2:
             if st.button("취소 (돌아가기)", use_container_width=True):
                 st.session_state.login_mode = 'not_logged_in'
                 st.rerun()
 
-# --- 4. 관리자 모드 UI ---
+# --- 4. 관리자 모드 UI (사용자 관리 기능 추가) ---
 def show_admin_mode_ui():
     st.title("🛡️ 관리자 대시보드")
-    
     if st.button("← 로그아웃"):
         st.session_state.login_mode = 'not_logged_in'
         st.rerun()
 
-    uploaded_file = st.file_uploader("OCS 엑셀 파일을 업로드하세요", type=["xlsx", "xlsm"])
-    
-    if uploaded_file:
-        is_daily = excel_utils.is_daily_schedule(uploaded_file.name)
-        try:
-            xl_data, styled_file = excel_utils.process_excel_file_and_style(uploaded_file)
-            st.success(f"파일 분석 완료: {uploaded_file.name}")
+    tab_auto, tab_manage = st.tabs(["🚀 자동 알림 전송", "👥 사용자 관리"])
+
+    # [탭 1: 자동 알림 전송]
+    with tab_auto:
+        st.subheader("OCS 엑셀 데이터 매칭 및 전송")
+        uploaded_file = st.file_uploader("OCS 엑셀 파일을 업로드하세요", type=["xlsx", "xlsm"])
+        if uploaded_file:
+            is_daily = excel_utils.is_daily_schedule(uploaded_file.name)
+            try:
+                xl_data, styled_file = excel_utils.process_excel_file_and_style(uploaded_file)
+                st.success(f"파일 분석 완료: {uploaded_file.name}")
+                
+                if st.button("🚀 전체 자동 알림 전송 시작", type="primary"):
+                    with st.spinner("데이터 매칭 및 전송 중..."):
+                        all_patients = db_ref_func("patients").get()
+                        all_users = users_ref.get()
+                        all_doctors = doctor_users_ref.get()
+                        
+                        matched_users, matched_docs = get_matching_data(
+                            xl_data, all_users, all_patients, all_doctors
+                        )
+                        run_auto_notifications(
+                            matched_users, matched_docs, xl_data, 
+                            uploaded_file.name, is_daily, db_ref_func
+                        )
+                    st.balloons()
+                    st.success("모든 알림 전송 프로세스가 완료되었습니다.")
+            except Exception as e:
+                st.error(f"엑셀 처리 중 오류 발생: {e}")
+
+    # [탭 2: 사용자 관리]
+    with tab_manage:
+        st.subheader("등록된 사용자 전체 목록")
+        
+        all_students = users_ref.get() or {}
+        all_doctors = doctor_users_ref.get() or {}
+        
+        user_list = []
+        user_map = {}
+        table_data = []
+
+        # 데이터 취합
+        for safe_key, info in all_students.items():
+            name = info.get('name', '이름없음')
+            email = info.get('email', '이메일없음')
+            display_str = f"🎓 [학생] {name} ({email})"
+            user_list.append(display_str)
+            user_map[display_str] = {'safe_key': safe_key, 'role': 'student', 'email': email, 'name': name}
+            table_data.append({"역할": "🎓 학생", "이름": name, "이메일": email, "진료과": "-"})
+
+        for safe_key, info in all_doctors.items():
+            name = info.get('name', '이름없음')
+            email = info.get('email', '이메일없음')
+            dept = info.get('department', '미지정')
+            display_str = f"👨‍⚕️ [의사] {name} ({email})"
+            user_list.append(display_str)
+            user_map[display_str] = {'safe_key': safe_key, 'role': 'doctor', 'email': email, 'name': name}
+            table_data.append({"역할": "👨‍⚕️ 의사", "이름": name, "이메일": email, "진료과": dept})
+
+        # 표(DataFrame)로 한눈에 보여주기
+        if table_data:
+            st.dataframe(pd.DataFrame(table_data), use_container_width=True)
             
-            if st.button("🚀 전체 자동 알림 전송 시작"):
-                with st.spinner("데이터 매칭 및 전송 중..."):
-                    all_patients = db_ref_func("patients").get()
-                    all_users = users_ref.get()
-                    all_doctors = doctor_users_ref.get()
-                    
-                    matched_users, matched_docs = get_matching_data(
-                        xl_data, all_users, all_patients, all_doctors
-                    )
-                    run_auto_notifications(
-                        matched_users, matched_docs, xl_data, 
-                        uploaded_file.name, is_daily, db_ref_func
-                    )
-                st.balloons()
-                st.success("모든 알림 전송 프로세스가 완료되었습니다.")
-        except Exception as e:
-            st.error(f"엑셀 처리 중 오류 발생: {e}")
+            st.markdown("---")
+            st.markdown("#### ⚙️ 일괄 작업 수행 (삭제 / 메일 발송)")
+            
+            # 모두 선택 기능
+            select_all = st.checkbox("목록 모두 선택하기")
+            if select_all:
+                selected_users = st.multiselect("작업할 사용자 선택", options=user_list, default=user_list)
+            else:
+                selected_users = st.multiselect("작업할 사용자 선택", options=user_list)
+
+            col1, col2 = st.columns([1, 1])
+            
+            # [삭제 기능]
+            with col1:
+                st.markdown("**🗑️ 계정 삭제**")
+                if st.button("선택한 사용자 영구 삭제"):
+                    if not selected_users:
+                        st.warning("삭제할 사용자를 선택해주세요.")
+                    else:
+                        for u_disp in selected_users:
+                            meta = user_map[u_disp]
+                            if meta['role'] == 'student':
+                                users_ref.child(meta['safe_key']).delete()
+                                db_ref_func(f"patients/{meta['safe_key']}").delete() # 환자 정보도 연쇄 삭제
+                            else:
+                                doctor_users_ref.child(meta['safe_key']).delete()
+                        st.success(f"{len(selected_users)}명의 사용자가 삭제되었습니다.")
+                        st.rerun()
+
+            # [단체 메일 기능]
+            with col2:
+                st.markdown("**📧 단체 메일 발송**")
+                mail_subject = st.text_input("메일 제목", placeholder="예: 시스템 공지사항")
+                mail_body = st.text_area("메일 내용 (HTML 태그 사용 가능)")
+                if st.button("선택한 사용자에게 메일 발송"):
+                    if not selected_users:
+                        st.warning("메일을 보낼 사용자를 선택해주세요.")
+                    elif not mail_body:
+                        st.warning("메일 내용을 입력해주세요.")
+                    else:
+                        try:
+                            sender = st.secrets["gmail"]["sender"]
+                            sender_pw = st.secrets["gmail"]["app_password"]
+                            success_count = 0
+                            
+                            # 제목을 본문 맨 위에 HTML로 삽입하여 notification_utils의 send_email 활용
+                            final_body = f"<h3>{mail_subject}</h3><br>{mail_body}"
+                            
+                            with st.spinner("메일 발송 중..."):
+                                for u_disp in selected_users:
+                                    target_email = user_map[u_disp]['email']
+                                    if target_email and is_valid_email(target_email):
+                                        res = send_email(target_email, None, sender, sender_pw, custom_message=final_body)
+                                        if res is True: success_count += 1
+                                        
+                            st.success(f"총 {success_count}명에게 메일이 발송되었습니다!")
+                        except Exception as e:
+                            st.error(f"메일 발송 오류: Secrets 설정(gmail)을 확인하세요. ({e})")
+        else:
+            st.info("현재 등록된 사용자가 없습니다.")
 
 # --- 5. 일반 사용자(학생) 모드 UI ---
 def show_user_mode_ui(firebase_key, user_name):
@@ -200,9 +303,12 @@ def show_user_mode_ui(firebase_key, user_name):
     
     st.subheader(f"🎓 {user_name} 학생님")
     
-    # 구글 캘린더 연동 상태 체크
-    get_google_calendar_service(firebase_key)
-    
+    service = get_google_calendar_service(firebase_key)
+    if not service:
+        raw_creds = db_ref_func(f"google_calendar_creds/{firebase_key}").get()
+        if raw_creds:
+            st.warning("💡 **안내:** 과거 연동 기록이 있으나, 자동 갱신 권한(refresh_token)이 누락되어 연결이 끊어졌습니다. **버튼을 눌러 1회 재연동 하시면 이후부터는 영구적으로 자동 갱신됩니다.**")
+
     tab_reg, tab_list = st.tabs(["🆕 환자 등록", "📋 목록 관리"])
     
     with tab_reg:
@@ -243,8 +349,11 @@ def show_user_mode_ui(firebase_key, user_name):
 def show_doctor_mode_ui(firebase_key, doctor_name):
     st.subheader(f"👨‍⚕️ {doctor_name} 의사님")
     
-    # 구글 캘린더 연동 확인
-    get_google_calendar_service(firebase_key)
+    service = get_google_calendar_service(firebase_key)
+    if not service:
+        raw_creds = db_ref_func(f"google_calendar_creds/{firebase_key}").get()
+        if raw_creds:
+            st.warning("💡 **안내:** 과거 연동 기록이 있으나, 자동 갱신 권한(refresh_token)이 누락되어 연결이 끊어졌습니다. **버튼을 눌러 1회 재연동 하시면 이후부터는 영구적으로 자동 갱신됩니다.**")
     
     st.info("의사님께 배정된 환자 내원 정보는 시스템에 의해 자동으로 구글 캘린더에 동기화됩니다.")
     
