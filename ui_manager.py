@@ -166,7 +166,7 @@ def show_login_and_registration():
                 st.session_state.login_mode = 'not_logged_in'
                 st.rerun()
 
-# --- 4. 관리자 모드 UI (사용자 관리 기능 추가) ---
+# --- 4. 관리자 모드 UI (사용자 관리 기능 포함) ---
 def show_admin_mode_ui():
     st.title("🛡️ 관리자 대시보드")
     if st.button("← 로그아웃"):
@@ -182,6 +182,7 @@ def show_admin_mode_ui():
         if uploaded_file:
             is_daily = excel_utils.is_daily_schedule(uploaded_file.name)
             try:
+                # 🚨수정 완료🚨: db_ref_func 파라미터를 정확히 전달합니다.
                 xl_data, styled_file = excel_utils.process_excel_file_and_style(uploaded_file, db_ref_func)
                 st.success(f"파일 분석 완료: {uploaded_file.name}")
                 
