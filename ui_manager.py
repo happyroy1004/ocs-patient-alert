@@ -15,13 +15,11 @@ from config import (
     DEFAULT_PASSWORD, DEPARTMENTS_FOR_REGISTRATION, PATIENT_DEPT_FLAGS, 
     SHEET_KEYWORD_TO_DEPARTMENT_MAP, PATIENT_DEPT_TO_SHEET_MAP
 )
+
 from firebase_utils import (
-    get_db_refs, 
-    sanitize_path, 
-    recover_email, 
-    get_google_calendar_service, 
-    save_google_creds_to_firebase, 
-    load_google_creds_from_firebase
+    get_db_refs, sanitize_path, recover_email, 
+    get_google_calendar_service, save_google_creds_to_firebase, 
+    load_google_creds_from_firebase # 이름 확인!
 )
 
 # [핵심 수정] 반환값 3개를 정확히 언패킹해야 에러가 나지 않습니다.
@@ -33,7 +31,6 @@ from notification_utils import (
     get_matching_data, run_auto_notifications
 )
 
-# [중요] firebase_utils의 수정된 반환값(3개)을 정확히 수신합니다.
 users_ref, doctor_users_ref, db_ref_func = get_db_refs()
 
 # --- 비밀번호 보안 관련 ---
