@@ -44,49 +44,56 @@ def show_title_and_manual():
     st.markdown("<h1>환자 내원 확인 시스템</h1>", unsafe_allow_html=True)
     st.markdown("<p style='color: grey;'>directed by HSY</p>", unsafe_allow_html=True)
 
-# --- 2. 로그인 및 등록 UI ---
-def _handle_user_login(user_name, password_input):
-    if not user_name: 
-        st.error("사용자 이름을 입력해주세요.")
+# --- 2. 로그인 및 등록 로직 (안정성 강화) ---
+def _handle_login(user_name, password_input, role="student"):
+    """role에 따라 학생/의사 DB를 명확히 분리하여 검색합니다."""
+    clean_name = user_name.strip() # 공백으로 인한 로그인 실패 방지
+    if not clean_name: 
+        st.error("이름을 입력해주세요.")
         return
     
-    # 1. 학생 DB 확인
-    all_users_meta = users_ref.get()
-    if all_users_meta:
-        for safe_key, info in all_users_meta.items():
-            if info.get("name") == user_name:
-                if check_password(password_input, info.get("password")):
+    target_ref = users_ref if role == "student" else doctor_users_ref
+    
+    try:
+        db_data = target_ref.get()
+    except Exception as e:
+        st.error(f"데이터베이스 연결 오류: {e}")
+        return
+
+    # 데이터베이스에 대상이 있는 경우 탐색
+    if db_data and isinstance(db_data, dict):
+        for safe_key, info in db_data.items():
+            if info.get("name") == clean_name:
+                # 비밀번호 확인 로직
+                is_valid = False
+                if role == "student":
+                    is_valid = check_password(password_input, info.get("password"))
+                else: # doctor
+                    # 의사는 기본 암호(DEFAULT_PASSWORD)를 허용하거나, 해시된 비밀번호가 있다면 확인
+                    if password_input == DEFAULT_PASSWORD or check_password(password_input, info.get("password")):
+                        is_valid = True
+                
+                if is_valid:
                     st.session_state.update({
                         'current_firebase_key': safe_key, 
-                        'current_user_name': user_name, 
-                        'login_mode': 'user_mode'
+                        'current_user_name': clean_name, 
+                        'login_mode': 'user_mode' if role == "student" else 'doctor_mode'
                     })
                     st.rerun()
                 else: 
-                    st.error("비밀번호 불일치")
-                return
+                    st.error("비밀번호가 일치하지 않습니다.")
+                return # 이름이 일치하면 성공/실패 여부와 관계없이 함수 종료
 
-    # 2. 의사 DB 확인
-    all_doctors = doctor_users_ref.get()
-    if all_doctors:
-        for safe_key, info in all_doctors.items():
-            if info.get("name") == user_name:
-                if password_input == DEFAULT_PASSWORD: 
-                    st.session_state.update({
-                        'current_firebase_key': safe_key,
-                        'current_user_name': user_name,
-                        'login_mode': 'doctor_mode'
-                    })
-                    st.rerun()
-                else:
-                    st.error("비밀번호 불일치")
-                return
+    # 검색이 끝났는데도 return되지 않았다면 정보가 없는 것
+    if role == "student":
+        st.warning(f"'{clean_name}' 학생 정보가 없습니다. 신규 등록을 진행합니다.")
+        st.session_state.current_user_name = clean_name
+        st.session_state.login_mode = 'new_user_registration'
+        st.rerun()
+    else:
+        st.error(f"등록된 치과의사 '{clean_name}' 정보를 찾을 수 없습니다. 관리자에게 문의하세요.")
 
-    # 3. 신규 학생 등록으로 전환 (DB에 없는 이름일 경우)
-    st.session_state.current_user_name = user_name
-    st.session_state.login_mode = 'new_user_registration'
-    st.rerun()
-
+# --- 3. 로그인 및 등록 UI (탭 분리) ---
 def show_login_and_registration():
     if st.session_state.login_mode == 'not_logged_in':
         # [관리자 로그인] 사이드바를 통해 문열기
@@ -94,7 +101,6 @@ def show_login_and_registration():
             st.subheader("💻 시스템 관리")
             admin_pw = st.text_input("관리자 암호", type="password")
             if st.button("관리자 모드 진입"):
-                # secrets에 설정된 admin 비밀번호 확인 (없으면 기본값 1243)
                 try:
                     admin_secret_pw = st.secrets["admin"]["password"]
                 except:
@@ -107,22 +113,34 @@ def show_login_and_registration():
                 else:
                     st.error("암호가 올바르지 않습니다.")
 
-        # 일반 로그인 UI
-        st.subheader("사용자 로그인")
-        user_name = st.text_input("성함 (학생/의사)")
-        password = st.text_input("비밀번호", type="password")
-        if st.button("로그인"):
-            _handle_user_login(user_name, password)
+        # [일반 사용자 로그인 UI - 탭 분리]
+        st.subheader("시스템 로그인")
+        tab_student, tab_doctor = st.tabs(["🎓 학생", "👨‍⚕️ 치과의사"])
+        
+        with tab_student:
+            st.markdown("##### 학생 로그인")
+            s_name = st.text_input("성함", key="s_name_input")
+            s_pw = st.text_input("비밀번호", type="password", key="s_pw_input")
+            if st.button("학생 로그인", use_container_width=True):
+                _handle_login(s_name, s_pw, role="student")
+                
+        with tab_doctor:
+            st.markdown("##### 치과의사 로그인")
+            d_name = st.text_input("성함", key="d_name_input")
+            d_pw = st.text_input("비밀번호", type="password", key="d_pw_input")
+            if st.button("치과의사 로그인", use_container_width=True):
+                _handle_login(d_name, d_pw, role="doctor")
     
     elif st.session_state.login_mode == 'new_user_registration':
         st.subheader("🎓 신규 학생 등록")
-        st.write(f"이름: {st.session_state.current_user_name}")
-        email = st.text_input("이메일 주소 (ID로 사용)")
+        st.info(f"환영합니다, **{st.session_state.current_user_name}**님! 처음 접속하셨군요. 계정을 생성해주세요.")
+        
+        email = st.text_input("이메일 주소 (ID 및 알림 수신용)")
         pw = st.text_input("사용할 비밀번호", type="password")
         
         col1, col2 = st.columns(2)
         with col1:
-            if st.button("등록 완료"):
+            if st.button("등록 완료", use_container_width=True):
                 if not is_valid_email(email):
                     st.error("올바른 이메일 형식을 입력해주세요.")
                 elif not pw:
@@ -138,11 +156,11 @@ def show_login_and_registration():
                     st.success("등록되었습니다!")
                     st.rerun()
         with col2:
-            if st.button("취소 (돌아가기)"):
+            if st.button("취소 (돌아가기)", use_container_width=True):
                 st.session_state.login_mode = 'not_logged_in'
                 st.rerun()
 
-# --- 3. 관리자 모드 UI ---
+# --- 4. 관리자 모드 UI ---
 def show_admin_mode_ui():
     st.title("🛡️ 관리자 대시보드")
     
@@ -176,7 +194,7 @@ def show_admin_mode_ui():
         except Exception as e:
             st.error(f"엑셀 처리 중 오류 발생: {e}")
 
-# --- 4. 일반 사용자(학생) 모드 UI ---
+# --- 5. 일반 사용자(학생) 모드 UI ---
 def show_user_mode_ui(firebase_key, user_name):
     patients_ref = db_ref_func(f"patients/{firebase_key}")
     
@@ -221,7 +239,7 @@ def show_user_mode_ui(firebase_key, user_name):
         st.session_state.login_mode = 'not_logged_in'
         st.rerun()
 
-# --- 5. 치과의사 모드 UI ---
+# --- 6. 치과의사 모드 UI ---
 def show_doctor_mode_ui(firebase_key, doctor_name):
     st.subheader(f"👨‍⚕️ {doctor_name} 의사님")
     
