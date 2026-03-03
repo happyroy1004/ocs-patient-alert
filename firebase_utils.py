@@ -118,3 +118,23 @@ def get_google_calendar_service(safe_key=None):
     except:
         st.warning("구글 설정(secrets)을 확인해주세요.")
     return None
+    
+    
+def load_google_creds_from_firebase(safe_key):
+    """
+    ui_manager에서 요구하는 함수 이름을 맞추기 위한 래퍼 함수입니다.
+    기존 연동 서비스 함수를 활용해 크리덴셜을 로드합니다.
+    """
+    if not safe_key:
+        return None
+    
+    clean_key = sanitize_path(safe_key)
+    data = db.reference(f'google_calendar_creds/{clean_key}').get()
+    
+    if data and 'creds' in data:
+        try:
+            return Credentials.from_authorized_user_info(json.loads(data['creds']), SCOPES)
+        except:
+            return None
+    return None
+
