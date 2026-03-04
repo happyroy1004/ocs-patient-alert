@@ -186,7 +186,15 @@ def get_google_calendar_service(safe_key):
         return
 
     # OAuth 라이브러리가 기대하는 'installed' 구조로 감싸기
-    client_config = {"web": google_secrets_flat}
+    client_config = {
+    "web": {
+        "client_id": google_secrets_flat.get("client_id"),
+        "client_secret": google_secrets_flat.get("client_secret"),
+        "auth_uri": google_secrets_flat.get("auth_uri"),
+        "token_uri": google_secrets_flat.get("token_uri"),
+        "redirect_uris": [google_secrets_flat.get("redirect_uri")] # 리스트 형태여야 할 수도 있음
+    }
+}
 
     # 3. Credentials 유효성 검사 및 갱신 시도
     if creds and creds.valid:
