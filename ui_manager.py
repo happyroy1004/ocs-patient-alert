@@ -1,4 +1,4 @@
-# ui_manager.py (신규 등록 시 번호 입력 추가 수정버전)
+# ui_manager.py (신규 등록 시 번호 입력 추가 및 부분 렌더링 최적화 버전)
 
 import streamlit as st
 import pandas as pd
@@ -47,6 +47,165 @@ def check_password(password, hashed_password):
         return False
 
 
+# --- [최적화] FRAGMENT 구역 (부분 렌더링) ---
+# 이 구역의 함수들은 실행될 때 화면 전체를 깜빡이게 하지 않고 자신만 부드럽게 새로고침됩니다.
+
+@st.fragment
+def fragment_password_change(firebase_key, ref_object, role_prefix):
+    """비밀번호 변경 단독 처리 구역"""
+    st.divider(); st.header("🔑 비밀번호 변경")
+    new_pw = st.text_input("새 비밀번호", type="password", key=f"{role_prefix}_new_pw")
+    cf_pw = st.text_input("확인", type="password", key=f"{role_prefix}_cf_pw")
+    if st.button("변경", key=f"{role_prefix}_pw_chg_btn"):
+        if new_pw and new_pw == cf_pw: 
+            ref_object.child(firebase_key).update({"password": hash_password(new_pw)})
+            st.success("변경 완료")
+        else: 
+            st.error("불일치")
+
+@st.fragment
+def fragment_single_registration(existing_patient_data, patients_ref_for_user):
+    """환자 단일 등록 폼 처리 구역"""
+    with st.form("register_form"):
+        name = st.text_input("환자명"); pid = st.text_input("진료번호"); selected_departments = st.multiselect("진료과", DEPARTMENTS_FOR_REGISTRATION)
+        if st.form_submit_button("등록"):
+            if name and pid and selected_departments:
+                pid_key = pid.strip(); new_patient_data = existing_patient_data.get(pid_key, {"환자이름": name, "진료번호": pid}) 
+                for dept_flag in PATIENT_DEPT_FLAGS + ['치주', '원진실']: new_patient_data[dept_flag.lower()] = False
+                for dept in selected_departments: new_patient_data[dept.lower()] = True
+                patients_ref_for_user.child(pid_key).set(new_patient_data)
+                st.success("등록 완료"); st.rerun() # 목록 업데이트를 위해 전체 새로고침
+            else: st.warning("입력 확인")
+
+@st.fragment
+def fragment_manual_student_mail(selected_matched_users_data, sender, sender_pw, file_name):
+    """학생 대상 수동 메일 전송 로딩 처리 구역"""
+    if st.button("선택된 사용자에게 메일 보내기", key="manual_send_mail_student"):
+        for user_match_info in selected_matched_users_data:
+            real_email = user_match_info['email']; df_matched = user_match_info['data']; user_name = user_match_info['name']
+            user_number = user_match_info.get('number', '')
+            email_cols = ['환자명', '진료번호', '예약의사', '진료내역', '예약일시', '예약시간', '등록과']
+            df_for_mail = df_matched[[col for col in email_cols if col in df_matched.columns]]
+            rows_as_dict = df_for_mail.to_dict('records')
+            df_html = df_for_mail.to_html(index=False, escape=False)
+            
+            text_lines = []
+            u_num = str(user_number).strip(); u_name = str(user_name).strip()
+            for _, row in df_matched.iterrows():
+                try:
+                    raw_date = str(row.get('예약일시', '')).strip().replace('-', '/').replace('.', '/')
+                    raw_time = str(row.get('예약시간', '')).strip()
+                    date_digits = re.sub(r'[^0-9]', '', raw_date)
+                    mmdd = date_digits[-4:] if len(date_digits) >= 4 else "0000"
+                    time_digits = re.sub(r'[^0-9]', '', raw_time)
+                    hhmm = time_digits.zfill(4) if len(time_digits) <= 4 else time_digits[:4]
+                    line = f"{row.get('예약의사','')},{mmdd},{hhmm},{row.get('환자명','')},{row.get('진료번호','')},{u_num},{u_name}"
+                    text_lines.append(line)
+                except: continue
+            formatted_text_html = "<br>".join(text_lines)
+            email_body = f"""<p>안녕하세요, {user_name}님.</p><p>{file_name} 분석 결과, 내원 예정인 환자 진료 정보입니다.</p>{df_html}
+            <br><br><div style='font-family: sans-serif; font-size: 14px; line-height: 1.6; color: #333;'>{formatted_text_html}</div><p>확인 부탁드립니다.</p>"""
+            try: 
+                send_email(real_email, rows_as_dict, sender, sender_pw, custom_message=email_body, date_str=file_name)
+                st.success(f"**{user_name}**님에게 메일 전송 완료!")
+            except Exception as e: st.error(f"**{user_name}**님에게 메일 전송 실패: {e}")
+
+@st.fragment
+def fragment_manual_student_calendar(selected_matched_users_data, is_daily):
+    """학생 대상 수동 캘린더 전송 로딩 처리 구역"""
+    if st.button("선택된 사용자에게 Google Calendar 일정 추가", key="manual_send_calendar_student"):
+        for user_match_info in selected_matched_users_data:
+            user_safe_key = user_match_info['safe_key']; user_name = user_match_info['name']; df_matched = user_match_info['data']
+            user_number = user_match_info.get('number', '')
+            creds = load_google_creds_from_firebase(user_safe_key) 
+            
+            if creds and creds.valid and not creds.expired:
+                successful_adds = 0
+                try:
+                    service = build('calendar', 'v3', credentials=creds)
+                    for index, row in df_matched.iterrows():
+                        reservation_date_raw = row.get('예약일시', ''); reservation_time_raw = row.get('예약시간', '')
+                        if reservation_date_raw and reservation_time_raw:
+                            try:
+                                full_datetime_str = f"{str(reservation_date_raw).strip()} {str(reservation_time_raw).strip()}"
+                                reservation_datetime = datetime.datetime.strptime(full_datetime_str, '%Y/%m/%d %H:%M')
+                                success = create_calendar_event(
+                                    service, row.get('환자명', 'N/A'), row.get('진료번호', ''), row.get('등록과', ''), 
+                                    reservation_datetime, row.get('예약의사', 'N/A'), row.get('진료내역', ''), is_daily,
+                                    user_name=user_name, user_number=user_number
+                                )
+                                if success: successful_adds += 1
+                            except: pass
+                    if successful_adds > 0: st.success(f"**{user_name}**님 캘린더에 {successful_adds}건 추가 완료.")
+                    else: st.warning(f"**{user_name}**님 캘린더에 추가된 일정 없음.")
+                except Exception as e: st.error(f"❌ {user_name} 캘린더 오류: {e}")
+            else: st.warning(f"**{user_name}**님 캘린더 미연동.")
+
+@st.fragment
+def fragment_manual_doctor_mail(selected_doctors_to_act, sender, sender_pw, db_ref_func):
+    """의사 대상 수동 메일 전송 로딩 처리 구역"""
+    if st.button("선택된 치과의사에게 메일 보내기", key="manual_send_mail_doctor"):
+        for res in selected_doctors_to_act:
+            df_matched = res['data']; latest_file_name = db_ref_func("ocs_analysis/latest_file_name").get()
+            user_name = res['name']; user_number = res.get('number', '')
+            
+            email_cols = ['환자명', '진료번호', '예약의사', '진료내역', '예약일시', '예약시간']; 
+            df_for_mail = df_matched[[col for col in email_cols if col in df_matched.columns]]
+            df_html = df_for_mail.to_html(index=False, border=1); rows_as_dict = df_for_mail.to_dict('records')
+            
+            text_lines = []
+            u_num = str(user_number).strip(); u_name = str(user_name).strip()
+            for _, row in df_matched.iterrows():
+                try:
+                    raw_date = str(row.get('예약일시', '')).strip().replace('-', '/').replace('.', '/')
+                    raw_time = str(row.get('예약시간', '')).strip()
+                    date_digits = re.sub(r'[^0-9]', '', raw_date)
+                    mmdd = date_digits[-4:] if len(date_digits) >= 4 else "0000"
+                    time_digits = re.sub(r'[^0-9]', '', raw_time)
+                    hhmm = time_digits.zfill(4) if len(time_digits) <= 4 else time_digits[:4]
+                    line = f"{row.get('예약의사','')},{mmdd},{hhmm},{row.get('환자명','')},{row.get('진료번호','')},{u_num},{u_name}"
+                    text_lines.append(line)
+                except: continue
+            formatted_text_html = "<br>".join(text_lines)
+            email_body = f"""<p>안녕하세요, {res['name']} 치과의사님.</p><p>{latest_file_name}에서 가져온 내원할 환자 정보입니다.</p>{df_html}
+            <br><br><div style='font-family: sans-serif; font-size: 14px; line-height: 1.6; color: #333;'>{formatted_text_html}</div><p>확인 부탁드립니다.</p>"""
+            
+            try: 
+                send_email(res['email'], rows_as_dict, sender, sender_pw, custom_message=email_body, date_str=latest_file_name)
+                st.success(f"**Dr. {res['name']}**에게 메일 전송 완료!")
+            except Exception as e: st.error(f"**Dr. {res['name']}**에게 메일 전송 실패: {e}")
+
+@st.fragment
+def fragment_manual_doctor_calendar(selected_doctors_to_act, is_daily):
+    """의사 대상 수동 캘린더 전송 로딩 처리 구역"""
+    if st.button("선택된 치과의사에게 Google Calendar 일정 추가", key="manual_send_calendar_doctor"):
+        for res in selected_doctors_to_act:
+            user_safe_key = res['safe_key']; user_name = res['name']; df_matched = res['data']
+            user_number = res.get('number', '')
+            creds = load_google_creds_from_firebase(user_safe_key) 
+            if creds and creds.valid and not creds.expired:
+                successful_adds = 0
+                try:
+                    service = build('calendar', 'v3', credentials=creds)
+                    for index, row in df_matched.iterrows():
+                        reservation_date_raw = row.get('예약일시', ''); reservation_time_raw = row.get('예약시간', '')
+                        if reservation_date_raw and reservation_time_raw:
+                            try:
+                                full_datetime_str = f"{str(reservation_date_raw).strip()} {str(reservation_time_raw).strip()}"
+                                reservation_datetime = datetime.datetime.strptime(full_datetime_str, '%Y/%m/%d %H:%M')
+                                success = create_calendar_event(
+                                    service, row.get('환자명', 'N/A'), row.get('진료번호', ''), res.get('department', 'N/A'), 
+                                    reservation_datetime, row.get('예약의사', ''), row.get('진료내역', ''), is_daily,
+                                    user_name=user_name, user_number=user_number
+                                )
+                                if success: successful_adds += 1
+                            except: pass
+                    if successful_adds > 0: st.success(f"**Dr. {user_name}**님 캘린더에 {successful_adds}건 추가 완료.")
+                    else: st.warning(f"**Dr. {user_name}**님 캘린더에 추가된 일정 없음.")
+                except Exception as e: st.error(f"❌ 오류: {e}")
+            else: st.warning(f"⚠️ **Dr. {res['name']}**님은 캘린더 미연동.")
+
+
 # --- 1. 세션 상태 초기화 및 전역 UI ---
 
 def init_session_state():
@@ -89,6 +248,7 @@ def show_title_and_manual():
                 label="사용 설명서 다운로드", data=pdf_file, file_name=pdf_file_path, mime="application/pdf"
             )
     else: st.warning(f"⚠️ 사용 설명서 파일을 찾을 수 없습니다. (경로: {pdf_file_path})")
+
 
 # --- 2. 로그인 및 등록 UI ---
 
@@ -212,14 +372,11 @@ def show_login_and_registration():
             password_input_doc = st.text_input("비밀번호를 입력하세요", type="password", key="doctor_password_input_tab2")
             if st.button("로그인/등록", key="doctor_login_button_tab2"): _handle_doctor_login(doctor_email, password_input_doc)
 
-    # --- [수정] 신규 사용자(학생) 등록: 번호 입력 필드 추가 ---
     elif st.session_state.get('login_mode') == 'new_user_registration':
         st.info(f"'{st.session_state.current_user_name}'님은 새로운 사용자입니다. 아래에 정보를 입력하여 등록을 완료하세요.")
         st.subheader("👨‍⚕️ 신규 사용자 등록")
         new_email_input = st.text_input("아이디(이메일)를 입력하세요", key="new_user_email_input")
-        # [추가] 번호 입력 필드
         new_number_input = st.text_input("원내생 번호를 입력하세요 (예: 12)", key="new_user_number_input")
-        
         password_input = st.text_input("새로운 비밀번호를 입력하세요", type="password", key="new_user_password_input")
         
         if st.button("사용자 등록 완료", key="new_user_reg_button"):
@@ -229,25 +386,22 @@ def show_login_and_registration():
                 elif users_ref.child(new_firebase_key).get(): st.error("이미 등록된 이메일입니다.")
                 else:
                     hashed_pw = hash_password(password_input)
-                    # [수정] number 필드 추가 저장
                     users_ref.child(new_firebase_key).set({
                         "name": st.session_state.current_user_name, 
                         "email": new_email_input, 
-                        "number": new_number_input, # 번호 저장
+                        "number": new_number_input, 
                         "password": hashed_pw
                     })
                     st.session_state.update({'current_firebase_key': new_firebase_key, 'found_user_email': new_email_input, 'login_mode': 'user_mode'})
                     st.success("등록 완료"); st.rerun()
             else: st.error("올바른 이메일과 비밀번호를 입력하세요.")
 
-    # --- [수정] 신규 치과의사 등록: 번호 입력 필드 추가 ---
     elif st.session_state.get('login_mode') == 'new_doctor_registration':
         st.info(f"아래에 정보를 입력하여 등록을 완료하세요.")
         st.subheader("👨‍⚕️ 새로운 치과의사 등록")
         new_doctor_name_input = st.text_input("이름을 입력하세요 (원내생이라면 '홍길동95'과 같은 형태로 등록바랍니다)", key="new_doctor_name_input")
         password_input = st.text_input("새로운 비밀번호를 입력하세요", type="password", key="new_doctor_password_input", value=DEFAULT_PASSWORD)
         user_id_input = st.text_input("아이디(이메일)를 입력하세요", key="new_doctor_email_input", value=st.session_state.get('found_user_email', ''))
-        # [추가] 번호 입력 필드
         new_doc_number_input = st.text_input("식별 번호를 입력하세요 (선택 사항)", key="new_doc_number_input")
         department = st.selectbox("등록 과", DEPARTMENTS_FOR_REGISTRATION, key="new_doctor_dept_selectbox")
 
@@ -257,11 +411,10 @@ def show_login_and_registration():
                 if doctor_users_ref is None: st.error("🚨 데이터베이스 연결 오류")
                 else:
                     hashed_pw = hash_password(password_input)
-                    # [수정] number 필드 추가 저장
                     doctor_users_ref.child(new_firebase_key).set({
                         "name": new_doctor_name_input, 
                         "email": user_id_input, 
-                        "number": new_doc_number_input, # 번호 저장
+                        "number": new_doc_number_input, 
                         "password": hashed_pw, 
                         "role": 'doctor', 
                         "department": department
@@ -270,11 +423,11 @@ def show_login_and_registration():
                     st.success("등록 완료"); st.rerun()
             else: st.error("모든 정보를 올바르게 입력해주세요.")
 
-# --- 3. 관리자 모드 UI (Excel 및 알림) ---
+
+# --- 3. 관리자 모드 UI ---
 
 def show_admin_mode_ui():
     """관리자 모드 (엑셀 업로드, 알림 전송) UI를 표시합니다."""
-    
     st.markdown("---")
     st.title("💻 관리자 모드")
     
@@ -284,9 +437,6 @@ def show_admin_mode_ui():
 
     tab_excel, tab_user_mgmt = st.tabs(["📊 OCS 파일 처리 및 알림", "🧑‍💻 사용자 목록 및 관리"])
     
-    # -----------------------------------------------------
-    # 탭 1: OCS 파일 처리 및 알림
-    # -----------------------------------------------------
     with tab_excel:
         st.subheader("💻 Excel File Processor")
         uploaded_file = st.file_uploader("암호화된 Excel 파일을 업로드하세요", type=["xlsx", "xlsm"])
@@ -340,26 +490,22 @@ def show_admin_mode_ui():
                 all_doctors_meta = doctor_users_ref.get()
                 excel_data_dfs = st.session_state.last_processed_data
                 
-                # 매칭 실행 (get_matching_data는 number 정보도 가져옴)
                 matched_users, matched_doctors_data = get_matching_data(
                     excel_data_dfs, all_users_meta, all_patients_data, all_doctors_meta
                 )
 
-                # A. 자동 실행 (notification_utils의 함수 이용)
                 if st.session_state.auto_run_confirmed:
                     st.markdown("---")
                     st.warning("자동으로 모든 매칭 사용자에게 알림(메일/캘린더)을 전송합니다.")
                     run_auto_notifications(matched_users, matched_doctors_data, excel_data_dfs, file_name, is_daily, db_ref_func)
                     st.session_state.auto_run_confirmed = None; st.stop()
                     
-                # B. 수동 실행
                 elif st.session_state.auto_run_confirmed is False:
                     st.markdown("---")
                     st.info("수동으로 사용자를 선택하여 전송합니다.")
 
                     student_admin_tab, doctor_admin_tab = st.tabs(['📚 학생 수동 전송', '🧑‍⚕️ 치과의사 수동 전송'])
                     
-                    # --- 학생 수동 전송 ---
                     with student_admin_tab:
                         st.subheader("📚 학생 수동 전송 (매칭 결과)");
                         if matched_users:
@@ -385,69 +531,14 @@ def show_admin_mode_ui():
                             
                             mail_col, calendar_col = st.columns(2)
                             with mail_col:
-                                if st.button("선택된 사용자에게 메일 보내기", key="manual_send_mail_student"):
-                                    for user_match_info in selected_matched_users_data:
-                                        real_email = user_match_info['email']; df_matched = user_match_info['data']; user_name = user_match_info['name']
-                                        user_number = user_match_info.get('number', '')
-
-                                        email_cols = ['환자명', '진료번호', '예약의사', '진료내역', '예약일시', '예약시간', '등록과']
-                                        df_for_mail = df_matched[[col for col in email_cols if col in df_matched.columns]]
-                                        rows_as_dict = df_for_mail.to_dict('records')
-                                        df_html = df_for_mail.to_html(index=False, escape=False)
-                                        
-                                        # 텍스트 데이터 생성 로직
-                                        text_lines = []
-                                        u_num = str(user_number).strip(); u_name = str(user_name).strip()
-                                        for _, row in df_matched.iterrows():
-                                            try:
-                                                raw_date = str(row.get('예약일시', '')).strip().replace('-', '/').replace('.', '/')
-                                                raw_time = str(row.get('예약시간', '')).strip()
-                                                date_digits = re.sub(r'[^0-9]', '', raw_date)
-                                                mmdd = date_digits[-4:] if len(date_digits) >= 4 else "0000"
-                                                time_digits = re.sub(r'[^0-9]', '', raw_time)
-                                                hhmm = time_digits.zfill(4) if len(time_digits) <= 4 else time_digits[:4]
-                                                line = f"{row.get('예약의사','')},{mmdd},{hhmm},{row.get('환자명','')},{row.get('진료번호','')},{u_num},{u_name}"
-                                                text_lines.append(line)
-                                            except: continue
-                                        formatted_text_html = "<br>".join(text_lines)
-
-                                        email_body = f"""<p>안녕하세요, {user_name}님.</p><p>{file_name} 분석 결과, 내원 예정인 환자 진료 정보입니다.</p>{df_html}
-                                        <br><br><div style='font-family: sans-serif; font-size: 14px; line-height: 1.6; color: #333;'>{formatted_text_html}</div><p>확인 부탁드립니다.</p>"""
-                                        
-                                        try: send_email(real_email, rows_as_dict, sender, sender_pw, custom_message=email_body, date_str=file_name); st.success(f"**{user_name}**님에게 메일 전송 완료!")
-                                        except Exception as e: st.error(f"**{user_name}**님에게 메일 전송 실패: {e}")
+                                # [최적화] Fragment 구역으로 전송 로직 대체
+                                fragment_manual_student_mail(selected_matched_users_data, sender, sender_pw, file_name)
 
                             with calendar_col:
-                                if st.button("선택된 사용자에게 Google Calendar 일정 추가", key="manual_send_calendar_student"):
-                                    for user_match_info in selected_matched_users_data:
-                                        user_safe_key = user_match_info['safe_key']; user_name = user_match_info['name']; df_matched = user_match_info['data']
-                                        user_number = user_match_info.get('number', '')
-                                        creds = load_google_creds_from_firebase(user_safe_key) 
-                                        
-                                        if creds and creds.valid and not creds.expired:
-                                            successful_adds = 0
-                                            try:
-                                                service = build('calendar', 'v3', credentials=creds)
-                                                for index, row in df_matched.iterrows():
-                                                    reservation_date_raw = row.get('예약일시', ''); reservation_time_raw = row.get('예약시간', '')
-                                                    if reservation_date_raw and reservation_time_raw:
-                                                        try:
-                                                            full_datetime_str = f"{str(reservation_date_raw).strip()} {str(reservation_time_raw).strip()}"
-                                                            reservation_datetime = datetime.datetime.strptime(full_datetime_str, '%Y/%m/%d %H:%M')
-                                                            success = create_calendar_event(
-                                                                service, row.get('환자명', 'N/A'), row.get('진료번호', ''), row.get('등록과', ''), 
-                                                                reservation_datetime, row.get('예약의사', 'N/A'), row.get('진료내역', ''), is_daily,
-                                                                user_name=user_name, user_number=user_number
-                                                            )
-                                                            if success: successful_adds += 1
-                                                        except: pass
-                                                if successful_adds > 0: st.success(f"**{user_name}**님 캘린더에 {successful_adds}건 추가 완료.")
-                                                else: st.warning(f"**{user_name}**님 캘린더에 추가된 일정 없음.")
-                                            except Exception as e: st.error(f"❌ {user_name} 캘린더 오류: {e}")
-                                        else: st.warning(f"**{user_name}**님 캘린더 미연동.")
+                                # [최적화] Fragment 구역으로 전송 로직 대체
+                                fragment_manual_student_calendar(selected_matched_users_data, is_daily)
                         else: st.info("매칭된 환자가 없습니다.")
 
-                    # --- 치과의사 수동 전송 ---
                     with doctor_admin_tab:
                         st.subheader("🧑‍⚕️ 치과의사 수동 전송 (매칭 결과)");
                         if matched_doctors_data:
@@ -472,69 +563,14 @@ def show_admin_mode_ui():
 
                             mail_col_doc, calendar_col_doc = st.columns(2)
                             with mail_col_doc:
-                                if st.button("선택된 치과의사에게 메일 보내기", key="manual_send_mail_doctor"):
-                                    for res in selected_doctors_to_act:
-                                        df_matched = res['data']; latest_file_name = db_ref("ocs_analysis/latest_file_name").get()
-                                        user_name = res['name']; user_number = res.get('number', '')
-                                        
-                                        email_cols = ['환자명', '진료번호', '예약의사', '진료내역', '예약일시', '예약시간']; 
-                                        df_for_mail = df_matched[[col for col in email_cols if col in df_matched.columns]]
-                                        df_html = df_for_mail.to_html(index=False, border=1); rows_as_dict = df_for_mail.to_dict('records')
-                                        
-                                        text_lines = []
-                                        u_num = str(user_number).strip(); u_name = str(user_name).strip()
-                                        for _, row in df_matched.iterrows():
-                                            try:
-                                                raw_date = str(row.get('예약일시', '')).strip().replace('-', '/').replace('.', '/')
-                                                raw_time = str(row.get('예약시간', '')).strip()
-                                                date_digits = re.sub(r'[^0-9]', '', raw_date)
-                                                mmdd = date_digits[-4:] if len(date_digits) >= 4 else "0000"
-                                                time_digits = re.sub(r'[^0-9]', '', raw_time)
-                                                hhmm = time_digits.zfill(4) if len(time_digits) <= 4 else time_digits[:4]
-                                                line = f"{row.get('예약의사','')},{mmdd},{hhmm},{row.get('환자명','')},{row.get('진료번호','')},{u_num},{u_name}"
-                                                text_lines.append(line)
-                                            except: continue
-                                        formatted_text_html = "<br>".join(text_lines)
-
-                                        email_body = f"""<p>안녕하세요, {res['name']} 치과의사님.</p><p>{latest_file_name}에서 가져온 내원할 환자 정보입니다.</p>{df_html}
-                                        <br><br><div style='font-family: sans-serif; font-size: 14px; line-height: 1.6; color: #333;'>{formatted_text_html}</div><p>확인 부탁드립니다.</p>"""
-                                        
-                                        try: send_email(res['email'], rows_as_dict, sender, sender_pw, custom_message=email_body, date_str=latest_file_name); st.success(f"**Dr. {res['name']}**에게 메일 전송 완료!")
-                                        except Exception as e: st.error(f"**Dr. {res['name']}**에게 메일 전송 실패: {e}")
+                                # [최적화] Fragment 구역으로 전송 로직 대체
+                                fragment_manual_doctor_mail(selected_doctors_to_act, sender, sender_pw, db_ref_func)
 
                             with calendar_col_doc:
-                                if st.button("선택된 치과의사에게 Google Calendar 일정 추가", key="manual_send_calendar_doctor"):
-                                    for res in selected_doctors_to_act:
-                                        user_safe_key = res['safe_key']; user_name = res['name']; df_matched = res['data']
-                                        user_number = res.get('number', '')
-
-                                        creds = load_google_creds_from_firebase(user_safe_key) 
-                                        if creds and creds.valid and not creds.expired:
-                                            successful_adds = 0
-                                            try:
-                                                service = build('calendar', 'v3', credentials=creds)
-                                                for index, row in df_matched.iterrows():
-                                                    reservation_date_raw = row.get('예약일시', ''); reservation_time_raw = row.get('예약시간', '')
-                                                    if reservation_date_raw and reservation_time_raw:
-                                                        try:
-                                                            full_datetime_str = f"{str(reservation_date_raw).strip()} {str(reservation_time_raw).strip()}"
-                                                            reservation_datetime = datetime.datetime.strptime(full_datetime_str, '%Y/%m/%d %H:%M')
-                                                            success = create_calendar_event(
-                                                                service, row.get('환자명', 'N/A'), row.get('진료번호', ''), res.get('department', 'N/A'), 
-                                                                reservation_datetime, row.get('예약의사', ''), row.get('진료내역', ''), is_daily,
-                                                                user_name=user_name, user_number=user_number
-                                                            )
-                                                            if success: successful_adds += 1
-                                                        except: pass
-                                                if successful_adds > 0: st.success(f"**Dr. {user_name}**님 캘린더에 {successful_adds}건 추가 완료.")
-                                                else: st.warning(f"**Dr. {user_name}**님 캘린더에 추가된 일정 없음.")
-                                            except Exception as e: st.error(f"❌ 오류: {e}")
-                                        else: st.warning(f"⚠️ **Dr. {res['name']}**님은 캘린더 미연동.")
+                                # [최적화] Fragment 구역으로 전송 로직 대체
+                                fragment_manual_doctor_calendar(selected_doctors_to_act, is_daily)
                         else: st.info("매칭된 치과의사 계정이 없습니다.")
     
-    # -----------------------------------------------------
-    # 탭 2: 사용자 목록 및 관리
-    # -----------------------------------------------------
     with tab_user_mgmt:
         if not st.session_state.admin_password_correct:
             st.subheader("🔑 사용자 관리 권한 인증")
@@ -687,15 +723,8 @@ def show_user_mode_ui(firebase_key, user_name):
                     st.session_state.delete_patient_confirm = False; st.session_state.patients_to_delete = []; st.success("삭제 완료"); st.rerun()
 
         st.markdown("---")
-        with st.form("register_form"):
-            name = st.text_input("환자명"); pid = st.text_input("진료번호"); selected_departments = st.multiselect("진료과", DEPARTMENTS_FOR_REGISTRATION)
-            if st.form_submit_button("등록"):
-                if name and pid and selected_departments:
-                    pid_key = pid.strip(); new_patient_data = existing_patient_data.get(pid_key, {"환자이름": name, "진료번호": pid}) 
-                    for dept_flag in PATIENT_DEPT_FLAGS + ['치주', '원진실']: new_patient_data[dept_flag.lower()] = False
-                    for dept in selected_departments: new_patient_data[dept.lower()] = True
-                    patients_ref_for_user.child(pid_key).set(new_patient_data); st.success("등록 완료"); st.rerun()
-                else: st.warning("입력 확인")
+        # [최적화] Fragment 구역으로 단일 등록 폼 대체
+        fragment_single_registration(existing_patient_data, patients_ref_for_user)
 
     with analysis_tab:
         st.header("📈 OCS 분석 결과")
@@ -706,11 +735,9 @@ def show_user_mode_ui(firebase_key, user_name):
             for dept in ['소치', '보존', '교정']:
                 if dept in analysis_results: st.subheader(f"{dept}"); st.info(f"오전: {analysis_results[dept]['오전']}명 / 오후: {analysis_results[dept]['오후']}명"); st.markdown("---")
         else: st.info("분석 결과 없음")
-        st.divider(); st.header("🔑 비밀번호 변경")
-        new_pw = st.text_input("새 비밀번호", type="password", key="u_new_pw"); cf_pw = st.text_input("확인", type="password", key="u_cf_pw")
-        if st.button("변경", key="u_pw_chg_btn"):
-            if new_pw and new_pw == cf_pw: users_ref.child(firebase_key).update({"password": hash_password(new_pw)}); st.success("변경 완료")
-            else: st.error("불일치")
+        
+        # [최적화] Fragment 구역으로 비밀번호 변경 대체
+        fragment_password_change(firebase_key, users_ref, "u")
 
     with review_tab: show_professor_review_system()
 
@@ -725,8 +752,5 @@ def show_doctor_mode_ui(firebase_key, user_name):
     else: st.info("인증 필요")
     
     st.markdown("---")
-    st.header("🔑 비밀번호 변경")
-    new_pw = st.text_input("새 비밀번호", type="password", key="d_new_pw"); cf_pw = st.text_input("확인", type="password", key="d_cf_pw")
-    if st.button("변경", key="d_pw_chg_btn"):
-        if new_pw and new_pw == cf_pw: doctor_users_ref.child(firebase_key).update({"password": hash_password(new_pw)}); st.success("변경 완료")
-        else: st.error("불일치")
+    # [최적화] Fragment 구역으로 비밀번호 변경 대체
+    fragment_password_change(firebase_key, doctor_users_ref, "d")
