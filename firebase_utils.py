@@ -55,8 +55,14 @@ def get_db_refs():
 
 # --- 2. Google Calendar 인증 및 Creds 관리 ---
 def sanitize_path(email):
-    return email.replace('.', '_')
-
+    """
+    이메일 주소를 Firebase Realtime DB에서 안전하게 사용할 수 있는 고유 키로 변환합니다.
+    예: test@naver.com -> test_at_naver_dot_com
+    """
+    if not email:
+        return ""
+    return email.replace('@', '_at_').replace('.', '_dot_')
+    
 def save_google_creds_to_firebase(safe_key, creds):
     creds_ref = db.reference(f'google_calendar_creds/{safe_key}')
     pickled_creds = pickle.dumps(creds)
