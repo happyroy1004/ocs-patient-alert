@@ -184,18 +184,24 @@ def get_google_calendar_service(safe_key):
     if not isinstance(google_secrets_flat, dict) or not google_secrets_flat:
         st.info("구글 캘린더 Secrets 설정이 불완전합니다. Secrets.toml을 확인해주세요.")
         return
-
-    # OAuth 라이브러리가 기대하는 'installed' 구조로 감싸기
-    client_config = {
-    "web": {
-        "client_id": google_secrets_flat.get("client_id"),
-        "client_secret": google_secrets_flat.get("client_secret"),
-        "auth_uri": google_secrets_flat.get("auth_uri"),
-        "token_uri": google_secrets_flat.get("token_uri"),
-        "redirect_uris": [google_secrets_flat.get("redirect_uri")] # 리스트 형태여야 할 수도 있음
-    }
-}
-
+    
+    # 2. Secrets에서 client_config 준비 (OAuth 라이브러리 형식에 맞게)
+        google_secrets_flat = GOOGLE_CALENDAR_CLIENT_SECRET 
+        if not isinstance(google_secrets_flat, dict) or not google_secrets_flat:
+            st.info("구글 캘린더 Secrets 설정이 불완전합니다. Secrets.toml을 확인해주세요.")
+            return
+    
+        # --- 이 부분을 아래 내용으로 교체하세요 ---
+        client_config = {
+            "web": {
+                "client_id": google_secrets_flat.get("client_id"),
+                "client_secret": google_secrets_flat.get("client_secret"),
+                "auth_uri": google_secrets_flat.get("auth_uri"),
+                "token_uri": google_secrets_flat.get("token_uri"),
+                "redirect_uris": [google_secrets_flat.get("redirect_uri")]
+            }
+        }
+        # ---------------------------------------
     # 3. Credentials 유효성 검사 및 갱신 시도
     if creds and creds.valid:
         st.session_state.google_calendar_service = build('calendar', 'v3', credentials=creds)
