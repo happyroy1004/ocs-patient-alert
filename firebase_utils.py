@@ -156,7 +156,6 @@ def load_google_creds_from_firebase(safe_key):
                 client_secret=data_old.get('client_secret'),
                 scopes=scopes_list
             )
-            
             save_google_creds_to_firebase(safe_key, creds)
             st.success("✅ 기존 인증 정보를 성공적으로 로드하고 마이그레이션했습니다.")
             return creds
@@ -187,7 +186,7 @@ def get_google_calendar_service(safe_key):
         return
 
     # OAuth 라이브러리가 기대하는 'installed' 구조로 감싸기
-    client_config = {"installed": google_secrets_flat}
+    client_config = {"web": google_secrets_flat}
 
     # 3. Credentials 유효성 검사 및 갱신 시도
     if creds and creds.valid:
