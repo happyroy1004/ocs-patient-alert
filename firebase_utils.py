@@ -125,6 +125,7 @@ def load_google_creds_from_firebase(safe_key):
         
         paths_to_check = [
             f'{safe_key}/google_creds', 
+            f'google_creds/{safe_key}'
             f'users/{safe_key}/google_creds', 
             f'doctor_users/{safe_key}/google_creds'
         ]
