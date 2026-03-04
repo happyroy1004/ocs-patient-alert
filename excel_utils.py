@@ -6,8 +6,61 @@ import io
 import msoffcrypto
 import re
 from openpyxl import load_workbook
-from openpyxl.styles import Font
+from openpyxl.styles import Font, PatternFill
 from config import PROFESSORS_DICT, SHEET_KEYWORD_TO_DEPARTMENT_MAP
+
+# --- Firebase 연동 함수 ---
+def load_all_registered_pids(db_ref_func):
+    """
+    Firebase에서 모든 사용자가 등록한 환자의 진료번호(PID)와 등록된 진료과 목록을 로드합니다.
+    Firebase 구조: {user_key: {PID: {교정: true, ...}, ...}}
+    반환 형식: {'PID1': ['교정', '보존'], 'PID2': ['소치'], ...}
+    """
+    try:
+        all_patients_by_user = db_ref_func("patients").get() 
+        registered_pids_with_depts = {}
+        
+        standard_dept_names = set(SHEET_KEYWORD_TO_DEPARTMENT_MAP.values())
+        standard_dept_keys = {name.lower() for name in standard_dept_names} # 소문자 진료과 키 셋
+        
+        if all_patients_by_user:
+            # 1. 사용자별 환자 목록 순회 (user_key: 'asteriajimin619_at_gmail_dot_com')
+            for user_key, user_patients in all_patients_by_user.items():
+                
+                if user_patients and isinstance(user_patients, dict):
+                    # 2. 환자 진료번호(PID)별 정보 순회 (pid_key: '100203')
+                    for pid_key, patient_info in user_patients.items(): 
+                        
+                        # PID와 patient_info 유효성 검사
+                        if not pid_key or not isinstance(pid_key, str) or not isinstance(patient_info, dict):
+                            continue
+                        
+                        pid = pid_key.strip()
+                        current_depts = registered_pids_with_depts.get(pid, set())
+                        
+                        # 3. 진료과 플래그 확인: patient_info의 모든 키를 순회하며 표준 진료과 이름과 매칭
+                        for key, value in patient_info.items():
+                            # 키를 소문자로 변환하여 표준 진료과 키와 일치하는지 확인
+                            key_lower = str(key).lower()
+                            
+                            # 해당 키가 표준 진료과 키 목록에 포함되고, 값이 True인지 확인
+                            if key_lower in standard_dept_keys and value in [True, 'true']:
+                                # 표준화된 진료과 이름(예: '교정')을 찾아서 Set에 추가
+                                for dept_name in standard_dept_names:
+                                    if dept_name.lower() == key_lower:
+                                        current_depts.add(dept_name)
+                                        break
+                                
+                        registered_pids_with_depts[pid] = current_depts
+            
+            # 🚨 디버깅을 위해 추가 (실제 운영 시 주석 처리 권장)
+            # st.info(f"🚨 디버그: Firebase에서 총 {len(registered_pids_with_depts)}개의 유니크 PID를 로드했습니다. (예시: {list(registered_pids_with_depts.keys())[:3]})")
+
+        # Set을 List로 변환하여 반환
+        return {pid: list(depts) for pid, depts in registered_pids_with_depts.items()}
+    except Exception as e:
+        # st.error(f"🚨 디버그 오류: Firebase 환자 데이터 로드 중 오류 발생: {e}")
+        return {} # 오류 발생 시 빈 딕셔너리 반환
 
 # --- 유효성 검사 ---
 def is_daily_schedule(file_name):
@@ -23,49 +76,44 @@ def is_encrypted_excel(file_path):
     except Exception:
         return False
 
-# --- 엑셀 로드 및 복호화 스트림 반환 ---
-def load_excel_stream(file, password=None):
-    """업로드된 파일을 읽어 복호화된 BytesIO 스트림을 반환합니다."""
+# --- 엑셀 로드 및 복호화 ---
+def load_excel(file, password=None):
+    """업로드된 엑셀 파일을 로드하고 필요시 복호화합니다."""
     try:
         file.seek(0)
         file_bytes = file.read()
         
         input_stream = io.BytesIO(file_bytes)
+        decrypted_bytes_io = None
         
-        # 1. 파일이 암호화되었는지 확인
+        # 파일이 암호화되었는지 확인
         is_encrypted = False
         try:
-            input_stream.seek(0)
             if msoffcrypto.OfficeFile(input_stream).is_encrypted():
                 is_encrypted = True
-        except Exception:
-            # 파일 구조상 암호화 체크 실패 시 일반 파일로 간주
+        except:
             pass
         
-        # 2. 암호화되어 있다면 복호화 진행
         if is_encrypted:
             if not password:
-                raise ValueError("암호화된 엑셀 파일입니다. UI에서 비밀번호를 입력해주세요.")
+                raise ValueError("암호화된 파일입니다. 비밀번호를 입력해주세요.")
             
-            decrypted_stream = io.BytesIO()
+            decrypted_bytes_io = io.BytesIO()
             input_stream.seek(0)
             
             office_file = msoffcrypto.OfficeFile(input_stream)
-            try:
-                office_file.load_key(password=password)
-                office_file.decrypt(decrypted_stream)
-            except Exception as e:
-                raise ValueError(f"비밀번호가 틀렸거나 복호화에 실패했습니다: {e}")
+            office_file.load_key(password=password)
+            office_file.decrypt(decrypted_bytes_io)
             
-            decrypted_stream.seek(0)
-            return decrypted_stream
+            decrypted_bytes_io.seek(0)
+            return pd.ExcelFile(decrypted_bytes_io), decrypted_bytes_io
+
         else:
-            # 3. 일반 파일이면 원본 스트림 반환
             input_stream.seek(0)
-            return input_stream
+            return pd.ExcelFile(input_stream), input_stream
             
     except Exception as e:
-        raise ValueError(f"엑셀 스트림 생성 실패: {e}")
+        raise ValueError(f"엑셀 로드 또는 복호화 실패: {e}")
 
 # --- 데이터 처리 및 정렬 ---
 def process_sheet_v8(df, professors_list, sheet_key): 
@@ -73,7 +121,6 @@ def process_sheet_v8(df, professors_list, sheet_key):
     
     required_cols = ['진료번호', '예약일시', '예약시간', '환자명', '예약의사', '진료내역']
     if not all(col in df.columns for col in ['예약의사', '예약시간']):
-        st.error(f"시트 처리 오류: '예약의사' 또는 '예약시간' 컬럼이 DataFrame에 없습니다.")
         return pd.DataFrame(columns=[col for col in required_cols if col in df.columns])
 
     df = df.sort_values(by=['예약의사', '예약시간'])
@@ -122,27 +169,26 @@ def process_sheet_v8(df, professors_list, sheet_key):
     final_df = final_df[[col for col in required_cols if col in final_df.columns]]
     return final_df
 
-def process_excel_file_and_style(uploaded_file, db_ref_func, excel_password=None):
-    """
-    엑셀 파일을 읽고, 정렬/스타일링을 적용한 후, 분석용 DataFrame 딕셔너리를 반환합니다.
-    (ui_manager.py의 파라미터 규격에 완벽히 맞췄습니다.)
-    """
-    # 1. 파일 복호화 및 읽기 가능한 스트림 추출
-    decrypted_stream = load_excel_stream(uploaded_file, password=excel_password)
-    
+def process_excel_file_and_style(file_bytes_io, db_ref_func):
+    """엑셀 파일을 읽고, 정렬/스타일링을 적용한 후, 분석용 DataFrame 딕셔너리를 반환합니다."""
+    file_bytes_io.seek(0)
     output_buffer_for_styling = io.BytesIO()
 
-    # 2. Openpyxl로 워크북 로드
     try:
-        # data_only=True 옵션과 함께 스트림을 로드합니다.
-        wb_raw = load_workbook(filename=decrypted_stream, keep_vba=False, data_only=True)
+        wb_raw = load_workbook(filename=file_bytes_io, keep_vba=False, data_only=True)
     except Exception as e:
-        raise ValueError(f"엑셀 워크북 로드 실패 (파일 형식 오류): {e}")
+        raise ValueError(f"엑셀 워크북 로드 실패: {e}")
 
-    processed_sheets_dfs = {} # 스타일링된 DF (출력용)
-    cleaned_raw_dfs = {}       # 정리된 Raw DF (분석 및 매칭용)
+    # 1. Firebase에서 등록된 모든 환자 진료번호(PID)와 등록된 진료과 로드
+    registered_pids_with_depts = load_all_registered_pids(db_ref_func)
     
-    # 3. 시트별 데이터 처리 및 정렬
+    # 2. 회색 스타일 정의
+    gray_fill = PatternFill(start_color="D3D3D3", end_color="D3D3D3", fill_type="solid")
+    
+    processed_sheets_dfs = {}
+    cleaned_raw_dfs = {}
+    
+    # 1. 시트별 데이터 처리 및 정렬
     for sheet_name_raw in wb_raw.sheetnames:
         sheet_name_lower = sheet_name_raw.strip().lower()
 
@@ -170,7 +216,6 @@ def process_excel_file_and_style(uploaded_file, db_ref_func, excel_password=None
         if '예약의사' not in df.columns: continue
         df['예약의사'] = df['예약의사'].str.strip().str.replace(" 교수님", "", regex=False)
         
-        # 정리된 Raw DF를 분석용으로 저장
         cleaned_raw_dfs[sheet_name_raw] = df.copy() 
 
         professors_list = PROFESSORS_DICT.get(sheet_key, [])
@@ -180,23 +225,16 @@ def process_excel_file_and_style(uploaded_file, db_ref_func, excel_password=None
             processed_df = process_sheet_v8(df.copy(), professors_list, sheet_key)
             processed_sheets_dfs[sheet_name_raw] = processed_df
         except Exception as e:
-            st.error(f"시트 '{sheet_name_raw}' 처리 중 오류: {e}")
             continue
 
     if not processed_sheets_dfs:
-        # 처리된 데이터가 없지만, 최소한 정리된 DF는 있는지 확인하여 반환
         if cleaned_raw_dfs:
             return cleaned_raw_dfs, None
-            
-        # 모든 시트 처리에 실패한 경우 (pandas로 fallback 시도)
-        try:
-            decrypted_stream.seek(0)
-            all_sheet_dfs = pd.read_excel(decrypted_stream, sheet_name=None)
-            return all_sheet_dfs, None
-        except Exception as e:
-            raise ValueError(f"시트 데이터를 추출할 수 없습니다: {e}")
+        file_bytes_io.seek(0)
+        all_sheet_dfs = pd.read_excel(file_bytes_io, sheet_name=None)
+        return all_sheet_dfs, None
 
-    # 4. 정렬된 데이터로 새 엑셀 파일 생성 및 스타일링
+    # 2. 정렬된 데이터로 새 엑셀 파일 생성 및 스타일링
     with pd.ExcelWriter(output_buffer_for_styling, engine='openpyxl') as writer:
         for sheet_name_raw, df in processed_sheets_dfs.items():
             df.to_excel(writer, sheet_name=sheet_name_raw, index=False)
@@ -207,9 +245,73 @@ def process_excel_file_and_style(uploaded_file, db_ref_func, excel_password=None
     # 스타일링 로직
     for sheet_name in wb_styled.sheetnames:
         ws = wb_styled[sheet_name]
-        header = {cell.value: idx + 1 for idx, cell in enumerate(ws[1])}
+        
+        # 헤더 값을 문자열로 변환하고 공백을 제거하여 안정적인 딕셔너리 생성
+        header = {str(cell.value).strip(): idx + 1 for idx, cell in enumerate(ws[1])}
+        
+        # 시트 이름에서 현재 진료과(sheet_dept) 추출
+        sheet_dept = None
+        sheet_name_lower = sheet_name.strip().lower()
+        for keyword, department_name in sorted(SHEET_KEYWORD_TO_DEPARTMENT_MAP.items(), key=lambda item: len(item[0]), reverse=True):
+            if keyword.lower() in sheet_name_lower:
+                sheet_dept = department_name # 표준화된 진료과 이름 (예: '교정', '소치')
+                break
+        
+        # PID 컬럼 인덱스 찾기
+        pid_col_idx = None
+        for key in ['진료번호', '환자번호', '차트번호', 'PID']:
+            if header.get(key):
+                pid_col_idx = header.get(key)
+                break
+        
+        # PID 컬럼을 찾지 못했거나 진료과가 매칭되지 않았으면 스킵
+        if not pid_col_idx or not sheet_dept:
+            continue
 
         for row_idx, row in enumerate(ws.iter_rows(min_row=2, max_row=ws.max_row), start=2):
+            
+            is_registered_patient = False
+            
+            # 환자 등록 여부에 따른 회색 스타일링
+            if pid_col_idx and len(row) >= pid_col_idx:
+                 pid_cell = row[pid_col_idx - 1]
+                 pid_raw_value = pid_cell.value
+
+                 # 💡 PID 형식 통일 로직 수정 (앞의 0을 제거하고 숫자로만 변환)
+                 pid_str = str(pid_raw_value).strip()
+                 
+                 # .0이 붙은 float 문자열을 int로 변환
+                 if pid_str.endswith('.0'):
+                    pid_str = pid_str[:-2]
+                    
+                 # Scientific notation (예: 1.02896E+07) 처리
+                 if 'E' in pid_str.upper():
+                    try:
+                        pid_str = str(int(float(pid_str)))
+                    except ValueError:
+                        pass # 변환 실패 시 기존 문자열 유지
+                
+                 # 최종적으로 숫자만 추출하고, 앞의 0을 제거하기 위해 int로 변환 후 다시 문자열로 변환
+                 pid_value_digits = "".join(filter(str.isdigit, pid_str))
+                 
+                 # 🚨 핵심 수정: 정수로 변환 후 다시 문자열로 만들어 앞의 0을 완전히 제거
+                 try:
+                     pid_value = str(int(pid_value_digits)) 
+                 except ValueError:
+                     pid_value = pid_value_digits # 숫자가 아닐 경우 기존 값 유지
+
+                 # 매칭 조건 강화: 1. PID가 등록되어 있고, 2. 현재 시트 진료과가 등록된 진료과 목록에 포함되어야 함
+                 registered_depts = registered_pids_with_depts.get(pid_value)
+                 
+                 if (registered_depts and 
+                     sheet_dept in registered_depts and 
+                     str(row[0].value).strip() not in ["", "<교수님>"]):
+                    
+                    is_registered_patient = True
+                    for cell in row:
+                        cell.fill = gray_fill # 회색 배경 적용
+                        
+            # 교수님 섹션 구분자 스타일링
             if row[0].value == "<교수님>":
                 for cell in row:
                     if cell.value:
@@ -223,13 +325,14 @@ def process_excel_file_and_style(uploaded_file, db_ref_func, excel_password=None
                     text = str(cell.value).strip().lower()
                     
                     if ('bonding' in text or '본딩' in text) and 'debonding' not in text:
-                        cell.font = Font(bold=True)
+                        # 회색 배경이 적용되지 않은 경우에만 폰트 스타일 적용
+                        if not is_registered_patient: 
+                            cell.font = Font(bold=True)
 
     final_output_bytes = io.BytesIO()
     wb_styled.save(final_output_bytes)
     final_output_bytes.seek(0)
     
-    # 최종 반환: 정리된 Raw DF (알림 분석용) 와 스타일링된 엑셀 바이트 (출력용)
     return cleaned_raw_dfs, final_output_bytes
 
 # --- OCS 데이터 분석 ---
@@ -248,7 +351,6 @@ def run_analysis(df_dict):
         processed_sheet_name = sheet_name.replace(" ", "").lower()
         for key, dept in sheet_department_map.items():
             if processed_sheet_name == key.replace(" ", "").lower():
-                # run_analysis에는 정렬되기 전의 원본 DF가 필요합니다.
                 if all(col in df.columns for col in ['예약의사', '예약시간', '진료내역']):
                      mapped_dfs[dept] = df.copy()
                 break
@@ -258,7 +360,7 @@ def run_analysis(df_dict):
         df = mapped_dfs['소치']
         non_professors_df = df[~df['예약의사'].isin(PROFESSORS_DICT.get('소치', []))]
         non_professors_df['예약시간'] = non_professors_df['예약시간'].astype(str).str.strip()
-        non_professors_df = non_professors_df[non_professors_df['예약시간'].str.contains(':')] # 유효한 시간만
+        non_professors_df = non_professors_df[non_professors_df['예약시간'].str.contains(':')] 
         
         # 오전: 08:00 ~ 12:50
         morning_patients = non_professors_df[(non_professors_df['예약시간'] >= '08:00') & (non_professors_df['예약시간'] <= '12:50')].shape[0]
