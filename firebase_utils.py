@@ -151,8 +151,25 @@ def get_google_calendar_service(safe_key):
         return None
 
 def recover_email(safe_key):
-    base = db.reference()
-    for p in [f'users/{safe_key}', f'doctor_users/{safe_key}', safe_key]:
-        data = base.child(p).get()
-        if data and 'email' in data: return data['email']
+    """
+    Firebase에서 safe_key(통일된 형식)에 해당하는 실제 이메일을 단번에 찾습니다.
+    """
+    db_ref = db.reference()
+    
+    # 💡 최적화: 이제 safe_key 자체가 고유하고 정확하므로, 
+    # users와 doctor_users 경로만 딱 두 번 조회하고 끝냅니다.
+    # (과거처럼 safe_key 경로 전체를 불필요하게 뒤지지 않습니다)
+    
+    paths_to_check = [f'users/{safe_key}', f'doctor_users/{safe_key}']
+    
+    for path in paths_to_check:
+        try:
+            data = db_ref.child(path).get()
+            if data and 'email' in data:
+                return data['email']
+        except Exception as e:
+            # 에러 로그를 남기면 나중에 문제 찾기 편합니다
+            print(f"이메일 복구 중 오류: {e}") 
+            continue
+            
     return None
