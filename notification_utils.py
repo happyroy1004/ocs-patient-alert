@@ -8,19 +8,21 @@ from email.mime.multipart import MIMEMultipart
 import datetime
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
-# firebase_utils에서 통합된 로딩 및 복구 함수 임포트
 from firebase_utils import load_google_creds_from_firebase, recover_email
 from config import PATIENT_DEPT_FLAGS, PATIENT_DEPT_TO_SHEET_MAP, SHEET_KEYWORD_TO_DEPARTMENT_MAP
 
-# --- 1. 유효성 검사 유틸리티 ---
+# --- 유효성 검사 ---
 def is_valid_email(email):
     """이메일 주소 형식을 확인합니다."""
     email_regex = r"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$"
     return re.match(email_regex, email) is not None
 
-# --- 2. 이메일 전송 핵심 로직 ---
+# --- 이메일 전송 ---
 def send_email(receiver, rows, sender, password, date_str=None, custom_message=None):
-    """이메일을 전송하는 범용 함수입니다."""
+    """
+    이메일을 전송하는 범용 함수입니다.
+    custom_message가 있으면 그것을 본문으로 사용합니다 (표 + 텍스트 데이터 포함).
+    """
     try:
         msg = MIMEMultipart()
         msg['From'] = sender
@@ -30,181 +32,389 @@ def send_email(receiver, rows, sender, password, date_str=None, custom_message=N
             msg['Subject'] = "단체 메일 알림" if date_str is None else f"[치과 내원 알림] {date_str} 예약 내역"
             body = custom_message
         else:
-            subject_prefix = f"{date_str}일에 내원하는 " if date_str else ""
+            subject_prefix = ""
+            if date_str:
+                subject_prefix = f"{date_str}일에 내원하는 "
             msg['Subject'] = f"{subject_prefix}등록 환자 내원 알림"
             
-            if rows:
+            if rows is not None and isinstance(rows, list):
                 rows_df = pd.DataFrame(rows)
                 html_table = rows_df.to_html(index=False, escape=False)
-                style = """
-                <style>
-                table { width: 100%; border-collapse: collapse; font-family: Arial, sans-serif; font-size: 14px; }
-                th, td { border: 1px solid #dddddd; text-align: left; padding: 8px; }
-                th { background-color: #f2f2f2; font-weight: bold; }
-                </style>
-                """
+                style = """<style>table {width: 100%; border-collapse: collapse;} th, td {border: 1px solid #ddd; padding: 8px;}</style>"""
                 body = f"다음 환자가 내일 내원예정입니다:<br><br>{style}{html_table}"
             else:
                  body = "내원 환자 정보가 없습니다."
 
         msg.attach(MIMEText(body, 'html'))
         
-        with smtplib.SMTP('smtp.gmail.com', 587) as server:
-            server.starttls()
-            server.login(sender, password)
-            server.send_message(msg)
+        server = smtplib.SMTP('smtp.gmail.com', 587)
+        server.starttls()
+        server.login(sender, password)
+        server.send_message(msg)
+        server.quit()
         return True
     except Exception as e:
         return str(e)
 
-# --- 3. Google Calendar 이벤트 생성 ---
-def create_calendar_event(service, patient_name, pid, department, reservation_datetime, doctor_name, treatment_details, is_daily):
-    """Google Calendar에 단일 이벤트를 생성합니다."""
+# --- Google Calendar 이벤트 생성 ---
+def create_calendar_event(service, patient_name, pid, department, reservation_datetime, doctor_name, treatment_details, is_daily, user_name="", user_number=""):
+    """
+    Google Calendar에 단일 이벤트를 생성합니다.
+    승인 담당자 정보를 괄호 밖 화살표 포맷으로 추가합니다.
+    """
     seoul_tz = datetime.timezone(datetime.timedelta(hours=9))
     event_start = reservation_datetime.replace(tzinfo=seoul_tz)
     event_end = event_start + datetime.timedelta(minutes=30)
     
-    event_prefix = "✨ 내원 : " if is_daily else "❓내원 : "
-    summary_text = f'{event_prefix}{patient_name} ({department}, {doctor_name})' 
+    # [수정] 승인 담당자 매핑 로직
+    approver_suffix = ""
+    clean_doctor_name = doctor_name.strip()
     
+    if clean_doctor_name == '백승학':
+        approver_suffix = ' -> 승인 : 손승현'
+    elif clean_doctor_name in ['임원희', '이신재']:
+        approver_suffix = ' -> 승인 : 최다솔'
+    elif clean_doctor_name == '안석준':
+        approver_suffix = ' -> 승인 : 송상원'
+    elif clean_doctor_name == '양일형':
+        approver_suffix = ' -> 승인 : 이진'
+    elif clean_doctor_name == '안정섭':
+        approver_suffix = ' -> 승인 : 강기모'
+
+    # 1. 제목 포맷팅: 시간(HHMM)만 표시
+    # 예: ❓내원 : 1400 홍길동 (교정과, 백승학) -> 승인 : 손승현
+    time_hhmm = event_start.strftime("%H%M")
+    event_prefix = "✨ 내원 : " if is_daily else "❓내원 : "
+    summary_text = f'{event_prefix}{time_hhmm} {patient_name} ({department}, {clean_doctor_name}){approver_suffix}' 
+    
+    # 2. 설명(description) 포맷팅
+    date_mmdd = event_start.strftime("%m%d")
+    
+    u_num = str(user_number).strip()
+    u_name = str(user_name).strip()
+    
+    # [수정] 헤더 정보 맨 끝에 승인 담당자 정보 추가
+    # 형식: 의사,날짜,시간,환자,번호,유저번호,유저이름 -> 승인 : 담당자
+    header_info = f"{clean_doctor_name},{date_mmdd},{time_hhmm},{patient_name},{pid},{u_num},{u_name}"
+    
+    description_text = f"{header_info}\n\n환자명 : {patient_name}\n진료번호 : {pid}\n진료내역 : {treatment_details}\n진료의사 : {clean_doctor_name}\n"
+
     event = {
         'summary': summary_text,
         'location': pid,
-        'description': f"환자명 : {patient_name}\n진료번호 : {pid}\n진료내역 : {treatment_details}",
-        'start': {'dateTime': event_start.isoformat(), 'timeZone': 'Asia/Seoul'},
-        'end': {'dateTime': event_end.isoformat(), 'timeZone': 'Asia/Seoul'},
+        'description': description_text,
+        'start': {
+            'dateTime': event_start.isoformat(),
+            'timeZone': 'Asia/Seoul',
+        },
+        'end': {
+            'dateTime': event_end.isoformat(),
+            'timeZone': 'Asia/Seoul',
+        },
     }
 
     try:
         service.events().insert(calendarId='primary', body=event).execute()
         return True
+    except HttpError as error:
+        st.error(f"캘린더 이벤트 생성 중 오류 발생: {error}")
+        return False
     except Exception as e:
-        st.error(f"캘린더 이벤트 생성 오류: {e}")
+        st.error(f"알 수 없는 오류 발생: {e}")
         return False
         
-# --- 4. 데이터 매칭 로직 ---
+# --- 매칭 로직 ---
 
 def standardize_df_for_matching(df):
-    """Excel 데이터를 매칭을 위해 표준화합니다."""
+    """Excel DataFrame의 핵심 컬럼을 매칭을 위해 표준화합니다."""
     df = df.copy()
+    
     df.columns = [str(col).strip() for col in df.columns]
+    current_cols = df.columns
     
     required_cols = ['진료번호', '환자명', '예약의사']
-    if not all(col in df.columns for col in required_cols):
+    
+    if not all(col in current_cols for col in required_cols) and not df.empty and len(df) > 0:
+        new_header = df.iloc[0] 
+        new_header = [str(h).strip() for h in new_header] 
+        
+        if all(isinstance(col, (int)) for col in current_cols):
+             rename_map = {0: '예약일시', 1: '예약시간', 2: '진료번호', 3: '환자명', 5: '예약의사'}
+             df.rename(columns=rename_map, inplace=True)
+             df.columns = [str(col).strip() for col in df.columns]
+
+        df.columns = new_header
+        df = df[1:].reset_index(drop=True)
+        current_cols = df.columns
+        df.columns = [str(col).strip() for col in df.columns]
+    
+    if not all(col in current_cols for col in required_cols):
          return pd.DataFrame(columns=required_cols) 
 
     df = df.fillna("").astype(str)
     df['진료번호'] = df['진료번호'].str.strip().str.zfill(8)
     df['환자명'] = df['환자명'].str.strip()
+        
     if '예약의사' in df.columns:
-        df['예약의사'] = df['예약의사'].str.replace(" 교수님", "", regex=False).str.strip()
-    
-    return df
+        df['예약의사'] = df['예약의사'].str.strip().str.replace(" 교수님", "", regex=False)
+        df['예약의사'] = df['예약의사'].str.replace("'", "", regex=False).str.replace("‘", "", regex=False).str.replace("’", "", regex=False).str.strip()
+
+    df = df[df['진료번호'] != '']
+    final_cols = list(set(df.columns) & set(['예약일시', '예약시간', '진료번호', '환자명', '예약의사', '진료내역', '등록과']))
+    return df[[col for col in final_cols if col in df.columns]].reset_index(drop=True)
+
 
 def get_matching_data(excel_data_dfs, all_users_meta, all_patients_data, all_doctors_meta):
-    """Excel 데이터와 Firebase 데이터를 매칭합니다."""
+    """
+    Excel 데이터와 Firebase 사용자/환자/의사 데이터를 매칭합니다.
+    """
     matched_users = []; matched_doctors_data = []
-    standardized_dfs = {k: standardize_df_for_matching(v) for k, v in excel_data_dfs.items()}
 
-    # 1. 학생(일반 사용자) 매칭
+    standardized_dfs = {
+        sheet_name: standardize_df_for_matching(df)
+        for sheet_name, df in excel_data_dfs.items()
+    }
+
+    # 1. 학생 매칭
     if all_patients_data:
-        for uid_safe, patients in all_patients_data.items():
-            user_name = all_users_meta.get(uid_safe, {}).get("name", recover_email(uid_safe))
-            user_email = all_users_meta.get(uid_safe, {}).get("email", recover_email(uid_safe))
-            
-            rows = []
-            if patients:
-                for pid, val in patients.items():
-                    target_pid = pid.zfill(8)
-                    for _, df in standardized_dfs.items():
-                        match = df[df['진료번호'] == target_pid]
-                        if not match.empty:
-                            row_copy = match.iloc[0].copy()
-                            row_copy['등록과'] = "매칭됨"
-                            rows.append(row_copy)
-            
-            if rows:
-                matched_users.append({"email": user_email, "name": user_name, "data": pd.DataFrame(rows), "safe_key": uid_safe})
+        for uid_safe, registered_patients_for_this_user in all_patients_data.items():
+            user_email = recover_email(uid_safe); user_display_name = user_email
+            user_number = "" 
 
-    # 2. 치과의사 매칭
-    if all_doctors_meta:
-        for safe_key, info in all_doctors_meta.items():
-            doc_name = info.get("name")
-            rows = []
-            for _, df in standardized_dfs.items():
-                doc_rows = df[df['예약의사'] == doc_name]
-                if not doc_rows.empty:
-                    rows.append(doc_rows)
+            if all_users_meta and uid_safe in all_users_meta:
+                meta = all_users_meta[uid_safe]
+                if "name" in meta: user_display_name = meta["name"]
+                if "email" in meta: user_email = meta["email"]
+                if "number" in meta: user_number = str(meta["number"])
             
-            if rows:
-                matched_doctors_data.append({
-                    "safe_key": safe_key, 
-                    "name": doc_name, 
-                    "email": info.get("email"), 
-                    "department": info.get("department", "N/A"),
-                    "data": pd.concat(rows)
+            registered_patients_data = []
+            if registered_patients_for_this_user:
+                for pid_key, val in registered_patients_for_this_user.items(): 
+                    registered_depts = [
+                        dept.capitalize() for dept in PATIENT_DEPT_FLAGS + ['치주'] 
+                        if val.get(dept.lower()) is True or val.get(dept.lower()) == 'True' or val.get(dept.lower()) == 'true'
+                    ]
+                    registered_patients_data.append({"환자명": val.get("환자이름", "").strip(), "진료번호": pid_key.strip().zfill(8), "등록과_리스트": registered_depts})
+            
+            matched_rows_for_user = []
+            for registered_patient in registered_patients_data:
+                registered_depts = registered_patient["등록과_리스트"]; sheets_to_search = set()
+                for dept in registered_depts: sheets_to_search.update(PATIENT_DEPT_TO_SHEET_MAP.get(dept, [dept]))
+
+                for sheet_name_excel_raw, df_sheet in standardized_dfs.items(): 
+                    excel_sheet_department = None
+                    for keyword, department_name in SHEET_KEYWORD_TO_DEPARTMENT_MAP.items():
+                        if keyword.lower() in sheet_name_excel_raw.strip().lower(): excel_sheet_department = department_name; break
+                    
+                    if excel_sheet_department in sheets_to_search:
+                        for _, excel_row in df_sheet.iterrows():
+                            if (registered_patient["환자명"] == excel_row.get("환자명", "") and registered_patient["진료번호"] == excel_row.get("진료번호", "")):
+                                matched_row_copy = excel_row.copy(); matched_row_copy["시트"] = sheet_name_excel_raw
+                                matched_row_copy["등록과"] = ", ".join(registered_depts); matched_rows_for_user.append(matched_row_copy); break
+            
+            if matched_rows_for_user:
+                combined_matched_df = pd.DataFrame(matched_rows_for_user)
+                matched_users.append({
+                    "email": user_email, 
+                    "name": user_display_name, 
+                    "number": user_number, 
+                    "data": combined_matched_df, 
+                    "safe_key": uid_safe
                 })
 
+    # 2. 치과의사 매칭
+    doctors = []
+    if all_doctors_meta:
+        for safe_key, user_info in all_doctors_meta.items():
+            if user_info:
+                doc_number = str(user_info.get("number", ""))
+                doctors.append({
+                    "safe_key": safe_key, 
+                    "name": user_info.get("name", "이름 없음"), 
+                    "email": user_info.get("email", "이메일 없음"), 
+                    "department": user_info.get("department", "미지정"),
+                    "number": doc_number
+                })
+    
+    if doctors and standardized_dfs:
+        for res in doctors:
+            doctor_dept = res['department']; sheets_to_search = PATIENT_DEPT_TO_SHEET_MAP.get(doctor_dept, [doctor_dept])
+            matched_rows_for_doctor = [] 
+            
+            for sheet_name_excel_raw, df_sheet in standardized_dfs.items(): 
+                excel_sheet_department = None
+                for keyword, department_name in SHEET_KEYWORD_TO_DEPARTMENT_MAP.items():
+                    if keyword.lower() in sheet_name_excel_raw.strip().lower(): excel_sheet_department = department_name; break
+                
+                if excel_sheet_department in sheets_to_search:
+                    for _, excel_row in df_sheet.iterrows():
+                        if excel_row.get('예약의사', '') == res['name']:
+                            matched_rows_for_doctor.append(excel_row.copy())
+            
+            if matched_rows_for_doctor:
+                 res['data'] = pd.DataFrame(matched_rows_for_doctor) 
+                 matched_doctors_data.append(res)
+                 
     return matched_users, matched_doctors_data
 
-# --- 5. 자동 알림 실행 (학생 및 의사 포함 전체 로직) ---
+# --- 자동 알림 실행 ---
 def run_auto_notifications(matched_users, matched_doctors, excel_data_dfs, file_name, is_daily, db_ref):
-    """자동으로 학생과 의사에게 메일 및 캘린더 일정을 전송합니다."""
-    sender = st.secrets["gmail"]["sender"]
-    sender_pw = st.secrets["gmail"]["app_password"]
+    """
+    자동으로 모든 매칭 사용자에게 메일(표+텍스트) 및 캘린더 일정을 전송하는 핵심 로직
+    """
+    sender = st.secrets["gmail"]["sender"]; sender_pw = st.secrets["gmail"]["app_password"]
     
-    # [A] 학생(일반 사용자) 전송
-    st.markdown("### 📚 학생 자동 전송 결과")
-    for user in matched_users:
-        # 1. 메일 전송
-        df_html = user['data'].to_html(index=False)
-        email_body = f"<h4>{user['name']}님, 환자 내원 알림입니다.</h4>{df_html}"
-        send_result = send_email(user['email'], None, sender, sender_pw, custom_message=email_body, date_str=file_name)
+    # --- [핵심] 텍스트 생성 헬퍼 함수 ---
+    def generate_email_body_with_text(user_name, user_number, df_matched, file_name):
+        # 1. HTML Table 생성
+        email_cols = ['환자명', '진료번호', '예약의사', '진료내역', '예약일시', '예약시간', '등록과']
+        df_for_mail = df_matched[[col for col in email_cols if col in df_matched.columns]]
         
-        if send_result is True:
-            st.write(f"✔️ **메일:** {user['name']}님에게 전송 완료.")
-        else:
-            st.error(f"❌ **메일:** {user['name']}님 전송 실패: {send_result}")
+        table_style = """
+        <style>
+        table {width: 100%; border-collapse: collapse; font-family: Arial, sans-serif; font-size: 14px;}
+        th, td {border: 1px solid #dddddd; text-align: left; padding: 8px;}
+        th {background-color: #f2f2f2; font-weight: bold;}
+        </style>
+        """
+        html_table = df_for_mail.to_html(index=False, escape=False)
         
-        # 2. 캘린더 전송 (통합 경로 로딩 적용)
-        creds = load_google_creds_from_firebase(user['safe_key'])
-        if creds and creds.valid:
-            try:
-                service = build('calendar', 'v3', credentials=creds)
-                for _, row in user['data'].iterrows():
-                    dt_str = f"{row['예약일시']} {row['예약시간']}".strip()
-                    dt_obj = datetime.datetime.strptime(dt_str, '%Y/%m/%d %H:%M')
-                    create_calendar_event(service, row['환자명'], row['진료번호'], "치과", dt_obj, row['예약의사'], row.get('진료내역',''), is_daily)
-                st.write(f"✔️ **캘린더:** {user['name']}님 일정 동기화 완료.")
-            except Exception as e:
-                st.warning(f"⚠️ **캘린더:** {user['name']}님 동기화 중 오류 발생.")
-        else:
-            st.warning(f"⚠️ **캘린더:** {user['name']}님 계정이 연동되지 않았습니다.")
+        # 2. 텍스트 데이터 생성
+        text_lines = []
+        u_num = str(user_number).strip()
+        u_name = str(user_name).strip()
 
-    # [B] 치과의사 전송
+        for _, row in df_matched.iterrows():
+            try:
+                # 데이터 추출
+                raw_date = str(row.get('예약일시', '')).strip().replace('-', '/').replace('.', '/')
+                raw_time = str(row.get('예약시간', '')).strip()
+                doctor = str(row.get('예약의사', '')).strip()
+                name = str(row.get('환자명', '')).strip()
+                pid = str(row.get('진료번호', '')).strip()
+
+                # [수정] 승인 담당자 매핑 로직 (이메일 텍스트용)
+                approver_suffix = ""
+                clean_doctor = doctor.strip()
+                
+                if clean_doctor == '백승학':
+                    approver_suffix = ' -> 승인 : 손승현'
+                elif clean_doctor in ['임원희', '이신재']:
+                    approver_suffix = ' -> 승인 : 최다솔'
+                elif clean_doctor == '안석준':
+                    approver_suffix = ' -> 승인 : 송상원'
+                elif clean_doctor == '양일형':
+                    approver_suffix = ' -> 승인 : 이진'
+                elif clean_doctor == '안정섭':
+                    approver_suffix = ' -> 승인 : 강기모'
+                
+                # 날짜/시간 포맷팅 (MMDD, HHMM)
+                date_digits = re.sub(r'[^0-9]', '', raw_date)
+                mmdd = date_digits[-4:] if len(date_digits) >= 4 else "0000"
+                
+                time_digits = re.sub(r'[^0-9]', '', raw_time)
+                hhmm = time_digits.zfill(4) if len(time_digits) <= 4 else time_digits[:4]
+                
+                # [수정] 라인 생성: 맨 끝에 화살표와 함께 승인담당자 추가
+                # 형식: 진료의사,날짜,시간,환자이름,환자번호,사용자번호,사용자이름 -> 승인 : 담당자
+                line = f"{clean_doctor},{mmdd},{hhmm},{name},{pid},{u_num},{u_name}"
+                text_lines.append(line)
+            except Exception:
+                continue 
+            
+        formatted_text_html = "<br>".join(text_lines)
+        
+        # 3. 최종 본문 결합
+        full_body = f"""
+        <p>안녕하세요, {user_name}님.</p>
+        <p>{file_name} 분석 결과, 내원 예정인 환자 진료 정보입니다.</p>
+        <div class='table-container'>{table_style}{html_table}</div>
+        <br>
+        <br>
+        <div style='font-family: sans-serif; font-size: 14px; line-height: 1.6; color: #333;'>
+        {formatted_text_html}
+        </div>
+        <br>
+        <br>
+        <p>확인 부탁드립니다.</p>
+        """
+        return full_body, df_for_mail.to_dict('records')
+
+    # 1. 학생(일반 사용자) 자동 전송
+    st.markdown("### 📚 학생(일반 사용자) 자동 전송 결과")
+    if matched_users:
+        for user_match_info in matched_users:
+            real_email = user_match_info['email']; df_matched = user_match_info['data']
+            user_name = user_match_info['name']; user_safe_key = user_match_info['safe_key']
+            user_number = user_match_info.get('number', '') 
+            
+            # 본문 생성 (번호 포함)
+            email_body, rows_as_dict = generate_email_body_with_text(user_name, user_number, df_matched, file_name)
+            
+            try:
+                send_email(receiver=real_email, rows=rows_as_dict, sender=sender, password=sender_pw, custom_message=email_body, date_str=file_name) 
+                st.write(f"✔️ **메일:** {user_name} ({real_email})에게 전송 완료.")
+            except Exception as e: st.error(f"❌ **메일:** {user_name} ({real_email})에게 전송 실패: {e}")
+
+            # 캘린더 등록
+            creds = load_google_creds_from_firebase(user_safe_key)
+            if creds and creds.valid and not creds.expired:
+                try:
+                    service = build('calendar', 'v3', credentials=creds)
+                    for _, row in df_matched.iterrows():
+                        reservation_date_raw = str(row.get('예약일시', '')).strip().replace('-', '/').replace('.', '/')
+                        reservation_time_raw = str(row.get('예약시간', '')).strip()
+                        if reservation_date_raw and reservation_time_raw:
+                            try:
+                                full_datetime_str = f"{reservation_date_raw} {reservation_time_raw}"
+                                reservation_datetime = datetime.datetime.strptime(full_datetime_str, '%Y/%m/%d %H:%M')
+                                
+                                create_calendar_event(
+                                    service, row.get('환자명', 'N/A'), row.get('진료번호', ''), row.get('등록과', ''), 
+                                    reservation_datetime, row.get('예약의사', ''), row.get('진료내역', ''), is_daily,
+                                    user_name=user_name, user_number=user_number
+                                )
+                            except: pass
+                    st.write(f"✔️ **캘린더:** {user_name}에게 일정 추가 완료.")
+                except Exception as e: st.warning(f"⚠️ **캘린더:** {user_name} 일정 추가 중 오류: {e}")
+            else: st.warning(f"⚠️ **캘린더:** {user_name}님은 Google Calendar 계정이 연동되지 않았습니다.")
+    else: st.info("매칭된 학생(사용자)이 없습니다.")
+
+    # 2. 치과의사 자동 전송
     st.markdown("### 🧑‍⚕️ 치과의사 자동 전송 결과")
-    for doc in matched_doctors:
-        # 1. 메일 전송
-        df_html = doc['data'].to_html(index=False)
-        email_body = f"<h4>{doc['name']} 의사님, 예약 환자 알림입니다.</h4>{df_html}"
-        send_result = send_email(doc['email'], None, sender, sender_pw, custom_message=email_body, date_str=file_name)
-        
-        if send_result is True:
-            st.write(f"✔️ **메일:** Dr. {doc['name']}에게 전송 완료.")
-        else:
-            st.error(f"❌ **메일:** Dr. {doc['name']} 전송 실패: {send_result}")
+    if matched_doctors:
+        for res in matched_doctors:
+            df_matched = res['data']
+            doc_name = res['name']
+            doc_number = res.get('number', '')
 
-        # 2. 캘린더 전송 (통합 경로 로딩 적용)
-        creds = load_google_creds_from_firebase(doc['safe_key'])
-        if creds and creds.valid:
+            # 본문 생성 (번호 포함)
+            email_body, rows_as_dict = generate_email_body_with_text(doc_name, doc_number, df_matched, file_name)
+            
             try:
-                service = build('calendar', 'v3', credentials=creds)
-                for _, row in doc['data'].iterrows():
-                    dt_str = f"{row['예약일시']} {row['예약시간']}".strip()
-                    dt_obj = datetime.datetime.strptime(dt_str, '%Y/%m/%d %H:%M')
-                    create_calendar_event(service, row['환자명'], row['진료번호'], doc['department'], dt_obj, doc['name'], row.get('진료내역',''), is_daily)
-                st.write(f"✔️ **캘린더:** Dr. {doc['name']} 일정 동기화 완료.")
-            except Exception as e:
-                st.error(f"❌ **캘린더:** Dr. {doc['name']} 동기화 실패.")
-        else:
-            st.warning(f"⚠️ **캘린더:** Dr. {doc['name']}님 계정이 연동되지 않았습니다.")
+                send_email(receiver=res['email'], rows=rows_as_dict, sender=sender, password=sender_pw, custom_message=email_body, date_str=file_name)
+                st.write(f"✔️ **메일:** Dr. {res['name']}에게 전송 완료!")
+            except Exception as e: st.error(f"❌ **메일:** Dr. {res['name']}에게 전송 실패: {e}")
+
+            creds = load_google_creds_from_firebase(res['safe_key'])
+            if creds and creds.valid and not creds.expired:
+                try:
+                    service = build('calendar', 'v3', credentials=creds)
+                    for _, row in df_matched.iterrows():
+                        reservation_date_raw = str(row.get('예약일시', '')).strip().replace('-', '/').replace('.', '/')
+                        reservation_time_raw = str(row.get('예약시간', '')).strip()
+                        if reservation_date_raw and reservation_time_raw:
+                            try:
+                                full_datetime_str = f"{reservation_date_raw} {reservation_time_raw}"
+                                reservation_datetime = datetime.datetime.strptime(full_datetime_str, '%Y/%m/%d %H:%M')
+                                
+                                create_calendar_event(
+                                    service, row.get('환자명', 'N/A'), row.get('진료번호', ''), res.get('department', 'N/A'), 
+                                    reservation_datetime, row.get('예약의사', ''), row.get('진료내역', ''), is_daily,
+                                    user_name=doc_name, user_number=doc_number
+                                )
+                            except: pass
+                    st.write(f"✔️ **캘린더:** Dr. {res['name']}에게 일정 추가 완료.")
+                except Exception as e: st.warning(f"⚠️ **캘린더:** Dr. {res['name']} 일정 추가 중 오류: {e}")
+            else: st.warning(f"⚠️ **캘린더:** Dr. {res['name']}님은 Google Calendar 계정이 연동되지 않았습니다.")
+    else: st.info("매칭된 치과의사 계정이 없습니다.")
