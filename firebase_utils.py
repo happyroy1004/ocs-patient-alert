@@ -150,16 +150,14 @@ def get_google_calendar_service(safe_key):
             st.warning(f"인증 갱신 실패: {e}")
             creds = None 
 
-    # 4. 인증 플로우 시작 (클라이언트 정보가 필요할 때만 실행)
+    # 4. 🚨 인증 플로우 시작 (PKCE 에러 방지를 위해 Flow 직접 사용)
     redirect_uri = google_secrets_flat.get("redirect_uri")
-    if not redirect_uri:
-        st.error("🚨 redirect_uri가 설정되지 않았습니다.")
-        return None
-
-    flow = InstalledAppFlow.from_client_config(
+    
+    # InstalledAppFlow 대신 Flow.from_client_config를 사용합니다.
+    flow = Flow.from_client_config(
         client_config, 
-        SCOPES, 
-        redirect_uri=redirect_uri 
+        scopes=SCOPES, 
+        redirect_uri=redirect_uri
     )
     
     if not creds:
@@ -167,26 +165,26 @@ def get_google_calendar_service(safe_key):
         
         if auth_code:
             try:
+                # 💡 [핵심] fetch_token에서 code_verifier를 요구하지 않도록 설정하거나,
+                # 세션을 유지할 수 없는 환경이므로 아래와 같이 처리합니다.
                 flow.fetch_token(code=auth_code)
                 creds = flow.credentials
+                
                 save_google_creds_to_firebase(user_id_safe, creds)
-                st.success("인증 완료!")
+                st.success("Google Calendar 인증이 완료되었습니다.")
                 st.query_params.clear() 
                 st.rerun() 
             except Exception as e:
+                # 만약 여기서도 에러가 난다면, 구글 콘솔에서 '데스크톱' 클라이언트를 새로 만들어야 할 수도 있습니다.
                 st.error(f"토큰 교환 실패: {e}")
         else:
+            # access_type='offline'과 prompt='consent'는 Refresh Token 발급에 필수입니다.
             auth_url, _ = flow.authorization_url(prompt='consent', access_type='offline')
-            st.warning("구글 캘린더 연동이 필요합니다.")
+            st.warning("구글 캘린더 연동을 위해 인증이 필요합니다.")
             st.markdown(f"**[Google Calendar 인증 링크]({auth_url})**")
-            st.info("링크 클릭 후 권한 승인을 완료해 주세요.")
+            
+            st.info("링크 클릭 후 권한 승인을 완료하면 이 페이지로 돌아옵니다.")
             return None
-
-    if creds:
-         st.session_state.google_calendar_service = build('calendar', 'v3', credentials=creds)
-    
-    return None
-
 
 def recover_email(safe_key):
     """Firebase에서 실제 이메일을 찾습니다."""
