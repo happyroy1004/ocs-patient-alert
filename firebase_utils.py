@@ -15,7 +15,7 @@ import json
 # local imports
 from config import SCOPES
 
-# 1. 환경 설정 로드
+# --- 설정 로드 ---
 try:
     FIREBASE_CREDENTIALS = dict(st.secrets["firebase"]) 
     DB_URL = st.secrets["database_url"] 
@@ -23,7 +23,7 @@ try:
     if google_calendar_secrets:
         GOOGLE_CALENDAR_CLIENT_SECRET = dict(google_calendar_secrets)
     else:
-        st.error("🚨 Secrets.toml에 [google_calendar] 섹션 누락")
+        st.error("🚨 Secrets.toml에 [google_calendar] 섹션이 누락되었습니다.")
         GOOGLE_CALENDAR_CLIENT_SECRET = {}
 except Exception as e:
     st.error(f"🚨 설정 로드 오류: {e}")
@@ -31,14 +31,16 @@ except Exception as e:
     DB_URL = None
     GOOGLE_CALENDAR_CLIENT_SECRET = {}
 
-# --- DB 초기화 ---
+
+# --- 1. DB 레퍼런스 및 초기화 ---
 @st.cache_resource
 def get_db_refs():
     if not firebase_admin._apps:
         try:
             if FIREBASE_CREDENTIALS and DB_URL:
                 creds_init = FIREBASE_CREDENTIALS.copy()
-                if 'FIREBASE_DATABASE_URL' in creds_init: del creds_init['FIREBASE_DATABASE_URL']
+                if 'FIREBASE_DATABASE_URL' in creds_init: 
+                    del creds_init['FIREBASE_DATABASE_URL']
                 cred = credentials.Certificate(creds_init)
                 firebase_admin.initialize_app(cred, {'databaseURL': DB_URL})
         except Exception as e:
@@ -50,12 +52,12 @@ def get_db_refs():
         return base_ref.child('users'), base_ref.child('doctor_users'), lambda p: base_ref.child(p)
     return None, None, None
 
-# --- Creds 관리 ---
+
+# --- 2. Google Calendar 인증 및 Creds 관리 ---
 def sanitize_path(email):
     return email.replace('.', '_')
 
 def save_google_creds_to_firebase(safe_key, creds):
-    """중요: 갱신된 정보를 Firebase에 확실히 저장"""
     creds_ref = db.reference(f'google_calendar_creds/{safe_key}')
     pickled_creds = pickle.dumps(creds)
     creds_ref.set({'creds': pickled_creds.hex()})
@@ -66,14 +68,14 @@ def load_google_creds_from_firebase(safe_key):
         return pickle.loads(bytes.fromhex(data['creds']))
     return None
 
-# --- 서비스 로드 및 인증 흐름 ---
+
+# --- 3. Google Calendar Service 로드/인증 흐름 ---
 def get_google_calendar_service(safe_key):
     user_id_safe = safe_key
+    st.session_state.google_calendar_service = None
     
-    # 1. 기존 Creds 로드
     creds = load_google_creds_from_firebase(user_id_safe)
 
-    # 2. Config 설정
     if not GOOGLE_CALENDAR_CLIENT_SECRET:
         return None
 
@@ -87,7 +89,6 @@ def get_google_calendar_service(safe_key):
         }
     }
 
-    # 3. 유효성 검사 및 자동 갱신
     if creds and creds.valid:
         st.session_state.google_calendar_service = build('calendar', 'v3', credentials=creds)
         return
@@ -101,7 +102,7 @@ def get_google_calendar_service(safe_key):
         except:
             creds = None 
 
-    # 4. OAuth Flow 시작
+    # 4. OAuth 인증 플로우
     redirect_uri = GOOGLE_CALENDAR_CLIENT_SECRET.get("redirect_uri")
     flow = Flow.from_client_config(client_config, scopes=SCOPES, redirect_uri=redirect_uri)
     
@@ -109,23 +110,38 @@ def get_google_calendar_service(safe_key):
     
     if auth_code:
         try:
-            # 💡 [해결 핵심] Missing code verifier 방지를 위해 수동 토큰 교환
+            # 💡 [핵심 해결책] Streamlit 세션 초기화로 인해 날아간 verifier를 Firebase에서 복구
+            temp_ref = db.reference(f'temp_auth/{user_id_safe}')
+            temp_data = temp_ref.get()
+            
+            if temp_data and 'code_verifier' in temp_data:
+                flow.code_verifier = temp_data['code_verifier'] # 보관해둔 키 주입!
+                
             flow.fetch_token(code=auth_code)
             new_creds = flow.credentials
+            
             save_google_creds_to_firebase(user_id_safe, new_creds)
-            st.success("✅ 인증 정보가 Firebase에 성공적으로 저장되었습니다!")
+            temp_ref.delete() # 사용이 끝난 임시 키는 깔끔하게 삭제
+            
+            st.success("✅ 구글 캘린더 연동 완료!")
             st.query_params.clear()
             st.rerun()
         except Exception as e:
             st.error(f"❌ 토큰 교환 실패: {e}")
-            if "verifier" in str(e):
-                st.info("인증 세션이 만료되었습니다. 아래 링크를 다시 눌러주세요.")
-                st.query_params.clear()
+            st.query_params.clear()
     else:
-        # prompt='consent'와 access_type='offline'은 Refresh Token 발급을 위해 필수
-        auth_url, _ = flow.authorization_url(prompt='consent', access_type='offline')
+        auth_url, state = flow.authorization_url(prompt='consent', access_type='offline')
+        
+        # 💡 [핵심 해결책] 구글로 넘어가기 전, 생성된 verifier를 Firebase에 안전하게 보관
+        code_verifier = getattr(flow, 'code_verifier', None)
+        if code_verifier:
+            db.reference(f'temp_auth/{user_id_safe}').set({
+                'code_verifier': code_verifier
+            })
+            
         st.warning("⚠️ 구글 캘린더 연동이 필요합니다.")
         st.markdown(f"**[Google Calendar 인증 링크]({auth_url})**")
+        st.info("링크 클릭 후 권한 승인을 완료하면 이 페이지로 돌아옵니다.")
         return None
 
 def recover_email(safe_key):
