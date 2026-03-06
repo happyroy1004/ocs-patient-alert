@@ -8,7 +8,8 @@ from email.mime.multipart import MIMEMultipart
 import datetime
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
-from firebase_utils import load_google_creds_from_firebase, recover_email
+from google.auth.transport.requests import Request # 💡 토큰 갱신을 위해 추가됨
+from firebase_utils import load_google_creds_from_firebase, recover_email, save_google_creds_to_firebase # 💡 저장 함수 추가됨
 from config import PATIENT_DEPT_FLAGS, PATIENT_DEPT_TO_SHEET_MAP, SHEET_KEYWORD_TO_DEPARTMENT_MAP
 
 # --- 유효성 검사 ---
@@ -358,6 +359,14 @@ def run_auto_notifications(matched_users, matched_doctors, excel_data_dfs, file_
 
             # 캘린더 등록
             creds = load_google_creds_from_firebase(user_safe_key)
+            
+            # 💡 [핵심 추가] 만료된 토큰 자동 갱신
+            if creds and creds.expired and creds.refresh_token:
+                try:
+                    creds.refresh(Request())
+                    save_google_creds_to_firebase(user_safe_key, creds)
+                except: pass
+                
             if creds and creds.valid and not creds.expired:
                 try:
                     service = build('calendar', 'v3', credentials=creds)
@@ -397,6 +406,14 @@ def run_auto_notifications(matched_users, matched_doctors, excel_data_dfs, file_
             except Exception as e: st.error(f"❌ **메일:** Dr. {res['name']}에게 전송 실패: {e}")
 
             creds = load_google_creds_from_firebase(res['safe_key'])
+            
+            # 💡 [핵심 추가] 만료된 토큰 자동 갱신
+            if creds and creds.expired and creds.refresh_token:
+                try:
+                    creds.refresh(Request())
+                    save_google_creds_to_firebase(res['safe_key'], creds)
+                except: pass
+                
             if creds and creds.valid and not creds.expired:
                 try:
                     service = build('calendar', 'v3', credentials=creds)
