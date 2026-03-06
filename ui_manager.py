@@ -1,4 +1,4 @@
-# ui_manager.py (신규 등록 시 번호 입력 추가 및 부분 렌더링 최적화 버전)
+# ui_manager.py (신규 등록 시 번호 입력 추가 및 부분 렌더링 최적화, 캘린더 토큰 자동 갱신 반영 버전)
 
 import streamlit as st
 import pandas as pd
@@ -9,6 +9,7 @@ import os
 import re
 import bcrypt
 import json
+from google.auth.transport.requests import Request # 💡 토큰 갱신을 위해 추가됨
 
 # local imports
 from config import (
@@ -119,6 +120,13 @@ def fragment_manual_student_calendar(selected_matched_users_data, is_daily):
             user_number = user_match_info.get('number', '')
             creds = load_google_creds_from_firebase(user_safe_key) 
             
+            # 💡 [핵심 추가] 토큰이 만료되었으면 자동으로 새 토큰으로 갱신!
+            if creds and creds.expired and creds.refresh_token:
+                try:
+                    creds.refresh(Request())
+                    save_google_creds_to_firebase(user_safe_key, creds)
+                except: pass
+
             if creds and creds.valid and not creds.expired:
                 successful_adds = 0
                 try:
@@ -183,6 +191,14 @@ def fragment_manual_doctor_calendar(selected_doctors_to_act, is_daily):
             user_safe_key = res['safe_key']; user_name = res['name']; df_matched = res['data']
             user_number = res.get('number', '')
             creds = load_google_creds_from_firebase(user_safe_key) 
+            
+            # 💡 [핵심 추가] 토큰이 만료되었으면 자동으로 새 토큰으로 갱신!
+            if creds and creds.expired and creds.refresh_token:
+                try:
+                    creds.refresh(Request())
+                    save_google_creds_to_firebase(user_safe_key, creds)
+                except: pass
+
             if creds and creds.valid and not creds.expired:
                 successful_adds = 0
                 try:
@@ -754,3 +770,4 @@ def show_doctor_mode_ui(firebase_key, user_name):
     st.markdown("---")
     # [최적화] Fragment 구역으로 비밀번호 변경 대체
     fragment_password_change(firebase_key, doctor_users_ref, "d")
+
