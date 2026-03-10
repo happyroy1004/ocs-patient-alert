@@ -607,7 +607,7 @@ def show_admin_mode_ui():
         with tab_student:
             st.markdown("#### 학생 사용자 목록")
             if user_list:
-                df_users = pd.DataFrame(user_list); st.dataframe(df_users[['name', 'email', 'number']].sort_values(by='number', na_position='last'), use_container_width=True); st.markdown("---")
+                df_users = pd.DataFrame(user_list); st.dataframe(df_users[['name', 'email', 'number']], use_container_width=True); st.markdown("---")
                 user_options = [f"{u['name']} ({u['email']})" for u in user_list]
                 selected_users_to_act = st.multiselect("메일 발송 또는 삭제할 학생:", options=user_options, key="student_multiselect_act")
                 selected_user_data = [u for u in user_list if f"{u['name']} ({u['email']})" in selected_users_to_act]
