@@ -72,17 +72,17 @@ def create_calendar_event(service, patient_name, pid, department, reservation_da
     clean_doctor_name = doctor_name.strip()
     
     if clean_doctor_name == '백승학':
-        approver_suffix = ' -> 승인 : 손승현'
+        approver_suffix = ' -> 승인 : 이소윤'
     elif clean_doctor_name == '임원희':
-        approver_suffix = ' -> 승인 : 최다솔'
+        approver_suffix = ' -> 승인 : 이상민'
     elif clean_doctor_name == '이신재':
-        approver_suffix = ' -> 승인 : 송상원'
+        approver_suffix = ' -> 승인 : 문찬연'
     elif clean_doctor_name == '안석준':
-        approver_suffix = ' -> 승인 : 송상원'
+        approver_suffix = ' -> 승인 : 문찬연'
     elif clean_doctor_name == '양일형':
-        approver_suffix = ' -> 승인 : 이진'
+        approver_suffix = ' -> 승인 : 김성현'
     elif clean_doctor_name == '안정섭':
-        approver_suffix = ' -> 승인 : 강기모'
+        approver_suffix = ' -> 승인 : 이상민'
 
     # 1. 제목 포맷팅: 시간(HHMM)만 표시
     # 예: ❓내원 : 1400 홍길동 (교정과, 백승학) -> 승인 : 손승현
