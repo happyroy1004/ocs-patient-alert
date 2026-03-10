@@ -73,8 +73,10 @@ def create_calendar_event(service, patient_name, pid, department, reservation_da
     
     if clean_doctor_name == '백승학':
         approver_suffix = ' -> 승인 : 손승현'
-    elif clean_doctor_name in ['임원희', '이신재']:
+    elif clean_doctor_name == '임원희':
         approver_suffix = ' -> 승인 : 최다솔'
+    elif clean_doctor_name == '이신재':
+        approver_suffix = ' -> 승인 : 송상원'
     elif clean_doctor_name == '안석준':
         approver_suffix = ' -> 승인 : 송상원'
     elif clean_doctor_name == '양일형':
@@ -300,8 +302,10 @@ def run_auto_notifications(matched_users, matched_doctors, excel_data_dfs, file_
                 
                 if clean_doctor == '백승학':
                     approver_suffix = ' -> 승인 : 손승현'
-                elif clean_doctor in ['임원희', '이신재']:
+                elif clean_doctor == '임원희':
                     approver_suffix = ' -> 승인 : 최다솔'
+                elif clean_doctor == '이신재':
+                    approver_suffix = ' -> 승인 : 송상원'
                 elif clean_doctor == '안석준':
                     approver_suffix = ' -> 승인 : 송상원'
                 elif clean_doctor == '양일형':
