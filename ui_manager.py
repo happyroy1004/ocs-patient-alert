@@ -601,7 +601,7 @@ def show_admin_mode_ui():
         
         st.subheader("👥 사용자 목록 및 계정 관리")
         tab_student, tab_doctor, tab_test_mail = st.tabs(["📚 학생 사용자 관리", "🧑‍⚕️ 치과의사 사용자 관리", "📧 테스트 메일 발송"])
-        user_meta = users_ref.get(); user_list = [{"name": u.get('name'), "email": u.get('email'), "key": k} for k, u in user_meta.items() if u and isinstance(u, dict)] if user_meta else []
+        user_meta = users_ref.get(); user_list = [{"name": u.get('name'), "email": u.get('email'), "number": u.get('number'), "key": k} for k, u in user_meta.items() if u and isinstance(u, dict)] if user_meta else []
         doctor_meta = doctor_users_ref.get(); doctor_list = [{"name": d.get('name'), "email": d.get('email'), "key": k, "dept": d.get('department')} for k, d in doctor_meta.items() if d and isinstance(d, dict)] if doctor_meta else []
 
         with tab_student:
