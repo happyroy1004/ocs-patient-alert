@@ -301,17 +301,17 @@ def run_auto_notifications(matched_users, matched_doctors, excel_data_dfs, file_
                 clean_doctor = doctor.strip()
                 
                 if clean_doctor == '백승학':
-                    approver_suffix = ' -> 승인 : 손승현'
+                    approver_suffix = ' -> 승인 : 이소윤'
                 elif clean_doctor == '임원희':
-                    approver_suffix = ' -> 승인 : 최다솔'
+                    approver_suffix = ' -> 승인 : 이상민'
                 elif clean_doctor == '이신재':
-                    approver_suffix = ' -> 승인 : 송상원'
+                    approver_suffix = ' -> 승인 : 문찬연'
                 elif clean_doctor == '안석준':
-                    approver_suffix = ' -> 승인 : 송상원'
+                    approver_suffix = ' -> 승인 : 문찬연'
                 elif clean_doctor == '양일형':
-                    approver_suffix = ' -> 승인 : 이진'
+                    approver_suffix = ' -> 승인 : 김성현'
                 elif clean_doctor == '안정섭':
-                    approver_suffix = ' -> 승인 : 강기모'
+                    approver_suffix = ' -> 승인 : 이상민'
                 
                 # 날짜/시간 포맷팅 (MMDD, HHMM)
                 date_digits = re.sub(r'[^0-9]', '', raw_date)
