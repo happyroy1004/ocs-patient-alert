@@ -128,7 +128,7 @@ def process_sheet_v8(df, professors_list, sheet_key):
     non_professors = df[~df['예약의사'].isin(professors_list)]
 
     # 정렬 기준 설정
-    if sheet_key != '보철':
+    if sheet_key != '울랄라':
         non_professors = non_professors.sort_values(by=['예약시간', '예약의사'])
     else:
         non_professors = non_professors.sort_values(by=['예약의사', '예약시간'])
@@ -139,7 +139,7 @@ def process_sheet_v8(df, professors_list, sheet_key):
 
     # 비교수 환자 처리 (시간 또는 의사별 그룹핑)
     for _, row in non_professors.iterrows():
-        if sheet_key != '보철':
+        if sheet_key != '울랄라':
             if current_time != row['예약시간']:
                 if current_time is not None:
                     final_rows.append(pd.Series([" "] * len(df.columns), index=df.columns))
