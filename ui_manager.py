@@ -708,7 +708,7 @@ def show_user_mode_ui(firebase_key, user_name):
         st.markdown("---")
 
         st.subheader("📋 환자 정보 대량 등록")
-        paste_area = st.text_area("엑셀 붙여넣기 (이름 진료번호 진료과)", height=150, key="bulk_paste_area")
+        paste_area = st.text_area("엑셀 붙여넣기 (이름 진료번호 진료과 : 원진실을 제외한 진료과를 모두 두 글자로 작성, 소아치과 -> 소치)", height=150, key="bulk_paste_area")
         if st.button("대량 등록 실행", key="bulk_reg_button") and paste_area:
             lines = paste_area.strip().split('\n'); success_count = 0
             for line in lines:
