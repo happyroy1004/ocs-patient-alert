@@ -333,25 +333,25 @@ def run_auto_notifications(matched_users, matched_doctors, excel_data_dfs, file_
                     approver_suffix = ' -> 승인 : 김성현'
                 elif clean_doctor == '안정섭':
                     approver_suffix = ' -> 승인 : 이상민'
-                elif clean_doctor_name == '김동학':
+                elif clean_doctor == '김동학':
                     approver_suffix = ' -> 참조 : 임영준'
-                elif clean_doctor_name == '김상헌':
+                elif clean_doctor == '김상헌':
                     approver_suffix = ' -> 참조 : 권호범'
-                elif clean_doctor_name == '송창열':
+                elif clean_doctor == '송창열':
                     approver_suffix = ' -> 참조 : 곽재영'
-                elif clean_doctor_name == '차채령':
+                elif clean_doctor == '차채령':
                     approver_suffix = ' -> 참조 : 여인성'
-                elif clean_doctor_name == '최병훈':
+                elif clean_doctor == '최병훈':
                     approver_suffix = ' -> 참조 : 김성균'
-                elif clean_doctor_name == '김형준':
+                elif clean_doctor == '김형준':
                     approver_suffix = ' -> 참조 : 곽재영'
-                elif clean_doctor_name == '박광일':
+                elif clean_doctor == '박광일':
                     approver_suffix = ' -> 참조 : 박지만'
-                elif clean_doctor_name == '안세홍':
+                elif clean_doctor == '안세홍':
                     approver_suffix = ' -> 참조 : 김명주'
-                elif clean_doctor_name == '이가영':
+                elif clean_doctor == '이가영':
                     approver_suffix = ' -> 참조 : 윤형인'
-                elif clean_doctor_name == '이지훈':
+                elif clean_doctor == '이지훈':
                     approver_suffix = ' -> 참조 : 조준호'
                 
                 # 날짜/시간 포맷팅 (MMDD, HHMM)
