@@ -4,7 +4,7 @@ import datetime
 
 # --- 전역 상수 정의 ---
 # 환자 데이터의 진료과 플래그 키 목록 (DB에 저장되는 T/F 플래그)
-PATIENT_DEPT_FLAGS = ["보철", "외과", "내과", "소치", "교정", "원진실", "보존"] 
+PATIENT_DEPT_FLAGS = ["보철", "외과", "내과", "소치", "교정", "원진실", "보존", "치주"] 
 # 등록 시 선택할 수 있는 모든 진료과
 DEPARTMENTS_FOR_REGISTRATION = ["교정", "내과", "보존", "보철", "소치", "외과", "치주", "원진실"]
 # Google Calendar Scope
