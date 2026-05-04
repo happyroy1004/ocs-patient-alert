@@ -72,19 +72,17 @@ def create_calendar_event(service, patient_name, pid, department, reservation_da
     clean_doctor_name = doctor_name.strip()
     
     if clean_doctor_name == '백승학':
-        approver_suffix = ' -> 승인 : 이상민'
+        approver_suffix = ' -> 승인 : 김성현'
     elif clean_doctor_name == '임원희':
-        approver_suffix = ' -> 승인 : 김성현'
-    elif clean_doctor_name == '이신재':
-        approver_suffix = ' -> 승인 : 이소윤'
-    elif clean_doctor_name == '안석준':
-        approver_suffix = ' -> 승인 : 이소윤'
-    elif clean_doctor_name == '양일형':
         approver_suffix = ' -> 승인 : 문찬연'
-    elif clean_doctor_name == '안정섭':
-        approver_suffix = ' -> 승인 : 김성현'
-    elif clean_doctor_name == '백승학':
+    elif clean_doctor_name == '이신재':
+        approver_suffix = ' -> 승인 : 이상민'
+    elif clean_doctor_name == '안석준':
+        approver_suffix = ' -> 승인 : 이상민'
+    elif clean_doctor_name == '양일형':
         approver_suffix = ' -> 승인 : 이소윤'
+    elif clean_doctor_name == '안정섭':
+        approver_suffix = ' -> 승인 : 문찬연'
     elif clean_doctor_name == '김동학':
         approver_suffix = ' -> 참조 : 임영준'
     elif clean_doctor_name == '김상헌':
@@ -322,17 +320,17 @@ def run_auto_notifications(matched_users, matched_doctors, excel_data_dfs, file_
                 clean_doctor = doctor.strip()
                 
                 if clean_doctor == '백승학':
-                    approver_suffix = ' -> 승인 : 이소윤'
-                elif clean_doctor == '임원희':
-                    approver_suffix = ' -> 승인 : 이상민'
-                elif clean_doctor == '이신재':
-                    approver_suffix = ' -> 승인 : 문찬연'
-                elif clean_doctor == '안석준':
-                    approver_suffix = ' -> 승인 : 문찬연'
-                elif clean_doctor == '양일형':
                     approver_suffix = ' -> 승인 : 김성현'
-                elif clean_doctor == '안정섭':
+                elif clean_doctor == '임원희':
+                    approver_suffix = ' -> 승인 : 문찬연'
+                elif clean_doctor == '이신재':
                     approver_suffix = ' -> 승인 : 이상민'
+                elif clean_doctor == '안석준':
+                    approver_suffix = ' -> 승인 : 이상민'
+                elif clean_doctor == '양일형':
+                    approver_suffix = ' -> 승인 : 이소윤'
+                elif clean_doctor == '안정섭':
+                    approver_suffix = ' -> 승인 : 문찬연'
                 elif clean_doctor == '김동학':
                     approver_suffix = ' -> 참조 : 임영준'
                 elif clean_doctor == '김상헌':
